@@ -1,0 +1,333 @@
+import axios from 'axios';
+
+/**
+ * All domains are served by the unified backend at REACT_APP_BACKEND_URL.
+ */
+const normalizeBase = (value) => (value || '').replace(/\/+$/, '');
+
+/**
+ * ONE base URL. Identity, CRM, Voice, Report and marketplace are all served by
+ * the single backend (app.main:app) on one origin.
+ *
+ * REACT_APP_VOICE_AGENT_URL and REACT_APP_REPORT_AGENT_URL are deprecated.
+ * They are still read so existing deployments keep booting, but they pointed at
+ * the same monolith already. Set REACT_APP_BACKEND_URL only.
+ */
+const API_BASE = normalizeBase(
+  process.env.REACT_APP_BACKEND_URL ||
+  process.env.REACT_APP_VOICE_AGENT_URL ||
+  process.env.REACT_APP_REPORT_AGENT_URL ||
+  'http://localhost:8000'
+);
+
+/**
+ * ONE Axios client. Every request path below is absolute from the origin, so
+ * Voice/CRM/auth paths carry their own `/api` prefix and Report paths
+ * (`/audio`, `/call-analysis`, `/weights`) carry none — exactly the URLs the
+ * backend has always served.
+ */
+const http = axios.create({
+  baseURL: API_BASE,
+  headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+});
+
+// Existing export names are preserved. They are all the same client now.
+const authApi = http;
+const voiceApi = http;
+const api = http;
+const reportApi = http;
+
+const isValidToken = (token) => Boolean(token) && token !== 'undefined' && token !== 'null';
+
+const _addAuthInterceptor = (instance) => {
+  instance.interceptors.request.use((config) => {
+    const token = localStorage.getItem('estateops_token');
+    const isLoginOrRegister = config.url?.includes('/auth/login') || config.url?.includes('/auth/register');
+    if (!isLoginOrRegister && isValidToken(token)) {
+      config.headers.Authorization = `Bearer ${token}`;
+    } else if (config.headers.Authorization) {
+      delete config.headers.Authorization;
+    }
+    return config;
+  });
+  instance.interceptors.response.use(
+    (response) => response,
+    (error) => {
+      if (error.response?.status === 401) {
+        if (!window.location.pathname.includes('/login') && !error.config.url?.includes('/auth/')) {
+          localStorage.removeItem('estateops_token');
+          localStorage.removeItem('estateops_user');
+          window.location.href = '/login';
+        }
+      }
+      return Promise.reject(error);
+    }
+  );
+};
+
+_addAuthInterceptor(http);
+
+// ── Auth ──
+export const authLogin = (data) => authApi.post('/api/auth/login', data);
+export const authRegister = (data) => authApi.post('/api/auth/register', data);
+export const listUsers = () => authApi.get('/api/auth/users');
+
+// ── Dashboard & Admin ──
+export const getDashboardStats = () => api.get('/api/dashboard/stats');
+export const getSystemHealth = () => api.get('/api/admin/system-health');
+
+// ── Leads ──
+export const getLeads = (params) => api.get('/api/leads', { params });
+export const getLead = (id) => api.get(`/api/leads/${id}`);
+export const createLead = (data) => api.post('/api/leads', data);
+export const updateLead = (id, data) => api.put(`/api/leads/${id}`, data);
+export const deleteLead = (id) => api.delete(`/api/leads/${id}`);
+export const getLeadEvents = (id) => api.get(`/api/leads/${id}/events`);
+export const createLeadEvent = (data) => api.post('/api/lead-events', data);
+
+// ── Properties ──
+export const getProperties = (params) => api.get('/api/properties', { params });
+export const getProperty = (id) => api.get(`/api/properties/${id}`);
+export const createProperty = (data) => api.post('/api/properties', data);
+export const updateProperty = (id, data) => api.put(`/api/properties/${id}`, data);
+export const deleteProperty = (id) => api.delete(`/api/properties/${id}`);
+
+// ── Site Visits ──
+export const getSiteVisits = (params) => api.get('/api/site-visits', { params });
+export const createSiteVisit = (data) => api.post('/api/site-visits', data);
+export const updateSiteVisit = (id, status) => api.put(`/api/site-visits/${id}?status=${status}`);
+
+// ── Calls ──
+export const getCalls = (params) => api.get('/api/calls', { params });
+export const getCall = (id) => api.get(`/api/calls/${id}`);
+export const createCall = (data) => api.post('/api/calls', data);
+
+// ── Engagements ──
+export const getEngagements = (params) => api.get('/api/engagements', { params });
+export const getEngagement = (id) => api.get(`/api/engagements/${id}`);
+
+// ── Research ──
+export const getResearchReports = () => api.get('/api/research');
+export const getResearchReport = (id) => api.get(`/api/research/${id}`);
+
+// ── Executive Reports ──
+export const getExecReports = () => api.get('/api/exec-reports');
+export const getExecReport = (id) => api.get(`/api/exec-reports/${id}`);
+
+// ── Settings ──
+export const getSettings = () => api.get('/api/settings');
+export const updateSettings = (data) => api.put('/api/settings', data);
+
+// ── Prospecting (Apollo) ──
+export const searchProspects = (query, perPage = 20) => api.post('/api/prospecting/search', { query, per_page: perPage });
+export const importProspects = (prospects) => api.post('/api/prospecting/import', { prospects });
+export const getMyLeads = () => api.get('/api/prospecting/my-leads');
+export const deleteMyLead = (id) => api.delete(`/api/prospecting/my-leads/${id}`);
+
+// ── AI Strategist ──
+export const getStrategistHistory = () => api.get('/api/strategist/history');
+export const strategistChat = (message) => api.post('/api/strategist/chat', { message });
+export const launchCampaignFromStrategy = (strategy, prospectIds) => api.post('/api/campaigns/launch', { strategy, prospect_ids: prospectIds });
+
+// ── Campaigns (SDR) ──
+export const getSdrCampaigns = () => api.get('/api/campaigns');
+export const getSdrCampaign = (id) => api.get(`/api/campaigns/${id}`);
+export const generateCampaignMessages = (id, count = 5) => api.post(`/api/campaigns/${id}/generate-messages`, { count });
+export const approveCampaignMessage = (id, data = {}) => api.post(`/api/messages/${id}/approve`, data);
+export const rejectCampaignMessage = (id) => api.post(`/api/messages/${id}/reject`);
+export const regenerateCampaignMessage = (id, instructions) => api.post(`/api/messages/${id}/regenerate`, { instructions });
+export const sendApprovedCampaignMessages = (id) => api.post(`/api/campaigns/${id}/send-approved`);
+export const launchCampaignCalls = (id, assistantId) => api.post(`/api/campaigns/${id}/launch-calls`, { assistant_id: assistantId });
+
+// ── Inbox ──
+export const getInbox = () => api.get('/api/inbox');
+
+// ── AI Agent Actions ──
+export const qualifyLead = (id) => api.post(`/api/agents/lead-qualify/${id}`);
+export const generateEngagement = (data) => api.post('/api/agents/engagement/generate', data);
+export const runResearch = () => api.post('/api/agents/research/run');
+export const runExecReport = () => api.post('/api/agents/exec-report/run');
+export const summarizeCall = (id) => api.post(`/api/agents/call-summarize/${id}`);
+
+// ── Voice Agent ──
+// campaignName is what makes the backend create a `campaigns` row (see
+// initiate_csv_calls: no campaign_name -> no campaign -> every resulting call
+// log carries campaign_id = NULL). LeadCampaignBuilder has always passed a
+// third argument here, but the signature only took two, so the name was
+// silently dropped and no campaign was ever created from the UI.
+export const initiateCsvCalls = (file, assistantId, campaignName) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  if (assistantId) formData.append('assistant_id', assistantId);
+  if (campaignName) formData.append('campaign_name', campaignName);
+  return api.post('/api/csv/initiate_csv_calls', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+};
+export const getCsvCallResults = (processId) => api.get(`/api/csv/results/${processId}`);
+
+// ── Voice Campaigns ──
+// Distinct from getCampaigns() below, which hits /api/call-logs/campaigns and
+// returns only id/name/created_at for the Call Logs filter dropdown.
+export const getVoiceCampaigns = () => api.get('/api/campaigns');
+export const getVoiceCampaign = (id) => api.get(`/api/campaigns/${id}`);
+export const getVoiceCampaignContacts = (id) => api.get(`/api/campaigns/${id}/contacts`);
+export const deleteVoiceCampaign = (id) => api.delete(`/api/campaigns/${id}`);
+export const initiateRealEstateCall = ({ phone_number, user_name, assistant_id }) => {
+  const body = new URLSearchParams();
+  body.append('phone_number', phone_number || '');
+  body.append('user_name', user_name || '');
+  if (assistant_id) {
+    body.append('assistant_id', assistant_id);
+  }
+  return api.post('/api/initiate_real_estate_call', body, {
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+  });
+};
+export const scheduleVoiceCall = (data) => api.post('/api/voice/schedule', data);
+export const scheduleCampaign = (data) => api.post('/api/campaign-schedules', data);
+export const createKnowledgeBase = (payload, file) => {
+  if (file) {
+    const formData = new FormData();
+    Object.entries(payload || {}).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) formData.append(key, value);
+    });
+    formData.append('file', file);
+    return api.post('/api/knowledge-base', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  }
+  return api.post('/api/knowledge-base', payload);
+};
+
+export const getCallLogs = (params) => api.get('/api/call-logs', { params });
+export const getCallLogDetail = (id) => api.get(`/api/call-logs/${id}`);
+export const deleteCallLog = (id) => api.delete(`/api/call-logs/${id}`);
+export const getVoiceCallStats = () => api.get('/api/call-logs/stats');
+export const getCallStatsByAssistant = () => api.get('/api/call-logs/stats/by-assistant');
+export const pauseAssistant = (assistantId) => api.post(`/api/v1/assistants/${assistantId}/pause`);
+export const resumeAssistant = (assistantId) => api.post(`/api/v1/assistants/${assistantId}/resume`);
+export const getCampaigns = () => api.get('/api/call-logs/campaigns');
+
+// ── VAPI Assistant Workshop ──
+export const getAssistants = () => api.get('/api/v1/assistants');
+export const createAssistant = (data) => api.post('/api/v1/assistants', data);
+export const saveAssistantDraft = (data) => api.post('/api/v1/assistants/draft', data);
+export const importAssistants = (vapiAssistantIds) =>
+  api.post('/api/v1/assistants/import', { vapi_assistant_ids: vapiAssistantIds });
+export const deleteAssistant = (id) => api.delete(`/api/v1/assistants/${id}`);
+export const uploadKnowledgeFile = (assistantId, file) => {
+  const fd = new FormData();
+  fd.append('file', file);
+  if (assistantId) fd.append('assistant_id', assistantId);
+  return api.post('/api/v1/assistants/knowledge-base', fd, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+};
+export const getKnowledgeFiles = () => api.get('/api/v1/assistants/knowledge-base/files');
+
+export const getCalendarEvents = () => api.get('/api/calendar/events');
+export const createCalendarEvent = (data) => api.post('/api/calendar/events', data);
+export const deleteCalendarEvent = (id) => api.delete(`/api/calendar/events/${id}`);
+
+export const getGoogleAuthStatus = () => authApi.get('/api/auth/google/status');
+export const getGoogleAuthAuthorize = () => authApi.get('/api/auth/google/authorize');
+export const disconnectGoogleAuth = () => authApi.delete('/api/auth/google/disconnect');
+
+// ── Agent Run Logs ──
+export const getAgentRuns = (params) => api.get('/api/agent-runs', { params });
+export const getAgentRunStats = () => api.get('/api/agent-runs/stats');
+export const retryAgentRun = (id) => api.post(`/api/agent-runs/${id}/retry`);
+
+// ── Bulk Actions ──
+export const bulkQualifyLeads = (lead_ids) => api.post('/api/leads/bulk/qualify', { lead_ids });
+export const bulkAssignLeads = (lead_ids, assigned_to) => api.post('/api/leads/bulk/assign', { lead_ids, assigned_to });
+export const bulkUpdateStage = (lead_ids, stage) => api.post('/api/leads/bulk/stage', { lead_ids, stage });
+
+// ── CSV Export ──
+export const exportLeadsCSV = () => api.get('/api/export/leads', { responseType: 'blob' });
+export const exportCallsCSV = () => api.get('/api/export/calls', { responseType: 'blob' });
+export const exportAgentRunsCSV = () => api.get('/api/export/agent-runs', { responseType: 'blob' });
+
+// ── Seed ──
+export const seedDatabase = () => api.post('/api/seed');
+
+// Helper to trigger download from blob
+export function downloadBlob(blob, filename) {
+  const url = window.URL.createObjectURL(new Blob([blob]));
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', filename);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+// ── Report Agent: Audio ──
+export const uploadAudioFile = (file, executiveName) => {
+  const fd = new FormData();
+  fd.append('file', file);
+  if (executiveName) fd.append('executive_name', executiveName);
+  return reportApi.post('/audio/upload-file', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+};
+export const diarizeAudio = (audioId) => reportApi.get(`/audio/diarize/${audioId}`);
+export const getAudioSummary = (audioId) => reportApi.get(`/audio/summary/${audioId}`);
+export const pushToSheet = (audioId) => reportApi.post(`/audio/push-to-sheet/${audioId}`);
+export const getSheetsUrl = () => reportApi.get('/config/sheets-url');
+
+// ── Report Agent: Call Analysis ──
+export const analyzeCall = (audioId) =>
+  reportApi.post('/call-analysis/', {}, { headers: { 'audio-id': audioId } });
+export const getAnalysisReports = () => reportApi.get('/call-analysis/reports');
+export const getManagerDashboard = (date) =>
+  reportApi.get('/call-analysis/manager-dashboard', date ? { params: { date } } : {});
+export const clearAllCallAnalysis = () => reportApi.delete('/call-analysis/clear-all');
+export const deleteCallAnalysis = (audioId) => reportApi.delete(`/call-analysis/${audioId}`);
+export const syncSheetColumns = () => reportApi.post('/call-analysis/sync-sheet-columns');
+
+
+export const getCallAudio = (audioId) =>
+  reportApi.get(`/audio/file/${audioId}`, { responseType: 'blob' });
+
+export const downloadExecutiveReport = (audioId) =>
+  reportApi.get(`/call-analysis/reports/${audioId}/download`, { responseType: 'blob' });
+
+export const sendExecutiveReportEmail = (audioId, data) =>
+  reportApi.post(`/call-analysis/reports/${audioId}/email`, data);
+
+export const saveManualScoreOverride = (audioId, data) =>
+  reportApi.put(`/call-analysis/reports/${audioId}/manual-override`, data);
+
+export const emailExecutiveComparison = (data) =>
+  reportApi.post('/call-analysis/executive-comparison-email', data);
+
+// ── Report Agent: Weight Config ──
+export const getWeightConfig = () => reportApi.get('/weights/');
+export const updateWeightConfig = (data) => reportApi.put('/weights/', data);
+export const resetWeightConfig = () => reportApi.post('/weights/reset');
+
+// ── Chatbot: Knowledge Base management ──
+export const getKbs = () => reportApi.get('/kb');
+export const createKb = (name) => reportApi.post('/kb', { name });
+export const deleteKb = (name) => reportApi.delete(`/kb/${encodeURIComponent(name)}`);
+export const getActiveKb = () => reportApi.get('/kb/active');
+export const setActiveKb = (name) => reportApi.post('/kb/active', { name });
+export const getKbFiles = (name) => reportApi.get(`/kb/${encodeURIComponent(name)}/files`);
+export const uploadKbFile = (name, file) => {
+  const fd = new FormData();
+  fd.append('file', file);
+  return reportApi.post(`/kb/${encodeURIComponent(name)}/upload`, fd, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+};
+export const deleteKbFile = (name, sourceFile) =>
+  reportApi.delete(`/kb/${encodeURIComponent(name)}/files/${encodeURIComponent(sourceFile)}`);
+export const scrapeKbUrl = (url, kbName) => reportApi.post('/scrape', { url, kb_name: kbName });
+
+// ── Chatbot: Chat ──
+export const askChatbot = (query, kbName, history = [], provider = 'groq') =>
+  reportApi.post(provider === 'ollama' ? '/askus' : '/askgroq', { query, kb_name: kbName, history });
+
+export { authApi, reportApi, voiceApi, http, API_BASE };
+export default voiceApi;

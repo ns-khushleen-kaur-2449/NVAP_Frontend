@@ -1,0 +1,443 @@
+/* EstateOps AI - Global Styles */
+
+/* App Shell — full-width column layout (TopBar, no sidebar) */
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: hsl(var(--background));
+}
+
+/* App Shell — persistent left Sidebar, no TopBar */
+.app-shell-row {
+  display: flex;
+  min-height: 100vh;
+  background: hsl(var(--background));
+}
+
+.page-content {
+  flex: 1;
+  padding: 1.5rem 1.75rem 2rem;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+@media (min-width: 1024px) {
+  .page-content {
+    padding: 1.75rem 2.5rem 2.5rem;
+  }
+}
+
+/* KPI Cards */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(1, 1fr);
+  gap: 1rem;
+}
+
+@media (min-width: 640px) {
+  .kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1280px) {
+  .kpi-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+/* Score Gauge */
+.score-gauge {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.score-gauge-text {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Channel preview styles */
+.whatsapp-preview {
+  background: #0b141a;
+  border-radius: 12px;
+  padding: 1rem;
+}
+
+.whatsapp-bubble {
+  background: #1f2c33;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  max-width: 85%;
+  color: #e9edef;
+}
+
+.email-preview {
+  background: hsl(222 30% 12%);
+  border-radius: 12px;
+  padding: 1rem;
+}
+
+.sms-preview {
+  background: hsl(222 30% 12%);
+  border-radius: 12px;
+  padding: 1rem;
+}
+
+.sms-bubble {
+  background: hsl(222 26% 16%);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  max-width: 85%;
+}
+
+/* Timeline */
+.timeline-rail {
+  position: absolute;
+  left: 0.75rem;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: hsl(var(--border));
+}
+
+.timeline-dot {
+  height: 0.625rem;
+  width: 0.625rem;
+  border-radius: 50%;
+  background: hsl(var(--primary));
+  box-shadow: 0 0 0 4px hsla(229, 45%, 35%, 0.16);
+}
+
+/* AI Action Button Glow */
+.ai-btn-glow:hover {
+  box-shadow: 0 0 0 3px hsla(229, 45%, 35%, 0.16);
+}
+
+/* Loading animation */
+@keyframes pulse-teal {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.animate-pulse-teal {
+  animation: pulse-teal 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Gradient decorations */
+.gradient-header {
+  background: linear-gradient(135deg, hsl(229, 60%, 97%) 0%, hsl(229, 60%, 94%) 100%);
+}
+
+.gradient-accent {
+  background: radial-gradient(900px circle at 80% 0%, hsla(229, 45%, 35%, 0.08), transparent 50%);
+}
+
+.glass-panel {
+  background: linear-gradient(130deg, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.55));
+  backdrop-filter: blur(18px);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  box-shadow: 0 24px 60px -40px rgba(15, 23, 42, 0.35);
+}
+
+.section-shell {
+  border-radius: 1.5rem;
+  padding: 2.5rem;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--card));
+  box-shadow: 0 20px 50px -40px rgba(15, 23, 42, 0.25);
+}
+
+.section-title {
+  font-size: 1.75rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.hero-spotlight {
+  background: radial-gradient(1000px circle at 20% 10%, hsla(229, 45%, 35%, 0.08), transparent 55%);
+}
+
+.soft-shadow {
+  box-shadow: 0 30px 60px -45px rgba(15, 23, 42, 0.35);
+}
+
+@keyframes rise-fade {
+  0% { opacity: 0; transform: translateY(12px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+.animate-rise {
+  animation: rise-fade 0.6s ease-out both;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Voice Agent — Sidebar Layout
+   ═══════════════════════════════════════════════════════════════ */
+
+.va-layout {
+  display: flex;
+  gap: 0;
+  min-height: calc(100vh - 64px);
+  position: relative;
+}
+
+/* ─── Sidebar ────────────────────────────────────────────────── */
+.va-sidebar {
+  width: 260px;
+  min-width: 260px;
+  display: flex;
+  flex-direction: column;
+  background: hsl(var(--card));
+  border-right: 1px solid hsl(var(--border));
+  border-radius: 1rem 0 0 1rem;
+  padding: 1rem 0;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              min-width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+  align-self: flex-start;
+}
+
+@media (min-width: 769px) {
+  .va-sidebar {
+    position: sticky;
+    top: 24px;
+    height: calc(100vh - 56px);
+    overflow-y: auto;
+  }
+}
+
+@media (min-width: 1024px) {
+  .va-sidebar {
+    top: 28px;
+    height: calc(100vh - 68px);
+  }
+}
+
+.va-sidebar--collapsed {
+  width: 64px;
+  min-width: 64px;
+}
+
+/* ─── Sidebar KPI strip ──────────────────────────────────────── */
+.va-sidebar-kpis {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 0.75rem;
+}
+
+.va-sidebar-kpi {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.625rem;
+  border-radius: 0.5rem;
+  border: none;
+  background: transparent;
+  font-size: 0.75rem;
+  transition: background 0.2s ease;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.va-sidebar-kpi:hover {
+  background: hsl(var(--surface-2));
+}
+
+.va-sidebar-kpi--active {
+  background: hsl(var(--accent));
+  box-shadow: inset 0 0 0 1px hsl(var(--primary) / 0.15);
+}
+
+.va-sidebar-kpi-value {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8rem;
+}
+
+.va-sidebar-kpi-label {
+  color: hsl(var(--muted-foreground));
+  font-size: 0.675rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ─── Sidebar separator ──────────────────────────────────────── */
+.va-sidebar-sep {
+  height: 1px;
+  background: hsl(var(--border));
+  margin: 0.75rem 1rem;
+}
+
+/* ─── Sidebar navigation ─────────────────────────────────────── */
+.va-sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 0.75rem;
+  flex: 1;
+}
+
+.va-sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: 0.75rem;
+  border: none;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.825rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+  white-space: nowrap;
+  position: relative;
+}
+
+.va-sidebar-item:hover {
+  background: hsl(var(--accent));
+  color: hsl(var(--foreground));
+}
+
+.va-sidebar-item--active {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  font-weight: 600;
+  box-shadow: 0 10px 24px -12px rgba(248,114,23,0.45);
+}
+
+.va-sidebar-item--active .va-sidebar-item-icon { color: hsl(var(--primary-foreground)); }
+
+.va-sidebar-item--active::before {
+  display: none;
+}
+
+.va-sidebar-item-icon {
+  width: 1.125rem;
+  height: 1.125rem;
+  flex-shrink: 0;
+}
+
+.va-sidebar-item-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ─── Sidebar collapse toggle ────────────────────────────────── */
+.va-sidebar-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0.5rem 0.75rem 0;
+  padding: 0.5rem;
+  border-radius: 0.5rem;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--card));
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.va-sidebar-toggle:hover {
+  background: hsl(var(--accent));
+  color: hsl(var(--foreground));
+}
+
+/* ─── Main content area ──────────────────────────────────────── */
+.va-main {
+  flex: 1;
+  min-width: 0;
+  padding: 1.25rem 1.5rem;
+}
+
+/* ─── Tab content shared styles ──────────────────────────────── */
+.va-tab-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.va-tab-header {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  margin-bottom: 0.25rem;
+}
+
+.va-tab-icon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.625rem;
+  background: hsl(var(--primary) / 0.08);
+  color: hsl(var(--primary));
+  flex-shrink: 0;
+}
+
+/* ─── Responsive: stack sidebar on small screens ─────────────── */
+@media (max-width: 768px) {
+  .va-layout {
+    flex-direction: column;
+  }
+
+  .va-sidebar {
+    width: 100% !important;
+    min-width: 100% !important;
+    flex-direction: row;
+    border-right: none;
+    border-bottom: 1px solid hsl(var(--border));
+    border-radius: 1rem 1rem 0 0;
+    padding: 0.5rem;
+    position: relative;
+    overflow-x: auto;
+  }
+
+  .va-sidebar-kpis {
+    flex-direction: row;
+    gap: 0.25rem;
+  }
+
+  .va-sidebar-sep {
+    width: 1px;
+    height: auto;
+    margin: 0 0.5rem;
+  }
+
+  .va-sidebar-nav {
+    flex-direction: row;
+    gap: 0.25rem;
+    flex: 0;
+  }
+
+  .va-sidebar-item--active::before {
+    display: none;
+  }
+
+  .va-sidebar-toggle {
+    display: none;
+  }
+
+  .va-sidebar-kpi-label {
+    display: none;
+  }
+
+  .va-sidebar-item-label {
+    display: none;
+  }
+
+  .va-main {
+    padding: 1rem;
+  }
+}

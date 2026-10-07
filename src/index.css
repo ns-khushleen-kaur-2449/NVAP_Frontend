@@ -1,0 +1,380 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&family=Outfit:wght@400;500;600;700;800;900&family=Poppins:wght@500;600;700&family=Fraunces:ital,opsz,wght@0,9..144,300..600;1,9..144,300..500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   SmartSDR — marketing design layer  (scope: .mk)
+   Netsmartz identity: signal orange + warm neutrals.
+   Tokens flip for dark mode via `.dark .mk` below; --deep/--deep-fg
+   are fixed (non-flipping) — used only for the bands that are meant
+   to read as dark in both themes (hero, footer, CTA banner).
+   ============================================================ */
+.mk {
+  --ink:    #17130F;   /* default text — flips        */
+  --pine:   #F87217;   /* brand orange (primary)      */
+  --pine-2: #D9600F;   /* orange, hover/pressed        */
+  --brass:  #F5A623;   /* amber accent                */
+  --brass-2:#FFD9A8;   /* light peach — text on --deep */
+  --paper:  #FBF9F7;   /* page bg — flips             */
+  --stone:  #FBEFE4;   /* panel bg — flips            */
+  --mist:   #6B6459;   /* muted text — flips          */
+  --line:   #ECE4DA;   /* hairline — flips            */
+  --deep:    #14110D;  /* fixed dark band bg          */
+  --deep-fg: #F5F1EC;  /* fixed light text on --deep  */
+
+  /* NOTE: no forced `background` here — it would beat utilities like
+     `bg-transparent` on the nav and paint over the hero. Set page
+     backgrounds explicitly on wrappers instead. */
+  color: var(--ink);
+  font-family: 'Manrope', ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.dark .mk {
+  --ink:    #F7F3EE;
+  --pine:   #FF8A3D;
+  --pine-2: #FFA35E;
+  --brass:  #FFC15C;
+  --brass-2:#FFE1B8;
+  --paper:  #0B0908;   /* page — darkest layer   */
+  --stone:  #241C15;   /* card — clearly lifted   */
+  --mist:   #B3A494;
+  --line:   #3A2E24;   /* brighter hairline       */
+  --deep:    #060504;  /* hero/footer band        */
+  --deep-fg: #F7F3EE;
+}
+
+.mk-display { font-family: 'Outfit', ui-sans-serif, system-ui, sans-serif; letter-spacing: -0.02em; }
+.mk-eyebrow {
+  font-family: 'Inter', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.28em;
+  font-weight: 600;
+  font-size: 0.68rem;
+}
+
+/* Scroll-reveal primitive (paired with IntersectionObserver) */
+.mk-reveal {
+  opacity: 0;
+  transform: translateY(28px);
+  transition: opacity 1s cubic-bezier(0.22, 1, 0.36, 1),
+              transform 1s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+.mk-reveal.is-in { opacity: 1; transform: none; }
+
+/* Hero clip-reveal for headline lines */
+@keyframes mk-line-rise {
+  from { transform: translateY(115%); }
+  to   { transform: translateY(0); }
+}
+.mk-line { display: block; overflow: hidden; }
+.mk-line > span {
+  display: block;
+  transform: translateY(115%);
+  animation: mk-line-rise 1.1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes mk-slow-zoom {
+  from { transform: scale(1.12); }
+  to   { transform: scale(1); }
+}
+.mk-kenburns { animation: mk-slow-zoom 12s ease-out forwards; }
+
+@keyframes mk-scroll-cue {
+  0%, 100% { transform: translateY(0); opacity: 0.4; }
+  50%      { transform: translateY(7px); opacity: 1; }
+}
+.mk-cue { animation: mk-scroll-cue 1.8s ease-in-out infinite; }
+
+/* Editorial project index — hover image reveal */
+.mk-index-row { transition: color 0.4s ease; }
+.mk-index-row .mk-index-media {
+  opacity: 0;
+  transform: scale(0.96) translateY(8px);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+  pointer-events: none;
+}
+@media (hover: hover) {
+  .mk-index-row:hover .mk-index-media { opacity: 1; transform: none; }
+}
+
+.mk-underline {
+  background-image: linear-gradient(currentColor, currentColor);
+  background-size: 0% 1px;
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+  transition: background-size 0.4s ease;
+}
+.mk-underline:hover { background-size: 100% 1px; }
+
+/* Product hero — voice waveform bars */
+@keyframes mk-wave {
+  0%, 100% { transform: scaleY(0.28); }
+  50%      { transform: scaleY(1); }
+}
+.mk-wave-bar {
+  transform-origin: center;
+  animation: mk-wave 1.1s ease-in-out infinite;
+}
+
+/* Floating product cards */
+@keyframes mk-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-10px); }
+}
+.mk-float { animation: mk-float 5s ease-in-out infinite; }
+
+/* Score ring sweep */
+@keyframes mk-ring {
+  from { stroke-dashoffset: var(--ring-len); }
+}
+.mk-ring path, .mk-ring circle.mk-ring-val {
+  animation: mk-ring 1.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* Gradient drift for hero atmosphere */
+@keyframes mk-drift {
+  0%   { transform: translate3d(0,0,0) scale(1); }
+  50%  { transform: translate3d(3%, -3%, 0) scale(1.08); }
+  100% { transform: translate3d(0,0,0) scale(1); }
+}
+.mk-drift { animation: mk-drift 16s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .mk-reveal, .mk-line > span, .mk-kenburns, .mk-cue, .mk-index-media,
+  .mk-wave-bar, .mk-float, .mk-ring path, .mk-ring circle.mk-ring-val, .mk-drift {
+    animation: none !important;
+    transition: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+    stroke-dashoffset: 0 !important;
+  }
+}
+
+/* Premium landing helpers ───────────────────────────────── */
+@keyframes mk-marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+.mk-marquee { animation: mk-marquee 32s linear infinite; }
+.mk-marquee:hover { animation-play-state: paused; }
+
+@keyframes mk-aurora {
+  0%,100% { transform: translate3d(0,0,0) scale(1); opacity: 0.8; }
+  33%     { transform: translate3d(6%,-4%,0) scale(1.15); opacity: 1; }
+  66%     { transform: translate3d(-5%,3%,0) scale(0.95); opacity: 0.7; }
+}
+.mk-aurora { animation: mk-aurora 18s ease-in-out infinite; }
+
+@keyframes mk-spin-slow { to { transform: rotate(360deg); } }
+.mk-spin-slow { animation: mk-spin-slow 24s linear infinite; }
+
+.mk-grain {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.4'/%3E%3C/svg%3E");
+}
+
+@keyframes shimmer-sweep {
+  from { transform: skewX(-12deg) translateX(-150%); }
+  to   { transform: skewX(-12deg) translateX(300%); }
+}
+
+.shimmer-bar {
+  transform: skewX(-12deg) translateX(-150%);
+}
+
+.group:hover .shimmer-bar {
+  animation: shimmer-sweep 0.65s ease-in-out forwards;
+}
+
+@layer base {
+  :root {
+    --background:         30 25% 98%;
+    --foreground:         20 14% 9%;
+
+    --card:               0 0% 100%;
+    --card-foreground:    20 14% 9%;
+
+    --popover:            0 0% 100%;
+    --popover-foreground: 20 14% 9%;
+
+    /* Netsmartz orange primary */
+    --primary:            24 94% 53%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary:          24 60% 96%;
+    --secondary-foreground: 20 14% 9%;
+
+    --muted:              30 15% 95%;
+    --muted-foreground:   30 8% 40%;
+
+    --accent:             24 70% 94%;
+    --accent-foreground:  20 14% 9%;
+
+    --destructive:        0 78% 52%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border:             30 15% 88%;
+    --input:              30 15% 88%;
+    --ring:               24 94% 53%;
+
+    --chart-1: 24 94% 53%;
+    --chart-2: 20 14% 20%;
+    --chart-3: 38 92% 50%;
+    --chart-4: 199 70% 45%;
+    --chart-5: 0 78% 52%;
+
+    --radius: 0.75rem;
+
+    --surface-2: 30 20% 97%;
+    --surface-3: 30 12% 93%;
+
+    --success: 158 64% 42%;
+    --warning: 38 92% 50%;
+    --info:    199 70% 45%;
+  }
+
+  .dark {
+    --background:         24 16% 5%;
+    --foreground:         30 20% 96%;
+
+    --card:               26 14% 11%;
+    --card-foreground:    30 20% 96%;
+
+    --popover:            26 14% 11%;
+    --popover-foreground: 30 20% 96%;
+
+    --primary:            24 96% 58%;
+    --primary-foreground: 20 14% 9%;
+
+    --secondary:          20 10% 16%;
+    --secondary-foreground: 30 20% 96%;
+
+    --muted:              20 10% 14%;
+    --muted-foreground:   30 10% 65%;
+
+    --accent:             20 10% 18%;
+    --accent-foreground:  30 20% 96%;
+
+    --destructive:        0 70% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border:             20 10% 20%;
+    --input:              20 10% 20%;
+    --ring:               24 96% 58%;
+
+    --chart-1: 24 96% 58%;
+    --chart-2: 30 20% 85%;
+    --chart-3: 38 92% 55%;
+    --chart-4: 199 70% 55%;
+    --chart-5: 0 70% 55%;
+
+    --surface-2: 20 12% 11%;
+    --surface-3: 20 10% 15%;
+
+    --success: 158 55% 48%;
+    --warning: 38 92% 55%;
+    --info:    199 70% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Manrope', ui-sans-serif, system-ui, sans-serif;
+  }
+}
+
+.font-display {
+  font-family: 'Poppins', ui-sans-serif, system-ui, sans-serif;
+}
+.font-ui {
+  font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+}
+.font-mono {
+  font-family: 'SFMono-Regular', ui-monospace, SFMono-Regular, monospace;
+}
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Auth page animations */
+@keyframes reFloat {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-12px); }
+}
+@keyframes reFadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes reScaleIn {
+  from { opacity: 0; transform: scale(0.88); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar        { width: 5px; height: 5px; }
+::-webkit-scrollbar-track  { background: hsl(var(--background)); }
+::-webkit-scrollbar-thumb  { background: hsl(0 0% 82%); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: hsl(0 0% 68%); }
+
+/* Marketplace-style agent card */
+.agent-card {
+  border-radius: 0.5rem;
+  position: relative;
+}
+
+/* Dashboard layout helpers */
+.gradient-header {
+  background: linear-gradient(135deg, hsl(var(--card)) 0%, hsl(229 60% 98%) 100%);
+}
+.kpi-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(1, 1fr);
+}
+@media (min-width: 768px) {
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (min-width: 1280px) {
+  .kpi-grid { grid-template-columns: repeat(4, 1fr); }
+}
+
+/* Enterprise Dashboard Components */
+.card-base {
+  @apply bg-card rounded-xl border border-border shadow-sm overflow-hidden;
+}
+
+.card-hover {
+  @apply transition-all duration-300 hover:shadow-md hover:border-primary/20 hover:-translate-y-[2px];
+}
+
+.kpi-gradient {
+  background: linear-gradient(145deg, hsl(var(--card)) 0%, hsl(var(--surface-2)) 100%);
+}
+
+.shadow-soft {
+  box-shadow: 0 4px 24px -4px rgba(49, 63, 128, 0.08);
+}
+
+.table-row-hover {
+  @apply transition-colors hover:bg-[hsl(var(--surface-2))] cursor-pointer;
+}
+
+.glass-panel {
+  @apply bg-background/80 backdrop-blur-md border border-border/50 shadow-sm;
+}
+
+/* ai-btn-glow used in admin header */
+.ai-btn-glow {
+  box-shadow: 0 0 0 0 rgba(49, 63, 128, 0);
+  transition: box-shadow 0.3s ease;
+}
+.ai-btn-glow:hover {
+  box-shadow: 0 4px 14px rgba(49, 63, 128, 0.4);
+}

@@ -1,27 +1,23 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Textarea } from '../components/ui/textarea';
-import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { toast } from 'sonner';
-import { getLeads, getProperties, getAssistants, initiateCsvCalls, getCsvCallResults, initiateRealEstateCall, scheduleVoiceCall, createKnowledgeBase, getKnowledgeFiles, getCalendarEvents, deleteCalendarEvent, createCalendarEvent, getDashboardStats, getSystemHealth, getVoiceCallStats } from '../lib/api';
-import ScheduleFloatingButton from '../components/voice/ScheduleFloatingButton';
-import ScheduleDrawer from '../components/voice/ScheduleDrawer';
-import ReminderForm from '../components/voice/ReminderForm';
-import SuccessToast from '../components/voice/SuccessToast';
+import { getLeads, getProperties, getAssistants, previewCampaignCsv, getCsvCallResults, initiateSmartsdrCall, createKnowledgeBase, getKnowledgeFiles, getDashboardStats, getSystemHealth, getVoiceCallStats } from '../lib/api';
 import CallLogsList from '../components/voice/CallLogsList';
 import LeadCampaignBuilder from '../components/voice/LeadCampaignBuilder';
-import CreateAgent from '../components/voice/CreateAgent';
+import CampaignLaunchDialog from '../components/voice/CampaignLaunchDialog';
+import AssistantBuilder from '../components/voice/AssistantBuilder';
 import KpiCard from '../components/shared/KpiCard';
 import PendingRequestsQueue from '../components/admin/PendingRequestsQueue';
 import WebhookLogViewer from '../components/admin/WebhookLogViewer';
 import VoiceFleetDashboard from '../components/voice/VoiceFleetDashboard';
 import VoiceAgentAnalytics from '@/components/shared/VoiceAgentAnalytics';
-import { Calendar, Trash2, ExternalLink, Video, Loader2, PhoneCall, BookOpen, Mic, UploadCloud, Phone, AlertTriangle, CheckCircle2, RotateCw, AlertCircle, Activity, Layers, Clock, ChevronRight, Info, FileText, Database, Search, Copy, Check, LayoutDashboard } from 'lucide-react';
+import { Loader2, PhoneCall, BookOpen, Mic, UploadCloud, Phone, AlertTriangle, CheckCircle2, RotateCw, Activity, Layers, Info, FileText, Database, Search, Copy, Check, LayoutDashboard } from 'lucide-react';
 
 /* ─── Sidebar Tab Definitions (Voice Agent's own sub-views; nav itself now
    lives in the shared app Sidebar, components/layout/Sidebar.js) ─────────── */
@@ -33,7 +29,6 @@ const TABS = [
   { id: 'kb',         label: 'Knowledge Base',         icon: BookOpen },
   { id: 'analytics',  label: 'Analytics',              icon: Activity },
   { id: 'csv',        label: 'CSV Call Campaign',      icon: UploadCloud },
-  { id: 'schedule',   label: 'Schedule a Call',        icon: Calendar },
   { id: 'single',     label: 'Single Call',            icon: PhoneCall },
 ];
 
@@ -51,16 +46,11 @@ export default function VoiceAgentPage() {
   const [csvFile, setCsvFile] = useState(null);
   const [csvUploading, setCsvUploading] = useState(false);
   const [csvProcessId, setCsvProcessId] = useState('');
+  // Parsed upload waiting for its campaign details: { contacts, filename, skipped }.
+  const [csvSource, setCsvSource] = useState(null);
   const [csvResults, setCsvResults] = useState(null);
   const [fetchingResults, setFetchingResults] = useState(false);
   const [calling, setCalling] = useState(false);
-  const [scheduleDate, setScheduleDate] = useState(null);
-  const [scheduleTime, setScheduleTime] = useState('');
-  const [scheduleNotes, setScheduleNotes] = useState('');
-  const [scheduling, setScheduling] = useState(false);
-  const [scheduleOpen, setScheduleOpen] = useState(false);
-  const [scheduleError, setScheduleError] = useState('');
-  const [showSuccess, setShowSuccess] = useState(false);
   const [kbTitle, setKbTitle] = useState('');
   const [kbContent, setKbContent] = useState('');
   const [kbFile, setKbFile] = useState(null);
@@ -69,11 +59,6 @@ export default function VoiceAgentPage() {
   const [loadingKbFiles, setLoadingKbFiles] = useState(false);
   const [kbSearchQuery, setKbSearchQuery] = useState('');
   const [copiedId, setCopiedId] = useState(null);
-
-  // Google Calendar events
-  const [calendarEvents, setCalendarEvents] = useState([]);
-  const [loadingEvents, setLoadingEvents] = useState(false);
-  const [deletingEventId, setDeletingEventId] = useState(null);
 
   // Voice Agent KPI metrics
   const [logsAssistant, setLogsAssistant] = useState({ id: '', name: '' });
@@ -84,6 +69,7 @@ export default function VoiceAgentPage() {
 
   // Active sidebar tab
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState(() => {
     const view = searchParams.get('view');
     const tab = searchParams.get('tab');
@@ -101,17 +87,6 @@ export default function VoiceAgentPage() {
     }
   }, [searchParams]);
 
-  const fetchCalendarEvents = useCallback(async () => {
-    setLoadingEvents(true);
-    try {
-      const res = await getCalendarEvents();
-      setCalendarEvents(res.data?.events || []);
-    } catch {
-      setCalendarEvents([]);
-    }
-    setLoadingEvents(false);
-  }, []);
-
   const fetchKbFiles = useCallback(async () => {
     setLoadingKbFiles(true);
     try {
@@ -128,10 +103,7 @@ export default function VoiceAgentPage() {
     if (activeTab === 'kb') {
       fetchKbFiles();
     }
-    if (activeTab === 'schedule') {
-      fetchCalendarEvents();
-    }
-  }, [activeTab, fetchKbFiles, fetchCalendarEvents]);
+  }, [activeTab, fetchKbFiles]);
 
   const refreshLeads = useCallback(async () => {
     try {
@@ -176,7 +148,6 @@ export default function VoiceAgentPage() {
     };
 
     fetchInitialData();
-    fetchCalendarEvents();
     
     // Fetch KPI data - restrictive to avoid slowness for non-admins
     const currentUser = JSON.parse(localStorage.getItem('estateops_user') || '{}');
@@ -185,7 +156,7 @@ export default function VoiceAgentPage() {
       getSystemHealth().then((res) => setAgentHealth(res.data)).catch(() => setAgentHealth(null));
       getVoiceCallStats().then((res) => setCallStats(res.data)).catch(() => setCallStats(null));
     }
-  }, [fetchCalendarEvents]);
+  }, []);
 
   const leadOptions = useMemo(() => leads.map((lead) => ({
     id: String(lead.id),
@@ -202,26 +173,24 @@ export default function VoiceAgentPage() {
     }
   }, [liveAssistants, selectedAssistantId]);
 
+  // An uploaded file is a campaign source: parse it, then collect the campaign details.
   const handleCsvUpload = async () => {
     if (!csvFile) { toast.error('Select a CSV file first'); return; }
     setCsvUploading(true);
     try {
-      const r = await initiateCsvCalls(csvFile);
-      const processId = r.data?.process_id || r.data?.csv_process_id || r.data?.id || '';
-      setCsvProcessId(processId ? String(processId) : '');
-      toast.success('CSV call campaign initiated');
+      const r = await previewCampaignCsv(csvFile);
+      if (r.data.skipped_rows) toast.warning(`${r.data.skipped_rows} row(s) skipped: missing or invalid phone number.`);
+      setCsvSource({ type: 'csv', contacts: r.data.contacts, filename: r.data.filename });
     } catch (e) {
       const detail = e.response?.data?.detail;
-      toast.error(typeof detail === 'string' ? detail : 'Failed to initiate CSV calls');
+      toast.error(typeof detail === 'string' ? detail : (detail?.message || 'Could not read that file'));
     }
     setCsvUploading(false);
   };
 
-  const handleCampaignStarted = (processId) => {
-    if (processId) {
-      setCsvProcessId(String(processId));
-      setTimeout(() => { handleFetchResults(String(processId)); }, 1500);
-    }
+  // Every launch, from leads or a file, lands on the new campaign's page.
+  const handleCampaignStarted = (campaign) => {
+    if (campaign?.id) navigate(`/voice-campaigns/${campaign.id}`);
   };
 
   const handleFetchResults = async (overrideId = null) => {
@@ -243,56 +212,20 @@ export default function VoiceAgentPage() {
     if (!callName || !callPhone) { toast.error('Enter name and phone number'); return; }
     setCalling(true);
     try {
-      await initiateRealEstateCall({
+      await initiateSmartsdrCall({
         phone_number: callPhone,
         user_name: callName,
         assistant_id: selectedAssistantId || undefined
       });
-      toast.success('Call initiated');
+      toast.success('Call initiated', {
+        description: 'It is listed in Call Logs now and updates when the call ends.',
+        action: { label: 'View call logs', onClick: () => setActiveTab('logs') },
+      });
     } catch (e) {
       const detail = e.response?.data?.detail;
       toast.error(typeof detail === 'string' ? detail : 'Failed to initiate call');
     }
     setCalling(false);
-  };
-
-  const handleSchedule = async () => {
-    if (!scheduleDate || !scheduleTime) return;
-    const [hours, minutes] = scheduleTime.split(':').map(Number);
-    const scheduledAt = new Date(scheduleDate);
-    scheduledAt.setHours(hours || 0, minutes || 0, 0, 0);
-    setScheduling(true);
-    setScheduleError('');
-    try {
-      const lead = leads.find((l) => String(l.id) === String(selectedLeadId));
-      const targetName = lead?.name || callName || 'Scheduled Meeting';
-      const targetEmail = lead?.email || '';
-      await createCalendarEvent({
-        name: targetName,
-        email: targetEmail,
-        start_time: scheduledAt.toISOString(),
-        subject: scheduleNotes ? `Meeting: ${scheduleNotes.substring(0, 50)}` : `Meeting with ${targetName}`,
-      });
-      setShowSuccess(true);
-      setScheduleOpen(false);
-      setScheduleNotes('');
-      fetchCalendarEvents();
-    } catch (e) {
-      console.error(e);
-      setScheduleError('Something went wrong. Please try again.');
-    }
-    setScheduling(false);
-  };
-
-  const getCampaignEventDetails = (description = '') => {
-    if (!description.includes('Type: scheduled_campaign')) return null;
-    const details = {};
-    description.split('\n').forEach((line) => {
-      const [rawKey, ...rest] = line.split(':');
-      if (!rawKey || rest.length === 0) return;
-      details[rawKey.trim().toLowerCase().replace(/\s+/g, '_')] = rest.join(':').trim();
-    });
-    return details;
   };
 
   const handleKnowledgeBase = async () => {
@@ -515,7 +448,7 @@ export default function VoiceAgentPage() {
         <div className="va-tab-icon-wrap"><UploadCloud className="w-5 h-5" /></div>
         <div>
           <h2 className="text-lg font-semibold">CSV Call Campaign</h2>
-          <p className="text-sm text-muted-foreground">Upload a CSV to initiate bulk call campaigns</p>
+          <p className="text-sm text-muted-foreground">Upload a contact file, then fill in the campaign details to start or schedule it</p>
         </div>
       </div>
 
@@ -533,7 +466,7 @@ export default function VoiceAgentPage() {
             <div className="flex flex-col sm:flex-row gap-3">
               <Input
                 type="file"
-                accept=".csv"
+                accept=".csv,.xlsx"
                 onChange={(e) => setCsvFile(e.target.files?.[0] || null)}
                 className="bg-[hsl(var(--surface-2))] border-border"
               />
@@ -542,13 +475,14 @@ export default function VoiceAgentPage() {
                 disabled={csvUploading}
                 className="bg-primary text-primary-foreground hover:bg-[#C2560E] shrink-0"
               >
-                {csvUploading ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Uploading...</> : 'Initiate CSV Calls'}
+                {csvUploading ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Reading file...</> : 'Launch Campaign'}
               </Button>
             </div>
           </div>
 
           <div className="border-t border-border pt-5">
-            <label className="block text-xs font-medium text-muted-foreground mb-1.5 uppercase tracking-wide">Fetch Results</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1.5 uppercase tracking-wide">Older CSV runs</label>
+            <p className="text-[11px] text-muted-foreground mb-2">New uploads are campaigns: follow them under Voice Campaigns. Enter a process id to see a run from before that change.</p>
             <div className="flex flex-col sm:flex-row gap-3">
               <Input
                 placeholder="CSV process id"
@@ -572,12 +506,21 @@ export default function VoiceAgentPage() {
               <p className="text-sm text-muted-foreground p-8 text-center">
                 {csvResults
                   ? 'No calls found for that process ID yet.'
-                  : 'No call history loaded yet. Upload a CSV or enter a process ID to get started.'}
+                  : 'No call history loaded yet. Enter a process ID from an older CSV run.'}
               </p>
             )}
           </div>
         </CardContent>
       </Card>
+
+      <CampaignLaunchDialog
+        open={Boolean(csvSource)}
+        onOpenChange={(open) => { if (!open) setCsvSource(null); }}
+        source={csvSource}
+        assistants={liveAssistants.length ? liveAssistants : assistants}
+        defaultAssistantId={selectedAssistantId}
+        onCreated={handleCampaignStarted}
+      />
     </div>
   );
 
@@ -598,7 +541,7 @@ export default function VoiceAgentPage() {
 
   const renderCreateAgent = () => (
     <div className="va-tab-content h-[calc(100vh-180px)]">
-      <CreateAgent />
+      <AssistantBuilder />
     </div>
   );
 
@@ -797,170 +740,6 @@ export default function VoiceAgentPage() {
     );
   };
 
-  const renderSchedule = () => (
-    <div className="va-tab-content">
-      <div className="va-tab-header">
-        <div className="va-tab-icon-wrap"><Calendar className="w-5 h-5" /></div>
-        <div>
-          <h2 className="text-lg font-semibold">Schedule a Call</h2>
-          <p className="text-sm text-muted-foreground">View upcoming events and schedule new calls</p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        {/* Calendar Events */}
-        <Card className="bg-card border-border">
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <Calendar className="w-4 h-4 text-primary" />
-                Upcoming Events
-              </CardTitle>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={fetchCalendarEvents}
-                disabled={loadingEvents}
-                className="border-border bg-card hover:bg-[hsl(var(--surface-2))] text-xs gap-1"
-              >
-                {loadingEvents ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
-                Refresh
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {loadingEvents && calendarEvents.length === 0 ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="w-5 h-5 animate-spin text-primary" />
-              </div>
-            ) : calendarEvents.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-6">
-                No upcoming events found.
-              </p>
-            ) : (
-              <div className="space-y-2 max-h-[400px] overflow-y-auto">
-                {calendarEvents.slice(0, 15).map((evt) => {
-                  const startDate = evt.start ? new Date(evt.start) : null;
-                  const timeStr = startDate
-                    ? startDate.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-                    : '';
-                  const campaignDetails = getCampaignEventDetails(evt.description || '');
-                  const isCampaignEvent = Boolean(campaignDetails);
-                  return (
-                    <div
-                      key={evt.id}
-                      className={`flex items-start gap-3 p-3 rounded-lg border transition-all duration-200 group ${
-                        isCampaignEvent
-                          ? 'border-[#F87217]/25 bg-[#F87217]/5 hover:bg-[#F87217]/8 hover:border-[#F87217]/40'
-                          : 'border-border hover:bg-[hsl(var(--surface-2))] hover:border-[#F87217]/30'
-                      }`}
-                    >
-                      <div className={`w-1.5 h-1.5 rounded-full mt-2 shrink-0 ${isCampaignEvent ? 'bg-[#F87217]' : 'bg-primary'}`} />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <p className="text-sm font-medium truncate">{evt.summary || 'Untitled Event'}</p>
-                          {isCampaignEvent && (
-                            <Badge className="shrink-0 bg-[#F87217] text-white border-0 text-[9px] py-0">
-                              Campaign
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="text-[11px] text-muted-foreground">{timeStr}</p>
-                        {isCampaignEvent && (
-                          <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-gray-600">
-                            <div className="rounded-md bg-white/70 px-2 py-1 border border-[#F87217]/10">
-                              <span className="block text-[9px] uppercase tracking-wide text-gray-400 font-semibold">Leads</span>
-                              <span className="font-semibold text-gray-800">{campaignDetails.lead_count || '-'}</span>
-                            </div>
-                            <div className="rounded-md bg-white/70 px-2 py-1 border border-[#F87217]/10">
-                              <span className="block text-[9px] uppercase tracking-wide text-gray-400 font-semibold">Assistant</span>
-                              <span className="font-semibold text-gray-800 truncate block">{campaignDetails.assistant_id || '-'}</span>
-                            </div>
-                            {campaignDetails.notes && (
-                              <div className="col-span-2 rounded-md bg-white/70 px-2 py-1 border border-[#F87217]/10">
-                                <span className="block text-[9px] uppercase tracking-wide text-gray-400 font-semibold">Notes</span>
-                                <span className="text-gray-700 line-clamp-2">{campaignDetails.notes}</span>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        {evt.attendees?.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {evt.attendees.slice(0, 3).map((a, i) => (
-                              <Badge key={i} variant="outline" className="text-[9px] py-0 border-0 bg-[hsl(var(--surface-2))]">
-                                {a.name || a.email}
-                              </Badge>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                        {evt.hangoutLink && (
-                          <a href={evt.hangoutLink} target="_blank" rel="noopener noreferrer"
-                            className="p-1 rounded hover:bg-[#F87217]/8 text-primary transition-colors">
-                            <Video className="w-3.5 h-3.5" />
-                          </a>
-                        )}
-                        {evt.htmlLink && (
-                          <a href={evt.htmlLink} target="_blank" rel="noopener noreferrer"
-                            className="p-1 rounded hover:bg-[hsl(var(--surface-2))] text-muted-foreground transition-colors">
-                            <ExternalLink className="w-3.5 h-3.5" />
-                          </a>
-                        )}
-                        <button
-                          onClick={async () => {
-                            setDeletingEventId(evt.id);
-                            try {
-                              await deleteCalendarEvent(evt.id);
-                              toast.success('Event deleted');
-                              fetchCalendarEvents();
-                            } catch {
-                              toast.error('Failed to delete event');
-                            }
-                            setDeletingEventId(null);
-                          }}
-                          disabled={deletingEventId === evt.id}
-                          className="p-1 rounded hover:bg-red-50 text-muted-foreground hover:text-red-500 transition-colors"
-                        >
-                          {deletingEventId === evt.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Schedule Form */}
-        <Card className="bg-card border-border">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <Clock className="w-4 h-4 text-primary" />
-              New Scheduled Call
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ReminderForm
-              scheduleDate={scheduleDate}
-              setScheduleDate={setScheduleDate}
-              scheduleTime={scheduleTime}
-              setScheduleTime={setScheduleTime}
-              scheduleNotes={scheduleNotes}
-              setScheduleNotes={setScheduleNotes}
-              onSubmit={handleSchedule}
-              scheduling={scheduling}
-              error={scheduleError}
-              leadSelected={Boolean(selectedLeadId)}
-              calendarEvents={calendarEvents}
-            />
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  );
-
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard':  return <VoiceFleetDashboard onNavigate={setActiveTab} onViewAgentCalls={handleViewAgentCalls} />;
@@ -978,7 +757,6 @@ export default function VoiceAgentPage() {
       );
       case 'create':     return renderCreateAgent();
       case 'kb':         return renderKnowledgeBase();
-      case 'schedule':   return renderSchedule();
       default:           return renderSingleCall();
     }
   };
@@ -991,29 +769,6 @@ export default function VoiceAgentPage() {
         {renderContent()}
       </main>
 
-      {/* Floating elements */}
-      <ScheduleFloatingButton onClick={() => setScheduleOpen(true)} />
-      <ScheduleDrawer
-        open={scheduleOpen}
-        onOpenChange={setScheduleOpen}
-        title="Schedule a Call"
-        subtitle="Pick a time and set a reminder"
-      >
-        <ReminderForm
-          scheduleDate={scheduleDate}
-          setScheduleDate={setScheduleDate}
-          scheduleTime={scheduleTime}
-          setScheduleTime={setScheduleTime}
-          scheduleNotes={scheduleNotes}
-          setScheduleNotes={setScheduleNotes}
-          onSubmit={handleSchedule}
-          scheduling={scheduling}
-          error={scheduleError}
-          leadSelected={Boolean(selectedLeadId)}
-          calendarEvents={calendarEvents}
-        />
-      </ScheduleDrawer>
-      <SuccessToast open={showSuccess} onClose={() => setShowSuccess(false)} />
     </div>
   );
 }

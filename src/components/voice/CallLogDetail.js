@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -7,7 +7,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import LeadTimelineDialog from '@/components/shared/LeadTimelineDialog';
 import { useCallLogDetail } from '@/hooks/useCallLogs';
-import { createCalendarEvent, API_BASE } from '@/lib/api';
+import { getCallRecordingUrl } from '@/lib/api';
+import { NOT_CONNECTED, bookMeeting, getPrimaryCalendar } from '@/lib/calendar';
 import { toast } from 'sonner';
 import {
   ArrowLeft, Clock, Phone, User, FileText, Calendar,
@@ -24,21 +25,30 @@ function BookMeetingDialog({ open, onOpenChange, log, onBooked }) {
     if (!when) { toast.error('Pick a date and time'); return; }
     setBusy(true);
     try {
-      await createCalendarEvent({
-        name: log.customer_name || 'Lead',
-        start_time: new Date(when).toISOString(),
-        duration_minutes: 30,
-        subject: `Meeting with ${log.customer_name || 'Lead'}`,
-        description: notes || `Booked from call ${log.vapi_call_id}`,
-        lead_id: log.lead_id,
-        campaign_id: log.campaign_id,
-        vapi_call_id: log.vapi_call_id,
+      const calendar = await getPrimaryCalendar();
+      if (!calendar) {
+        toast.error(NOT_CONNECTED);
+        setBusy(false);
+        return;
+      }
+      const context = [
+        notes.trim(),
+        log.customer_name && `Lead: ${log.customer_name}`,
+        log.phone_number && `Phone: ${log.phone_number}`,
+        `Booked from call ${log.vapi_call_id}`,
+      ].filter(Boolean).join('\n');
+      await bookMeeting(calendar.id, {
+        summary: `Meeting with ${log.customer_name || 'Lead'}`,
+        start: when,
+        durationMinutes: 30,
+        description: context,
       });
-      toast.success('Meeting booked and linked to this lead');
+      toast.success('Meeting added to your Google Calendar');
       onOpenChange(false);
       onBooked?.();
     } catch (e) {
-      toast.error(e.response?.data?.detail || 'Failed to book meeting');
+      const detail = e.response?.data?.detail;
+      toast.error(typeof detail === 'string' ? detail : 'Failed to book meeting');
     }
     setBusy(false);
   };
@@ -67,6 +77,56 @@ function BookMeetingDialog({ open, onOpenChange, log, onBooked }) {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * Plays a call recording. Private (HIPAA) recordings need a signed URL that
+ * expires after ~30 minutes, and <audio> cannot send the login token, so ask
+ * the API for a fresh URL with the token, then play that URL directly.
+ * An expired URL errors on play; fetch a new one once and retry.
+ */
+function RecordingPlayer({ callId }) {
+  const [url, setUrl] = useState(null);
+  const [error, setError] = useState(null);
+  const [retried, setRetried] = useState(false);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      const res = await getCallRecordingUrl(callId);
+      setUrl(res.data.url);
+    } catch (e) {
+      setError(e.response?.status === 404 ? 'No recording for this call.' : 'Could not load the recording.');
+    }
+  }, [callId]);
+
+  useEffect(() => { setRetried(false); load(); }, [load]);
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
+        <span>{error}</span>
+        <Button variant="outline" size="sm" onClick={load}>Try again</Button>
+      </div>
+    );
+  }
+  if (!url) {
+    return <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" /> Loading recording…</div>;
+  }
+  return (
+    <audio
+      key={url}
+      controls
+      preload="metadata"
+      className="w-full"
+      src={url}
+      onError={() => {
+        if (!retried) { setRetried(true); load(); } else { setError('The recording could not be played.'); }
+      }}
+    >
+      Your browser does not support audio playback.
+    </audio>
   );
 }
 
@@ -304,17 +364,7 @@ export default function CallLogDetail({ callId, onBack }) {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {/* Vapi's stored recording_url points at the raw R2 object and answers
-                    401/400 unsigned, so never feed it to the player directly. This
-                    backend route redirects to a freshly signed URL on every request. */}
-                <audio
-                  controls
-                  preload="metadata"
-                  className="w-full"
-                  src={`${API_BASE}/api/call-logs/${d.vapi_call_id || d.id}/recording`}
-                >
-                  Your browser does not support audio playback.
-                </audio>
+                <RecordingPlayer callId={d.vapi_call_id || d.id} />
               </CardContent>
             </Card>
           )}

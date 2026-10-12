@@ -12,7 +12,7 @@ import { getVoiceCampaigns, deleteVoiceCampaign } from '@/lib/api';
 import { toast } from 'sonner';
 import {
   Megaphone, Loader2, RefreshCw, Trash2, Calendar, Users, PhoneCall,
-  CheckCircle2, AlertCircle, ChevronRight, Copy, Check,
+  CheckCircle2, AlertCircle, ChevronRight, Copy, Check, Clock, User, FileEdit, Ban,
 } from 'lucide-react';
 
 // campaigns.status is written by the backend: "processing" while the CSV batch
@@ -21,6 +21,8 @@ import {
 const ONGOING_STATUSES = ['processing', 'created', 'scheduled', 'running'];
 
 const isOngoing = (status) => ONGOING_STATUSES.includes(String(status || '').toLowerCase());
+// Drafts are listed with ongoing work but nothing about them changes on its own, so they are not polled for.
+const isActiveOrDraft = (status) => isOngoing(status) || String(status || '').toLowerCase() === 'draft';
 
 // Poll only while something is actually running; a page of finished campaigns
 // should not keep hitting the API.
@@ -32,6 +34,9 @@ function StatusBadge({ status }) {
     completed: { color: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/25', icon: CheckCircle2 },
     processing: { color: 'bg-blue-500/15 text-blue-400 border-blue-500/25', icon: Loader2 },
     created: { color: 'bg-amber-500/15 text-amber-400 border-amber-500/25', icon: AlertCircle },
+    scheduled: { color: 'bg-violet-500/15 text-violet-400 border-violet-500/25', icon: Clock },
+    draft: { color: 'bg-muted text-muted-foreground border-border', icon: FileEdit },
+    cancelled: { color: 'bg-muted text-muted-foreground border-border', icon: Ban },
     failed: { color: 'bg-red-500/15 text-red-400 border-red-500/25', icon: AlertCircle },
   };
   const cfg = map[s] || map.created;
@@ -129,10 +134,24 @@ function CampaignCard({ campaign, onOpen, onDelete, deleting }) {
               <IdChip id={campaign.csv_process_id} label="csv" full />
             </div>
 
+            {campaign.description && (
+              <p className="mt-1.5 text-xs text-muted-foreground line-clamp-2">{campaign.description}</p>
+            )}
+
             <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground flex-wrap">
               <span className="flex items-center gap-1">
                 <Calendar className="w-3 h-3" /> {formatDate(campaign.created_at)}
               </span>
+              {campaign.created_by_user && (
+                <span className="flex items-center gap-1">
+                  <User className="w-3 h-3" /> {campaign.created_by_user.name || campaign.created_by_user.email}
+                </span>
+              )}
+              {campaign.status === 'scheduled' && campaign.scheduled_at && (
+                <span className="flex items-center gap-1 text-violet-400">
+                  <Clock className="w-3 h-3" /> starts {new Date(campaign.scheduled_at).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                </span>
+              )}
               <span className="flex items-center gap-1 tabular-nums">
                 <Users className="w-3 h-3" /> {total || '—'} contacts
               </span>
@@ -198,14 +217,14 @@ export default function VoiceCampaigns() {
   const { ongoing, completed } = useMemo(() => {
     const on = [];
     const done = [];
-    for (const c of campaigns) (isOngoing(c.status) ? on : done).push(c);
+    for (const c of campaigns) (isActiveOrDraft(c.status) ? on : done).push(c);
     return { ongoing: on, completed: done };
   }, [campaigns]);
 
   // Poll while at least one campaign is still running, and stop once none are.
   // The effect keys on the count, not the array, so a refetch that changes
   // nothing does not tear down and rebuild the interval.
-  const ongoingCount = ongoing.length;
+  const ongoingCount = ongoing.filter((c) => isOngoing(c.status)).length;
   useEffect(() => {
     if (ongoingCount === 0) return undefined;
     const id = setInterval(fetchCampaigns, POLL_INTERVAL_MS);
@@ -289,16 +308,15 @@ export default function VoiceCampaigns() {
             <Megaphone className="w-7 h-7 text-muted-foreground mx-auto" />
             <p className="text-sm font-medium text-foreground">No campaigns yet</p>
             <p className="text-xs text-muted-foreground max-w-md mx-auto">
-              A campaign is created when you start a run with a name — from the Lead-to-Campaign
-              Builder, or by scheduling one. Runs started without a name place calls but are
-              not grouped into a campaign.
+              Select leads in the Lead-to-Campaign Builder (or upload a contact file) and click
+              Launch Campaign to start one now or schedule it.
             </p>
           </CardContent>
         </Card>
       ) : (
         <div className="space-y-6">
           {renderGroup('Ongoing', ongoing, 'Nothing running right now.')}
-          {renderGroup('Completed', completed, 'No completed campaigns yet.')}
+          {renderGroup('Finished', completed, 'No finished campaigns yet.')}
         </div>
       )}
 

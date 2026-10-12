@@ -4,13 +4,20 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { getVoiceCampaign, getVoiceCampaignContacts } from '@/lib/api';
+import { cancelVoiceCampaign, getVoiceCampaign, getVoiceCampaignContacts, startVoiceCampaign } from '@/lib/api';
+import { toast } from 'sonner';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { announceCalendarSync, apiErrorMessage, describeConfig, describeWindow } from './CampaignSettingsFields';
 import { useCallLogs } from '@/hooks/useCallLogs';
 import CallLogDetail from './CallLogDetail';
+import CampaignEditDialog from './CampaignEditDialog';
 import { IdChip } from './VoiceCampaigns';
 import {
   ArrowLeft, Loader2, AlertCircle, Megaphone, Clock, Calendar,
-  CheckCircle2, XCircle, PhoneCall, ChevronUp, ChevronDown, RefreshCw,
+  CheckCircle2, XCircle, PhoneCall, RefreshCw, Pencil, Bot, User, Users, StickyNote, Play, Ban, Hourglass, Settings2,
 } from 'lucide-react';
 
 // Matches VoiceCampaigns.js — campaigns.status, not inferred.
@@ -41,19 +48,21 @@ const isNotConnected = (log) => {
 };
 
 const isFailed = (row) => ['failed', 'error'].includes(String(row.status || '').toLowerCase());
-const isInProgress = (row) => ['in-progress', 'initiated', 'ringing', 'queued', 'processing'].includes(String(row.status || '').toLowerCase());
+const isInProgress = (row) => ['calling', 'in-progress', 'initiated', 'ringing', 'queued', 'processing'].includes(String(row.status || '').toLowerCase());
+// campaign_contacts: "pending" is waiting for its first call or a retry; "cancelled" was never dialled.
+const isWaiting = (row) => ['pending', 'cancelled'].includes(String(row.status || '').toLowerCase());
 
 // call_records carries its own verdict: was_answered, and status 'unanswered'
 // for a contact that never picked up. Prefer those over inferring from the call
 // log's end_reason, and fall back to end_reason for rows that have a log but no
 // call_records verdict.
 const isNotAnswered = (row) =>
-  String(row.status || '').toLowerCase() === 'unanswered'
+  ['unanswered', 'no_answer', 'busy'].includes(String(row.status || '').toLowerCase())
   || row.was_answered === false
   || isNotConnected(row);
 
 const isConnected = (row) =>
-  !isInProgress(row) && !isFailed(row) && !isNotAnswered(row);
+  !isWaiting(row) && !isInProgress(row) && !isFailed(row) && !isNotAnswered(row);
 
 function formatDuration(sec) {
   if (sec === null || sec === undefined) return '—';
@@ -69,6 +78,114 @@ function formatDateTime(iso) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
   return d.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
+function formatFullDateTime(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+const personLabel = (person, fallbackId) =>
+  person ? (person.name || person.email || `User #${person.id}`) : (fallbackId ? `User #${fallbackId}` : null);
+
+function DetailRow({ icon: Icon, label, children }) {
+  return (
+    <div className="flex items-start gap-2.5 min-w-0">
+      <Icon className="w-3.5 h-3.5 mt-0.5 text-muted-foreground shrink-0" />
+      <div className="min-w-0">
+        <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
+        <div className="text-xs text-foreground mt-0.5">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function CampaignOverview({ campaign }) {
+  const creator = personLabel(campaign.created_by_user, campaign.created_by);
+  const editor = personLabel(campaign.updated_by_user, campaign.updated_by);
+  const starter = personLabel(campaign.started_by_user, campaign.started_by);
+  const leads = campaign.leads || [];
+  return (
+    <Card className="bg-card border-border">
+      <CardContent className="p-4 space-y-4">
+        <div>
+          <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">About this campaign</p>
+          {campaign.description
+            ? <p className="text-sm text-foreground mt-1 whitespace-pre-wrap">{campaign.description}</p>
+            : <p className="text-sm text-muted-foreground mt-1 italic">No description yet. Use Edit to add what this campaign is about.</p>}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <DetailRow icon={User} label="Created by">
+            {creator || '—'}
+            <span className="block text-[11px] text-muted-foreground">{formatFullDateTime(campaign.created_at)}</span>
+          </DetailRow>
+          {campaign.scheduled_at && (
+            <DetailRow icon={Calendar} label="Scheduled for">
+              {formatFullDateTime(campaign.scheduled_at)}
+              {campaign.timezone && <span className="block text-[11px] text-muted-foreground">Set in {campaign.timezone}</span>}
+              {campaign.calendar_event_id && <span className="block text-[11px] text-emerald-600">On your Google Calendar</span>}
+            </DetailRow>
+          )}
+          {(starter || campaign.started_at) && (
+            <DetailRow icon={PhoneCall} label="Started by">
+              {starter || '—'}
+              <span className="block text-[11px] text-muted-foreground">{formatFullDateTime(campaign.started_at)}</span>
+            </DetailRow>
+          )}
+          <DetailRow icon={Bot} label="Assistant">
+            {campaign.assistant?.name || campaign.assistant?.vapi_assistant_id || campaign.assistant_id || '—'}
+          </DetailRow>
+          <DetailRow icon={Clock} label="Calling hours">
+            {describeWindow(campaign.calling_window)}
+            {campaign.timezone && <span className="block text-[11px] text-muted-foreground">{campaign.timezone}</span>}
+          </DetailRow>
+          <DetailRow icon={Settings2} label="Calling rules">
+            {describeConfig(campaign.calling_config)}
+          </DetailRow>
+          {editor && (
+            <DetailRow icon={Pencil} label="Last edited by">
+              {editor}
+              <span className="block text-[11px] text-muted-foreground">{formatFullDateTime(campaign.updated_at)}</span>
+            </DetailRow>
+          )}
+        </div>
+
+        {campaign.notes && (
+          <DetailRow icon={StickyNote} label="Notes">
+            <span className="whitespace-pre-wrap">{campaign.notes}</span>
+          </DetailRow>
+        )}
+
+        {leads.length > 0 && (
+          <div className="space-y-2 pt-3 border-t border-border">
+            <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+              <Users className="w-3 h-3" /> Leads in this campaign ({leads.length})
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {leads.map((lead) => (
+                <span
+                  key={lead.lead_id}
+                  title={[lead.phone, lead.email, lead.stage].filter(Boolean).join(' · ')}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-border bg-[hsl(var(--surface-2))] px-2.5 py-1 text-[11px]"
+                >
+                  <span className="font-medium text-foreground">{lead.name || 'Unnamed'}</span>
+                  <span className="text-muted-foreground tabular-nums">{lead.phone || '—'}</span>
+                </span>
+              ))}
+            </div>
+            {campaign.skipped_lead_ids?.length > 0 && (
+              <p className="text-[11px] text-muted-foreground">
+                {campaign.skipped_lead_ids.length} selected lead(s) were skipped for having no valid phone number.
+              </p>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 function Stat({ label, value, hint }) {
@@ -96,6 +213,15 @@ function LeadStatusBadge({ status }) {
 }
 
 function OutcomeBadge({ row: log }) {
+  if (isWaiting(log)) {
+    const cancelled = String(log.status).toLowerCase() === 'cancelled';
+    return (
+      <Badge variant="outline" className="bg-muted text-muted-foreground border-border gap-1 text-[10px]">
+        {cancelled ? <Ban className="w-2.5 h-2.5" /> : <Hourglass className="w-2.5 h-2.5" />}
+        {cancelled ? 'cancelled' : (log.attempts ? 'retry queued' : 'queued')}
+      </Badge>
+    );
+  }
   if (isInProgress(log)) {
     return (
       <Badge variant="outline" className="bg-blue-500/15 text-blue-400 border-blue-500/25 gap-1 text-[10px]">
@@ -144,6 +270,24 @@ export default function VoiceCampaignDetail() {
   const [contacts, setContacts] = useState([]);
   const [loadingContacts, setLoadingContacts] = useState(true);
   const [contactsError, setContactsError] = useState(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const [acting, setActing] = useState(false);
+
+  const runAction = async (action, success) => {
+    setActing(true);
+    try {
+      const res = await action();
+      setCampaign(res.data);
+      fetchContacts();
+      toast.success(success);
+      announceCalendarSync(res.data.calendar_sync);
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Action failed'));
+    } finally {
+      setActing(false);
+    }
+  };
 
   const fetchContacts = useCallback(async () => {
     try {
@@ -238,12 +382,14 @@ export default function VoiceCampaignDetail() {
       notConnected: 0,
       failed: 0,
       inProgress: 0,
+      waiting: 0,
       connectedDurationTotal: 0,
       connectedWithDuration: 0,
       leadStatus: { hot: 0, warm: 0, cold: 0 },
     };
     for (const row of rows) {
-      if (isInProgress(row)) s.inProgress += 1;
+      if (isWaiting(row)) s.waiting += 1;
+      else if (isInProgress(row)) s.inProgress += 1;
       else if (isFailed(row)) s.failed += 1;
       else if (isNotAnswered(row)) s.notConnected += 1;
       else {
@@ -258,6 +404,7 @@ export default function VoiceCampaignDetail() {
       const ls = String(row.lead_status || '').toLowerCase();
       if (ls in s.leadStatus) s.leadStatus[ls] += 1;
     }
+    s.dialed -= s.waiting;
     s.connectRate = s.dialed > 0 ? Math.round((s.connected / s.dialed) * 100) : 0;
     s.avgConnectedDuration = s.connectedWithDuration > 0
       ? Math.round(s.connectedDurationTotal / s.connectedWithDuration)
@@ -272,6 +419,7 @@ export default function VoiceCampaignDetail() {
       'not-connected': isNotAnswered,
       failed: isFailed,
       'in-progress': isInProgress,
+      queued: isWaiting,
     };
     return [...rows].filter(filters[outcomeFilter] || filters.all).sort(SORTS[sortKey].fn);
   }, [rows, outcomeFilter, sortKey]);
@@ -345,6 +493,35 @@ export default function VoiceCampaignDetail() {
             <IdChip id={campaign?.csv_process_id} label="csv" full />
           </p>
         </div>
+        {['draft', 'scheduled'].includes(campaign?.status) && (
+          <Button
+            size="sm"
+            onClick={() => runAction(() => startVoiceCampaign(campaign.id), 'Campaign started')}
+            disabled={acting}
+            className="bg-primary text-primary-foreground"
+          >
+            <Play className="w-3.5 h-3.5 mr-1.5" /> Start now
+          </Button>
+        )}
+        {['draft', 'scheduled', 'processing'].includes(campaign?.status) && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setConfirmCancel(true)}
+            disabled={acting}
+            className="border-border bg-card hover:bg-red-500/10 hover:text-red-500"
+          >
+            <Ban className="w-3.5 h-3.5 mr-1.5" /> Cancel
+          </Button>
+        )}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setEditOpen(true)}
+          className="border-border bg-card hover:bg-[hsl(var(--surface-2))]"
+        >
+          <Pencil className="w-3.5 h-3.5 mr-1.5" /> Edit
+        </Button>
         <Button
           variant="outline"
           size="sm"
@@ -355,6 +532,36 @@ export default function VoiceCampaignDetail() {
           <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${loadingLogs ? 'animate-spin' : ''}`} /> Refresh
         </Button>
       </div>
+
+      <CampaignOverview campaign={campaign} />
+
+      <AlertDialog open={confirmCancel} onOpenChange={setConfirmCancel}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel this campaign?</AlertDialogTitle>
+            <AlertDialogDescription>
+              No new calls will be placed and queued retries are dropped. Calls already ringing finish normally.
+              This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep running</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => runAction(() => cancelVoiceCampaign(campaign.id), 'Campaign cancelled')}
+              className="bg-red-600 text-white hover:bg-red-700"
+            >
+              Cancel campaign
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <CampaignEditDialog
+        campaign={campaign}
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        onSaved={(updated) => { setCampaign(updated); fetchContacts(); }}
+      />
 
       {/* Summary */}
       <Card className="bg-card border-border">
@@ -368,6 +575,7 @@ export default function VoiceCampaignDetail() {
             <Stat label="Not connected" value={stats.notConnected} />
             <Stat label="Failed" value={stats.failed} />
             <Stat label="In progress" value={stats.inProgress} />
+            {stats.waiting > 0 && <Stat label="Queued" value={stats.waiting} hint="waiting or retrying" />}
             <Stat label="Connect rate" value={`${stats.connectRate}%`} hint="of dialled" />
             {stats.avgConnectedDuration !== null && (
               <Stat
@@ -422,6 +630,7 @@ export default function VoiceCampaignDetail() {
                 <SelectItem value="not-connected">Not connected</SelectItem>
                 <SelectItem value="failed">Failed</SelectItem>
                 <SelectItem value="in-progress">In progress</SelectItem>
+                <SelectItem value="queued">Queued</SelectItem>
               </SelectContent>
             </Select>
             <Select value={sortKey} onValueChange={setSortKey}>
@@ -464,6 +673,7 @@ export default function VoiceCampaignDetail() {
                     <tr className="text-left text-[10px] uppercase tracking-wider text-muted-foreground">
                       <th className="px-3 py-2 font-medium">Lead</th>
                       <th className="px-3 py-2 font-medium">Status</th>
+                      <th className="px-3 py-2 font-medium">Attempts</th>
                       <th className="px-3 py-2 font-medium">Duration</th>
                       <th className="px-3 py-2 font-medium">Lead score</th>
                       <th className="px-3 py-2 font-medium">Scheduled</th>
@@ -473,7 +683,7 @@ export default function VoiceCampaignDetail() {
                   <tbody>
                     {visibleRows.map((row) => (
                       <tr
-                        key={row.call_id || `${row.phone_number}-${row.scheduled_at}`}
+                        key={row.contact_id || row.call_id || `${row.phone_number}-${row.scheduled_at}`}
                         onClick={() => row.vapi_call_id && setSelectedCallId(row.vapi_call_id)}
                         className={`border-t border-border align-top ${row.vapi_call_id ? 'cursor-pointer hover:bg-[hsl(var(--surface-2))]' : ''}`}
                       >
@@ -486,6 +696,12 @@ export default function VoiceCampaignDetail() {
                           </p>
                         </td>
                         <td className="px-3 py-2.5"><OutcomeBadge row={row} /></td>
+                        <td className="px-3 py-2.5 text-xs text-muted-foreground whitespace-nowrap">
+                          {row.attempts ?? '—'}
+                          {row.next_attempt_at && String(row.status) === 'pending' && (
+                            <span className="block text-[10px]">next {formatDateTime(row.next_attempt_at)}</span>
+                          )}
+                        </td>
                         <td className="px-3 py-2.5 text-xs tabular-nums text-muted-foreground whitespace-nowrap">
                           <span className="flex items-center gap-1">
                             <Clock className="w-3 h-3" /> {formatDuration(row.duration_seconds)}
@@ -501,7 +717,7 @@ export default function VoiceCampaignDetail() {
                           {formatDateTime(row.scheduled_at)}
                         </td>
                         <td className="px-3 py-2.5 text-xs text-muted-foreground">
-                          {row.summary || '—'}
+                          {row.summary || row.last_error || '—'}
                         </td>
                       </tr>
                     ))}

@@ -150,20 +150,24 @@ export const runExecReport = () => api.post('/api/agents/exec-report/run');
 export const summarizeCall = (id) => api.post(`/api/agents/call-summarize/${id}`);
 
 // ── Voice Agent ──
-// campaignName is what makes the backend create a `campaigns` row (see
-// initiate_csv_calls: no campaign_name -> no campaign -> every resulting call
-// log carries campaign_id = NULL). LeadCampaignBuilder has always passed a
-// third argument here, but the signature only took two, so the name was
-// silently dropped and no campaign was ever created from the UI.
-export const initiateCsvCalls = (file, assistantId, campaignName) => {
+// ── Voice campaigns: one campaign API for selected leads and uploaded files ──
+// data: { name, description, notes, assistant_id, timezone, calling_window,
+//         calling_config, start: 'now'|'scheduled'|'draft', scheduled_at,
+//         lead_ids | contacts, source_filename }
+export const createVoiceCampaign = (data) => api.post('/api/campaigns', data);
+// Parses a CSV/XLSX without storing anything; returns { filename, total, skipped_rows, contacts }.
+export const previewCampaignCsv = (file) => {
   const formData = new FormData();
   formData.append('file', file);
-  if (assistantId) formData.append('assistant_id', assistantId);
-  if (campaignName) formData.append('campaign_name', campaignName);
-  return api.post('/api/csv/initiate_csv_calls', formData, {
+  return api.post('/api/campaigns/csv-preview', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
 };
+// Start a draft/scheduled campaign now, or pass scheduledAt to (re)schedule it.
+export const startVoiceCampaign = (id, scheduledAt) =>
+  api.post(`/api/campaigns/${id}/start`, scheduledAt ? { scheduled_at: scheduledAt } : {});
+export const cancelVoiceCampaign = (id) => api.post(`/api/campaigns/${id}/cancel`);
+// History of uploads made before files became a campaign source.
 export const getCsvCallResults = (processId) => api.get(`/api/csv/results/${processId}`);
 
 // ── Voice Campaigns ──
@@ -173,19 +177,23 @@ export const getVoiceCampaigns = () => api.get('/api/campaigns');
 export const getVoiceCampaign = (id) => api.get(`/api/campaigns/${id}`);
 export const getVoiceCampaignContacts = (id) => api.get(`/api/campaigns/${id}/contacts`);
 export const deleteVoiceCampaign = (id) => api.delete(`/api/campaigns/${id}`);
-export const initiateRealEstateCall = ({ phone_number, user_name, assistant_id }) => {
+// Name/description/notes any time; calling settings until it finishes;
+// assistant, timezone, scheduled_at and contacts only while draft or scheduled.
+export const updateVoiceCampaign = (id, data) => api.patch(`/api/campaigns/${id}`, data);
+// One immediate outbound call (Single Call tab).
+export const initiateSmartsdrCall = ({ phone_number, user_name, assistant_id }) => {
   const body = new URLSearchParams();
   body.append('phone_number', phone_number || '');
   body.append('user_name', user_name || '');
   if (assistant_id) {
     body.append('assistant_id', assistant_id);
   }
-  return api.post('/api/initiate_real_estate_call', body, {
+  return api.post('/api/smartsdr-calls', body, {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
   });
 };
 export const scheduleVoiceCall = (data) => api.post('/api/voice/schedule', data);
-export const scheduleCampaign = (data) => api.post('/api/campaign-schedules', data);
+
 export const createKnowledgeBase = (payload, file) => {
   if (file) {
     const formData = new FormData();
@@ -202,6 +210,8 @@ export const createKnowledgeBase = (payload, file) => {
 
 export const getCallLogs = (params) => api.get('/api/call-logs', { params });
 export const getCallLogDetail = (id) => api.get(`/api/call-logs/${id}`);
+// { url, expires_at }: a freshly signed recording URL the <audio> element can play directly.
+export const getCallRecordingUrl = (id) => api.get(`/api/call-logs/${encodeURIComponent(id)}/recording-url`);
 export const deleteCallLog = (id) => api.delete(`/api/call-logs/${id}`);
 export const getVoiceCallStats = () => api.get('/api/call-logs/stats');
 export const getCallStatsByAssistant = () => api.get('/api/call-logs/stats/by-assistant');
@@ -226,13 +236,35 @@ export const uploadKnowledgeFile = (assistantId, file) => {
 };
 export const getKnowledgeFiles = () => api.get('/api/v1/assistants/knowledge-base/files');
 
-export const getCalendarEvents = () => api.get('/api/calendar/events');
-export const createCalendarEvent = (data) => api.post('/api/calendar/events', data);
-export const deleteCalendarEvent = (id) => api.delete(`/api/calendar/events/${id}`);
+// ── Assistant Builder (guided, versioned configs published to Vapi) ──
+export const previewBuilderConfig = (data) => api.post('/api/v1/assistant-builder/preview', data);
+export const listBuilderConfigs = () => api.get('/api/v1/assistant-builder/configs');
+export const getBuilderConfig = (id) => api.get(`/api/v1/assistant-builder/configs/${id}`);
+export const createBuilderConfig = (data) => api.post('/api/v1/assistant-builder/configs', data);
+export const updateBuilderConfig = (id, data) => api.put(`/api/v1/assistant-builder/configs/${id}`, data);
+export const publishBuilderConfig = (id, version) =>
+  api.post(`/api/v1/assistant-builder/configs/${id}/publish`, null, { params: version ? { version } : {} });
+export const rollbackBuilderConfig = (id, version) =>
+  api.post(`/api/v1/assistant-builder/configs/${id}/rollback/${version}`);
+export const retryBuilderConfig = (id, version) =>
+  api.post(`/api/v1/assistant-builder/configs/${id}/retry/${version}`);
 
-export const getGoogleAuthStatus = () => authApi.get('/api/auth/google/status');
-export const getGoogleAuthAuthorize = () => authApi.get('/api/auth/google/authorize');
-export const disconnectGoogleAuth = () => authApi.delete('/api/auth/google/disconnect');
+// Events on one connected calendar (see src/lib/calendar.js for the "my primary calendar" helpers).
+export const listCalendarEvents = (connectionId, params) =>
+  api.get(`/api/v1/calendar/connections/${connectionId}/events`, { params });
+export const createCalendarEvent = (connectionId, data) =>
+  api.post(`/api/v1/calendar/connections/${connectionId}/events`, data);
+export const deleteCalendarEvent = (connectionId, eventId) =>
+  api.delete(`/api/v1/calendar/connections/${connectionId}/events/${encodeURIComponent(eventId)}`);
+
+// ── Calendar connections (OAuth) ──
+export const getCalendarProviders = () => api.get('/api/v1/calendar/providers');
+export const getCalendarConnections = () => api.get('/api/v1/calendar/connections');
+export const startCalendarConnect = (provider = 'google', redirectUri) =>
+  api.post('/api/v1/calendar/connections/connect', { provider, ...(redirectUri ? { redirect_uri: redirectUri } : {}) });
+export const completeCalendarOAuth = (data) => api.post('/api/v1/calendar/oauth/callback', data);
+export const disconnectCalendarConnection = (id, force = false) =>
+  api.delete(`/api/v1/calendar/connections/${id}`, { params: force ? { force: true } : {} });
 
 // ── Agent Run Logs ──
 export const getAgentRuns = (params) => api.get('/api/agent-runs', { params });

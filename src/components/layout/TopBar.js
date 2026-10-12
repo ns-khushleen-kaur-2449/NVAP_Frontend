@@ -3,7 +3,7 @@ import { useAuth } from '@/lib/AuthContext';
 import {
   LogOut, LayoutDashboard, Users, Settings,
   BarChart2, Mic, Table2, Sliders, MessageSquare, Phone, PhoneCall, Menu, X, Activity, ArrowLeft, Bot,
-  Sparkles, Send, Inbox as InboxIcon, CalendarClock
+  Sparkles,  Inbox as InboxIcon, CalendarClock
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
@@ -12,7 +12,7 @@ import ThemeToggle from '@/components/shared/ThemeToggle';
 // ── Nav definitions (same as old sidebars) ──────────────────────
 const MAIN_NAV = [
   { path: '/dashboard',    label: 'Home',         icon: LayoutDashboard, roles: ['agent', 'manager', 'admin'] },
-  { path: '/settings',     label: 'Settings',     icon: Settings,        roles: ['admin'] },
+  { path: '/settings',     label: 'Settings',     icon: Settings,        roles: ['agent', 'manager', 'admin'] },
 ];
 
 const EXEC_NAV = [
@@ -30,7 +30,6 @@ const VOICE_NAV = [
   { path: '/voice_agent?view=logs', label: 'Calls', icon: Phone, roles: ['agent', 'manager', 'admin'] },
   { path: '/prospecting',  label: 'Prospecting',  icon: Users,           roles: ['agent', 'manager', 'admin'] },
   { path: '/strategist',   label: 'AI Strategist', icon: Sparkles,       roles: ['agent', 'manager', 'admin'] },
-  { path: '/campaigns',    label: 'Campaigns',    icon: Send,            roles: ['agent', 'manager', 'admin'] },
   { path: '/inbox',        label: 'Inbox',        icon: InboxIcon,       roles: ['agent', 'manager', 'admin'] },
   { path: '/meetings',     label: 'Meetings',     icon: CalendarClock,   roles: ['agent', 'manager', 'admin'] },
 ];

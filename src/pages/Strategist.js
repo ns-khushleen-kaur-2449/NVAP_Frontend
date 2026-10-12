@@ -152,7 +152,7 @@ export default function StrategistPage() {
     try {
       const { data } = await launchCampaignFromStrategy(strategy, prospectIds);
       toast.success(`Campaign "${data.campaign.name}" launched with ${data.matched_count} real prospects`);
-      navigate(`/campaigns/${data.campaign.id}`);
+      navigate('/voice-campaigns');
     } catch (e) {
       toast.error(e.response?.data?.detail || 'Launch failed');
     }

@@ -12,12 +12,10 @@ import {
   X, Calendar, MapPin, Building, Briefcase, IndianRupee, Clock,
   ArrowUpDown, UserPlus
 } from 'lucide-react';
-import { initiateCsvCalls, scheduleCampaign } from '../../lib/api';
 import { toast } from 'sonner';
 import { formatCurrency, timeAgo } from '../../lib/utils';
 import { StageBadge } from '../shared/StatusBadges';
-import ScheduleDrawer from './ScheduleDrawer';
-import ReminderForm from './ReminderForm';
+import CampaignLaunchDialog from './CampaignLaunchDialog';
 import AddLeadDialog from './AddLeadDialog';
 
 const LEAD_STATUS_OPTIONS = [
@@ -72,17 +70,10 @@ export default function LeadCampaignBuilder({ onCampaignStarted, onLeadCreated, 
   const [searchQuery, setSearchQuery] = useState('');
   const [addLeadOpen, setAddLeadOpen] = useState(false);
   const [selectedLeads, setSelectedLeads] = useState(new Set());
-  const [campaignName, setCampaignName] = useState('');
-  const [isStarting, setIsStarting] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
-  const [selectedAssistantId, setSelectedAssistantId] = useState('');
   const [sortBy, setSortBy] = useState('newest');
-  const [scheduleOpen, setScheduleOpen] = useState(false);
-  const [scheduleDate, setScheduleDate] = useState(null);
-  const [scheduleTime, setScheduleTime] = useState('');
-  const [scheduleNotes, setScheduleNotes] = useState('');
-  const [isScheduling, setIsScheduling] = useState(false);
-  const [scheduleError, setScheduleError] = useState('');
+  // Campaign name, purpose, assistant and timing are filled in the launch dialog.
+  const [launchOpen, setLaunchOpen] = useState(false);
 
   const [filters, setFilters] = useState({
     stage: 'all',
@@ -98,25 +89,12 @@ export default function LeadCampaignBuilder({ onCampaignStarted, onLeadCreated, 
     propertyType: 'all'
   });
 
-  // Auto-select first assistant if none selected
-  useEffect(() => {
-    if (assistants.length > 0) {
-      setSelectedAssistantId(prev => prev ? prev : assistants[0]?.vapi_assistant_id || '');
-    }
-  }, [assistants]);
-
   const activeFiltersCount = useMemo(() => {
     return Object.entries(filters).filter(([key, value]) => {
       if (key === 'budgetRange') return value !== 'any';
       return value !== 'all';
     }).length;
   }, [filters]);
-
-  const selectedAssistant = useMemo(() => {
-    return assistants.find(ast => ast.vapi_assistant_id === selectedAssistantId);
-  }, [assistants, selectedAssistantId]);
-
-  const canScheduleCampaign = selectedLeads.size > 0 && Boolean(campaignName.trim()) && Boolean(selectedAssistantId);
 
   const projectList = useMemo(() => {
     const fromProps = properties.map(p => p.name);
@@ -287,183 +265,17 @@ export default function LeadCampaignBuilder({ onCampaignStarted, onLeadCreated, 
     setSelectedLeads(next);
   };
 
-  // The CSV columns are Country Code + Phone Number, and the backend rebuilds the
-  // number as `+{code}{number}` — so the only thing that matters is that the two
-  // halves concatenate back to the full international number.
-  //
-  // This used to default a bare number to country code '1' (US), disagreeing with
-  // the backend, which assumed India for the same input. Leave the assumption to
-  // one place: send a number that already carries a country code split anywhere,
-  // and send a bare national number with an empty code so the backend applies its
-  // configured DEFAULT_COUNTRY_CODE instead of the frontend guessing a country.
-  const MAX_NATIONAL_DIGITS = 10;
-
-  const formatPhoneNumber = (phone) => {
-    if (!phone) return null;
-    let numericPhone = phone.replace(/\D/g, '');
-    if (!numericPhone) return null;
-
-    // "00971…" is the international access prefix, not part of the number.
-    if (numericPhone.startsWith('00') && numericPhone.length > 2) {
-      numericPhone = numericPhone.slice(2);
-    }
-
-    const hasCountryCode = phone.trim().startsWith('+') || numericPhone.length > MAX_NATIONAL_DIGITS;
-    if (!hasCountryCode) {
-      return { code: '', number: numericPhone };
-    }
-
-    // Split anywhere — code + number is reassembled verbatim server-side.
-    const splitAt = Math.max(1, numericPhone.length - MAX_NATIONAL_DIGITS);
-    return {
-      code: numericPhone.substring(0, splitAt),
-      number: numericPhone.substring(splitAt),
-    };
-  };
-
-  const startCampaign = async () => {
+  const openLaunch = () => {
     if (selectedLeads.size === 0) {
       toast.error('Please select at least one lead.');
       return;
     }
-
-    const campaignLeads = leads.filter((l) => selectedLeads.has(l.id));
-    
-    // Construct CSV
-    // Expected columns: "Country Code", "Phone Number", "Name", "Email Address"
-    const csvRows = [
-      ['Country Code', 'Phone Number', 'Name', 'Email Address']
-    ];
-
-    let invalidCount = 0;
-
-    campaignLeads.forEach((lead) => {
-      if (!lead.phone) {
-        invalidCount++;
-        return;
-      }
-
-      const formatted = formatPhoneNumber(lead.phone);
-      if (!formatted) {
-        invalidCount++;
-        return;
-      }
-
-      csvRows.push([
-        formatted.code,
-        formatted.number,
-        lead.name || 'Unknown',
-        lead.email || ''
-      ]);
-    });
-
-    if (csvRows.length <= 1) {
-      toast.error('No valid phone numbers found in selected leads.');
-      return;
-    }
-
-    if (invalidCount > 0) {
-      toast.warning(`${invalidCount} lead(s) skipped due to missing or invalid phone numbers.`);
-    }
-
-    const csvContent = csvRows.map(e => e.join(",")).join("\n");
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const file = new File([blob], `campaign_${Date.now()}.csv`, { type: 'text/csv' });
-
-    setIsStarting(true);
-    try {
-      const r = await initiateCsvCalls(file, selectedAssistantId, campaignName);
-      const processId = r.data?.process_id || r.data?.csv_process_id || r.data?.id || '';
-      toast.success(`Campaign "${campaignName || 'Unnamed'}" started successfully with ${csvRows.length - 1} leads!`);
-      setSelectedLeads(new Set()); // Reset selection
-      setCampaignName(''); // Reset name
-      if (onCampaignStarted) {
-        onCampaignStarted(processId);
-      }
-    } catch (e) {
-      console.error(e);
-      const detail = e.response?.data?.detail;
-      const message = typeof detail === 'string' ? detail : 'Failed to start campaign';
-      toast.error(message);
-    } finally {
-      setIsStarting(false);
-    }
+    setLaunchOpen(true);
   };
 
-  const resetScheduleForm = () => {
-    setScheduleDate(null);
-    setScheduleTime('');
-    setScheduleNotes('');
-    setScheduleError('');
-  };
-
-  const openScheduleCampaign = () => {
-    if (selectedLeads.size === 0) {
-      toast.error('Please select at least one lead.');
-      return;
-    }
-    if (!campaignName.trim()) {
-      toast.error('Please enter a campaign name.');
-      return;
-    }
-    if (!selectedAssistantId) {
-      toast.error('Please select an assistant.');
-      return;
-    }
-    setScheduleError('');
-    setScheduleOpen(true);
-  };
-
-  const submitScheduledCampaign = async () => {
-    if (selectedLeads.size === 0) {
-      setScheduleError('Select at least one lead.');
-      return;
-    }
-    if (!campaignName.trim()) {
-      setScheduleError('Campaign name is required.');
-      return;
-    }
-    if (!selectedAssistantId) {
-      setScheduleError('Select a VAPI assistant.');
-      return;
-    }
-    if (!scheduleDate || !scheduleTime) {
-      setScheduleError('Select a date and time.');
-      return;
-    }
-
-    const [hours, minutes] = scheduleTime.split(':').map(Number);
-    const scheduledAt = new Date(scheduleDate);
-    scheduledAt.setHours(hours || 0, minutes || 0, 0, 0);
-
-    if (Number.isNaN(scheduledAt.getTime()) || scheduledAt <= new Date()) {
-      setScheduleError('Select a future date and time.');
-      return;
-    }
-
-    setIsScheduling(true);
-    setScheduleError('');
-    try {
-      await scheduleCampaign({
-        name: campaignName.trim(),
-        assistant_id: selectedAssistantId,
-        lead_ids: Array.from(selectedLeads),
-        scheduled_at: scheduledAt.toISOString(),
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        notes: scheduleNotes,
-      });
-      toast.success('Campaign scheduled successfully.');
-      setScheduleOpen(false);
-      resetScheduleForm();
-    } catch (e) {
-      console.error(e);
-      const detail = e.response?.data?.detail || e.response?.data?.message;
-      const message = typeof detail === 'string' ? detail : 'Failed to schedule campaign';
-      setScheduleError(message);
-      toast.error(message);
-    } finally {
-      setIsScheduling(false);
-    }
+  const handleCreated = (campaign) => {
+    setSelectedLeads(new Set());
+    onCampaignStarted?.(campaign);
   };
 
   const resetFilters = () => {
@@ -861,114 +673,24 @@ export default function LeadCampaignBuilder({ onCampaignStarted, onLeadCreated, 
         </div>
       </CardContent>
       
-      <CardFooter className="pt-1.5 pb-2.5 flex-col gap-2.5">
-        <div className="w-full grid grid-cols-2 gap-3">
-          <div className="flex flex-col gap-1 px-3 py-1.5 bg-blue-50/30 rounded-xl border border-blue-100/50">
-            <span className="text-[10px] uppercase font-bold text-blue-500 tracking-wider flex items-center gap-1.5">
-              <Play className="w-2.5 h-2.5" /> Campaign Branding
-            </span>
-            <Input 
-              placeholder="Campaign Name (e.g. Sales)"
-              className="h-9 bg-card border-blue-100 text-xs focus-visible:ring-blue-500"
-              value={campaignName}
-              onChange={(e) => setCampaignName(e.target.value)}
-            />
-          </div>
-          
-          <div className="flex flex-col gap-1 px-3 py-1.5 bg-muted/50 rounded-xl border border-border">
-            <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider flex items-center gap-1.5">
-              <Users className="w-2.5 h-2.5" /> AI Specialist
-            </span>
-            <Select value={selectedAssistantId} onValueChange={setSelectedAssistantId}>
-              <SelectTrigger className="h-9 bg-card border-border shadow-sm text-xs focus:ring-0">
-                <div className="flex items-center gap-2">
-                  <SelectValue placeholder="Select Assistant" />
-                </div>
-              </SelectTrigger>
-              <SelectContent>
-                {assistants.map(ast => (
-                  <SelectItem key={ast.vapi_assistant_id} value={ast.vapi_assistant_id}>
-                    <div className="flex flex-col">
-                      <span className="font-medium text-xs">{ast.name}</span>
-                      <span className="text-[9px] text-muted-foreground">{ast.voice_provider || 'Vapi'} voice</span>
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-        
-        <div className="w-full flex flex-col sm:flex-row gap-2">
-          <Button 
-            className="flex-1 h-10 gap-2 bg-[#F87217] hover:bg-[#C2560E] text-white rounded-xl text-xs font-semibold transition-all duration-200 shadow-lg shadow-blue-900/10 active:scale-[0.98]"
-            size="sm"
-            onClick={startCampaign}
-            disabled={isStarting || selectedLeads.size === 0 || !selectedAssistantId || !campaignName}
-          >
-            {isStarting ? (
-              <>
-                <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                Initiate campaign...
-              </>
-            ) : (
-              <>
-                <Play className="w-3.5 h-3.5 fill-white animate-pulse" />
-                Launch Campaign for {selectedLeads.size} Lead{selectedLeads.size !== 1 && 's'}
-              </>
-            )}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={openScheduleCampaign}
-            disabled={isScheduling || !canScheduleCampaign}
-            className="h-10 gap-2 rounded-xl border-[#F87217]/30 text-[#F87217] hover:bg-[#F87217]/8 text-xs font-semibold sm:w-[170px]"
-          >
-            <Calendar className="w-3.5 h-3.5" />
-            Schedule Campaign
-          </Button>
-        </div>
+      <CardFooter className="pt-1.5 pb-2.5">
+        <Button
+          className="w-full h-10 gap-2 bg-[#F87217] hover:bg-[#C2560E] text-white rounded-xl text-xs font-semibold transition-all duration-200 shadow-lg shadow-blue-900/10 active:scale-[0.98]"
+          size="sm"
+          onClick={openLaunch}
+          disabled={selectedLeads.size === 0}
+        >
+          <Play className="w-3.5 h-3.5 fill-white" />
+          Launch Campaign for {selectedLeads.size} Lead{selectedLeads.size !== 1 && 's'}
+        </Button>
       </CardFooter>
-      <ScheduleDrawer
-        open={scheduleOpen}
-        onOpenChange={setScheduleOpen}
-        title="Schedule Campaign"
-        subtitle="Pick a time for this campaign launch"
-      >
-        <div className="mb-5 rounded-xl border border-blue-100 bg-blue-50/40 p-3 space-y-2 text-sm">
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Selected leads</span>
-            <Badge className="bg-[#F87217] text-white">{selectedLeads.size}</Badge>
-          </div>
-          <div className="flex items-start justify-between gap-3">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Campaign</span>
-            <span className="max-w-[210px] text-right font-medium text-foreground truncate">{campaignName || 'Untitled'}</span>
-          </div>
-          <div className="flex items-start justify-between gap-3">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Assistant</span>
-            <span className="max-w-[210px] text-right font-medium text-foreground truncate">
-              {selectedAssistant?.name || selectedAssistantId || 'Not selected'}
-            </span>
-          </div>
-        </div>
-        <ReminderForm
-          scheduleDate={scheduleDate}
-          setScheduleDate={setScheduleDate}
-          scheduleTime={scheduleTime}
-          setScheduleTime={setScheduleTime}
-          scheduleNotes={scheduleNotes}
-          setScheduleNotes={setScheduleNotes}
-          onSubmit={submitScheduledCampaign}
-          scheduling={isScheduling}
-          error={scheduleError}
-          leadSelected={selectedLeads.size > 0}
-          notesLabel="Campaign Notes"
-          notesPlaceholder="Add context for this scheduled campaign..."
-          submitLabel="Schedule Campaign"
-        />
-      </ScheduleDrawer>
+      <CampaignLaunchDialog
+        open={launchOpen}
+        onOpenChange={setLaunchOpen}
+        source={{ type: 'leads', leadIds: Array.from(selectedLeads) }}
+        assistants={assistants}
+        onCreated={handleCreated}
+      />
 
       <AddLeadDialog
         open={addLeadOpen}

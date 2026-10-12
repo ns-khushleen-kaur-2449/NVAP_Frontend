@@ -1,6 +1,6 @@
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import {
-  LayoutDashboard, Users, Sparkles, Send, PhoneCall, Inbox as InboxIcon, CalendarClock,
+  LayoutDashboard, Users, Sparkles,  PhoneCall, Inbox as InboxIcon, CalendarClock,
   Layers, Phone, Mic, BookOpen, Activity, UploadCloud, Calendar, Megaphone,
   ChevronDown, ChevronLeft, ChevronRight, Settings, LogOut,
 } from 'lucide-react';
@@ -19,7 +19,6 @@ const APP_NAV = [
 const PENDING_NAV = [
   { path: '/prospecting', label: 'Prospecting',  icon: Users },
   { path: '/strategist',  label: 'AI Strategist', icon: Sparkles },
-  { path: '/campaigns',   label: 'Campaigns',    icon: Send },
   { path: '/inbox',       label: 'Inbox',        icon: InboxIcon },
   { path: '/meetings',    label: 'Meetings',     icon: CalendarClock },
 ];
@@ -36,7 +35,6 @@ const VOICE_TABS = [
   // Its own route rather than a ?tab= view, so it carries `path`. The render
   // below falls back to the ?tab= form for every entry without one.
   { id: 'campaigns', label: 'Voice Campaigns',          icon: Megaphone, path: '/voice-campaigns' },
-  { id: 'schedule',  label: 'Schedule a Call',          icon: Calendar },
   { id: 'single',    label: 'Single Call',              icon: PhoneCall },
 ];
 
@@ -71,7 +69,7 @@ export function Sidebar() {
   const [voiceOpen, setVoiceOpen] = useState(true);
   // const [reportOpen, setReportOpen] = useState(false);
   const location = useLocation();
-  const { user, hasRole, logout } = useAuth();
+  const { user, logout } = useAuth();
 
   const params = new URLSearchParams(location.search);
   const onVoiceAgent = location.pathname.startsWith('/voice_agent');
@@ -219,12 +217,10 @@ export function Sidebar() {
             </Link>
           )}
           */}
-          {hasRole('admin') && (
-            <NavLink to="/settings" className={({ isActive }) => itemClass(isActive, collapsed)}>
-              <Settings className="h-4 w-4 shrink-0 text-[var(--mist)] group-hover:text-[var(--pine)]" />
-              {!collapsed && <span>Settings</span>}
-            </NavLink>
-          )}
+          <NavLink to="/settings" className={({ isActive }) => itemClass(isActive, collapsed)}>
+            <Settings className="h-4 w-4 shrink-0 text-[var(--mist)] group-hover:text-[var(--pine)]" />
+            {!collapsed && <span>Settings</span>}
+          </NavLink>
           <div className={cn('flex items-center gap-2 px-1 pt-1', collapsed ? 'flex-col' : 'justify-between')}>
             {!collapsed && user?.email && <span className="text-xs text-[var(--mist)] truncate">{user.email}</span>}
             <ThemeToggle className="h-8 w-8 shrink-0" />

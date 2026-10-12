@@ -33,8 +33,6 @@ import KnowledgeBasePage from "@/pages/KnowledgeBase";
 // import ChatWidget from "@/components/shared/ChatWidget";
 import ProspectingPage from "@/pages/Prospecting";
 import StrategistPage from "@/pages/Strategist";
-import CampaignsPage from "@/pages/Campaigns";
-import CampaignDetailPage from "@/pages/CampaignDetail";
 import InboxPage from "@/pages/Inbox";
 import MeetingsPage from "@/pages/Meetings";
 
@@ -76,7 +74,7 @@ function SmartRoot() {
 
 // Pages that get the persistent left Sidebar instead of the TopBar. Everything
 // else in AppShell keeps the TopBar exactly as before.
-const SIDEBAR_SECTION_PATHS = ['/dashboard', '/prospecting', '/strategist', '/campaigns', '/inbox', '/meetings'];
+const SIDEBAR_SECTION_PATHS = ['/dashboard', '/prospecting', '/strategist', '/inbox', '/meetings', '/settings'];
 
 function AppShell() {
   const { user, token, loading } = useAuth();
@@ -115,13 +113,12 @@ function AppShell() {
       } />
       <Route path="/prospecting" element={<ProspectingPage />} />
       <Route path="/strategist" element={<StrategistPage />} />
-      <Route path="/campaigns" element={<CampaignsPage />} />
-      <Route path="/campaigns/:id" element={<CampaignDetailPage />} />
+      {/* The SDR Campaigns pages are hidden for now; Voice Campaigns is the campaign page. */}
+      <Route path="/campaigns/*" element={<Navigate to="/voice-campaigns" replace />} />
       <Route path="/inbox" element={<InboxPage />} />
       <Route path="/meetings" element={<MeetingsPage />} />
-      <Route path="/settings" element={
-        <ProtectedRoute roles={['admin']}><SettingsPage /></ProtectedRoute>
-      } />
+      <Route path="/settings" element={<SettingsPage />} />
+      <Route path="/settings/calendar" element={<SettingsPage />} />
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>

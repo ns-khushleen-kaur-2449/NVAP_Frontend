@@ -1,15 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Sparkles, Download, Rocket, Trash2, AlertTriangle, History } from 'lucide-react';
+import { Search, Rocket, Trash2, History } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import LeadTimelineDialog from '@/components/shared/LeadTimelineDialog';
-import { searchProspects, importProspects, getMyLeads, deleteMyLead } from '@/lib/api';
+import AiFilterSearch from '@/components/prospecting/AiFilterSearch';
+import ApolloPreview from '@/components/prospecting/ApolloPreview';
+import { getMyLeads, deleteMyLead } from '@/lib/api';
 
 function ScoreBadge({ score }) {
   const color = score >= 75 ? 'text-emerald-600 bg-emerald-500/10' : score >= 55 ? 'text-amber-600 bg-amber-500/10' : 'text-muted-foreground bg-secondary';
@@ -61,62 +61,37 @@ function ProspectRow({ p, selected, onToggle, onViewTimeline }) {
 }
 
 export default function ProspectingPage() {
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState([]);
-  const [resultsSimulated, setResultsSimulated] = useState(false);
-  const [searching, setSearching] = useState(false);
-  const [selectedSearch, setSelectedSearch] = useState(new Set());
-  const [importing, setImporting] = useState(false);
-
   const [myLeads, setMyLeads] = useState([]);
   const [loadingMine, setLoadingMine] = useState(true);
   const [selectedMine, setSelectedMine] = useState(new Set());
   const [timelineLead, setTimelineLead] = useState(null);
   const navigate = useNavigate();
 
-  const loadMyLeads = () => getMyLeads().then((r) => setMyLeads(r.data)).catch((e) => {
-    console.error('Failed to load My Leads:', e);
-    toast.error(e.response?.data?.detail || e.message || 'Failed to load your leads');
-    setMyLeads([]);
-  }).finally(() => setLoadingMine(false));
-  useEffect(() => { loadMyLeads(); }, []);
+  // My leads load the first time that tab is opened, not on page load.
+  const mineLoaded = useRef(false);
+  const mineLoading = useRef(false);
 
-  const runSearch = async () => {
-    if (!query.trim()) return;
-    setSearching(true);
-    setSelectedSearch(new Set());
-    try {
-      const { data } = await searchProspects(query);
-      // Apollo ids are unique, but simulated rows all have apollo_id=null — give every
-      // row a stable client-side selection key so simulated rows don't collide.
-      const withKeys = data.results.map((r, i) => ({ ...r, _key: r.apollo_id || `sim-${i}` }));
-      setResults(withKeys);
-      setResultsSimulated(data.simulated);
-      if (data.simulated) toast.warning('Apollo is unavailable — showing simulated results for this query instead.');
-      else if (data.results.length === 0) toast.info('No matches from Apollo for that description');
-    } catch (e) {
-      toast.error(e.response?.data?.detail || 'Search failed');
-    }
-    setSearching(false);
+  const loadMyLeads = () => {
+    mineLoading.current = true;
+    return getMyLeads().then((r) => { setMyLeads(r.data); mineLoaded.current = true; }).catch((e) => {
+      console.error('Failed to load My Leads:', e);
+      toast.error(e.response?.data?.detail || e.message || 'Failed to load your leads');
+      setMyLeads([]);
+    }).finally(() => { mineLoading.current = false; setLoadingMine(false); });
   };
 
-  const toggleSearch = (key) => setSelectedSearch((s) => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n; });
+  // Apollo Preview is first rendered when its tab is opened, then kept so its filter survives tab changes.
+  const [apolloOpened, setApolloOpened] = useState(false);
+
+  // A failed load leaves mineLoaded false, so opening the tab again retries.
+  const onTabChange = (tab) => {
+    if (tab === 'apollo') setApolloOpened(true);
+    if (tab !== 'mine' || mineLoaded.current || mineLoading.current) return;
+    setLoadingMine(true);
+    loadMyLeads();
+  };
+
   const toggleMine = (id) => setSelectedMine((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
-
-  const importSelected = async () => {
-    const toImport = results.filter((r) => selectedSearch.has(r._key));
-    if (toImport.length === 0) return;
-    setImporting(true);
-    try {
-      const { data } = await importProspects(toImport);
-      toast.success(`Imported ${data.imported} prospects into My Leads`);
-      setSelectedSearch(new Set());
-      loadMyLeads();
-    } catch (e) {
-      toast.error('Import failed');
-    }
-    setImporting(false);
-  };
 
   const removeMine = async (id) => {
     try { await deleteMyLead(id); loadMyLeads(); } catch (e) { toast.error('Failed to remove'); }
@@ -134,48 +109,26 @@ export default function ProspectingPage() {
         <h1 className="font-display text-2xl font-semibold flex items-center gap-2">
           <Search className="w-5 h-5 text-primary" /> Prospecting
         </h1>
-        <p className="text-sm text-muted-foreground mt-1">Describe your buyer in plain English. Get a scored, explainable list — sourced live from Apollo.</p>
+        <p className="text-sm text-muted-foreground mt-1">Search and filter the prospects you already have. Describe who you are looking for in plain English, or review your saved leads.</p>
       </div>
 
-      <Tabs defaultValue="mine">
+      <Tabs defaultValue="search" onValueChange={onTabChange}>
         <TabsList>
           <TabsTrigger value="search">Search leads</TabsTrigger>
           <TabsTrigger value="mine">My leads {myLeads.length > 0 && `(${myLeads.length})`}</TabsTrigger>
+          <TabsTrigger value="apollo">Apollo Preview</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="search" className="space-y-4">
-          <div className="flex gap-2">
-            <Input value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && runSearch()}
-              placeholder="e.g. VP of Sales at 50-200 person SaaS companies in Austin" className="flex-1" />
-            <Button onClick={runSearch} disabled={searching} className="bg-primary text-primary-foreground">
-              <Sparkles className="w-4 h-4 mr-1" /> {searching ? 'Searching…' : 'Search'}
-            </Button>
-          </div>
-
-          {resultsSimulated && results.length > 0 && (
-            <Card className="card-base p-3 flex items-center gap-2 border-amber-500/40 bg-amber-500/5">
-              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-              <p className="text-xs text-amber-700">Apollo access is unavailable on your plan — these results are AI-simulated, not real Apollo contacts. Upgrade Apollo to get live data.</p>
-            </Card>
-          )}
-
-          {selectedSearch.size > 0 && (
-            <Button size="sm" variant="outline" onClick={importSelected} disabled={importing}>
-              <Download className="w-3.5 h-3.5 mr-1" /> {importing ? 'Importing…' : `Import ${selectedSearch.size} selected`}
-            </Button>
-          )}
-
-          <div className="space-y-2">
-            {results.map((p) => (
-              <ProspectRow key={p._key} p={p} selected={selectedSearch.has(p._key)} onToggle={() => toggleSearch(p._key)} />
-            ))}
-            {!searching && results.length === 0 && (
-              <div className="border border-dashed border-border rounded-lg p-12 text-center text-sm text-muted-foreground">
-                Search above to find prospects.
-              </div>
-            )}
-          </div>
+        {/* Search leads and Apollo Preview stay mounted while hidden, so each keeps its own filter and results. */}
+        <TabsContent value="search" forceMount className="space-y-4 data-[state=inactive]:hidden">
+          <AiFilterSearch />
         </TabsContent>
+
+        {apolloOpened && (
+          <TabsContent value="apollo" forceMount className="space-y-4 data-[state=inactive]:hidden">
+            <ApolloPreview />
+          </TabsContent>
+        )}
 
         <TabsContent value="mine" className="space-y-4">
           {selectedMine.size > 0 && (

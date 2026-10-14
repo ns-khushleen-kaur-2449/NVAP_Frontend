@@ -146,7 +146,8 @@ export const countProspectsByFilter = (filter, { tenantId } = {}) =>
   api.post('/api/ai/filter/count', { filter, tenant_id: tenantId });
 
 // Saved filters. A saved filter is { filter_id, name, description, filter, is_shared,
-// is_owner, can_edit, created_at, updated_at }. Sharing needs a Manager or Tenant Admin
+// is_owner, can_edit, created_by_name, created_at, updated_at }; created_by_name is set for shared
+// filters only. Sharing needs a Manager or Tenant Admin
 // (403 otherwise); a Super Admin cannot use saved filters (403).
 // → { items: [saved filter] } — the caller's own filters plus those shared with their tenant
 export const listSavedFilters = () => api.get('/api/ai/filter/saved');

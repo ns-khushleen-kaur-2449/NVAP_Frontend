@@ -14,17 +14,16 @@ const MAX_DESCRIPTION_LENGTH = 1000;
 /**
  * Name, describe and optionally share a saved filter.
  *
- * With `savedFilter` it edits that filter; without, it saves a new one. The
- * parent does the API call in `onSubmit({ name, description, isShared, replaceFilter })`
- * and passes back `saving` and `error`. `canShare` only decides whether the
- * sharing box is offered; the backend still enforces who may share.
+ * With `savedFilter` it edits that filter's details; without, it saves a new one.
+ * The parent does the API call in `onSubmit({ name, description, isShared })` and
+ * passes back `saving` and `error`. `canShare` only decides whether the sharing
+ * box is offered; the backend still enforces who may share.
  */
-export default function SaveFilterDialog({ open, onOpenChange, savedFilter, canShare, canReplaceFilter, saving, error, onSubmit }) {
+export default function SaveFilterDialog({ open, onOpenChange, savedFilter, canShare, saving, error, onSubmit }) {
   const editing = Boolean(savedFilter);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [isShared, setIsShared] = useState(false);
-  const [replaceFilter, setReplaceFilter] = useState(false);
 
   // Start from the saved filter's values (or blank) each time the dialog opens.
   useEffect(() => {
@@ -32,7 +31,6 @@ export default function SaveFilterDialog({ open, onOpenChange, savedFilter, canS
     setName(savedFilter?.name || '');
     setDescription(savedFilter?.description || '');
     setIsShared(Boolean(savedFilter?.is_shared));
-    setReplaceFilter(false);
   }, [open, savedFilter]);
 
   const trimmedName = name.trim();
@@ -42,7 +40,7 @@ export default function SaveFilterDialog({ open, onOpenChange, savedFilter, canS
   const submit = (event) => {
     event.preventDefault();
     if (!trimmedName || saving) return;
-    onSubmit({ name: trimmedName, description: description.trim(), isShared, replaceFilter });
+    onSubmit({ name: trimmedName, description: description.trim(), isShared });
   };
 
   return (
@@ -50,11 +48,11 @@ export default function SaveFilterDialog({ open, onOpenChange, savedFilter, canS
       <DialogContent>
         <form onSubmit={submit} className="space-y-4">
           <DialogHeader>
-            <DialogTitle>{editing ? 'Edit saved filter' : 'Save filter'}</DialogTitle>
+            <DialogTitle>{editing ? 'Rename or share saved search' : 'Save filter'}</DialogTitle>
             <DialogDescription>
               {editing
-                ? 'Change its name, description or sharing.'
-                : 'Save the conditions on screen so you can load or run them again later.'}
+                ? 'Change its name, description or sharing. To change its conditions, use Edit in Search leads.'
+                : 'Save the conditions on screen. You will find them in Saved searches.'}
             </DialogDescription>
           </DialogHeader>
 
@@ -78,21 +76,6 @@ export default function SaveFilterDialog({ open, onOpenChange, savedFilter, canS
                 Share with everyone in my organisation
                 <span className="block text-xs text-muted-foreground">
                   Each person who runs it sees only the prospects they are allowed to see.
-                </span>
-              </span>
-            </label>
-          )}
-
-          {editing && (
-            <label className="flex items-start gap-2 text-sm">
-              <Checkbox className="mt-0.5" checked={replaceFilter} disabled={saving || !canReplaceFilter}
-                onCheckedChange={(checked) => setReplaceFilter(checked === true)} />
-              <span>
-                Replace its conditions with the filter on screen
-                <span className="block text-xs text-muted-foreground">
-                  {canReplaceFilter
-                    ? 'Leave this off to keep the saved conditions as they are.'
-                    : 'Not available: the filter on screen is empty or unfinished.'}
                 </span>
               </span>
             </label>

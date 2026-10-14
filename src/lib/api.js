@@ -124,6 +124,62 @@ export const importProspects = (prospects) => api.post('/api/prospecting/import'
 export const getMyLeads = () => api.get('/api/prospecting/my-leads');
 export const deleteMyLead = (id) => api.delete(`/api/prospecting/my-leads/${id}`);
 
+// ── AI Filtering: search prospects already in the database (/api/ai/filter) ──
+// A filter is { version: 1, match: 'all' | 'any', conditions: [{ field, op, value }] }.
+// Results are limited by the backend to the caller's tenant and role; deleted,
+// simulated and do-not-contact prospects are never returned.
+// Errors: 400 detail is { message, issues: [{ condition, field, error }] } for an
+// invalid filter — format it with describeApiError() from
+// '@/components/prospecting/filterUtils' rather than passing detail to a toast.
+
+// → { fields: [{ key, label, type, operators[], allowed_values[] }] }
+export const getFilterFields = () => api.get('/api/ai/filter/fields');
+// text: 1–500 chars → { filter, dropped: [{ field, op, value, error }], not_understood: [string] }
+// 502 / 503 when the AI service fails; the filter can still be built by hand.
+export const parseFilterText = (text) => api.post('/api/ai/filter/parse', { text });
+// → { items[], total, page, page_size, total_pages, sort, filter, rules_applied[] }
+// pageSize max 100; sort is 'score_desc' | 'newest'; tenantId is honoured for a Super Admin only.
+export const searchProspectsByFilter = (filter, { page = 1, pageSize = 25, sort = 'score_desc', tenantId } = {}) =>
+  api.post('/api/ai/filter/search', { filter, page, page_size: pageSize, sort, tenant_id: tenantId });
+// → { total, filter, rules_applied[] }
+export const countProspectsByFilter = (filter, { tenantId } = {}) =>
+  api.post('/api/ai/filter/count', { filter, tenant_id: tenantId });
+
+// Saved filters. A saved filter is { filter_id, name, description, filter, is_shared,
+// is_owner, can_edit, created_by_name, created_at, updated_at }; created_by_name is set for shared
+// filters only. Sharing needs a Manager or Tenant Admin
+// (403 otherwise); a Super Admin cannot use saved filters (403).
+// → { items: [saved filter] } — the caller's own filters plus those shared with their tenant
+export const listSavedFilters = () => api.get('/api/ai/filter/saved');
+export const getSavedFilter = (filterId) => api.get(`/api/ai/filter/saved/${filterId}`);
+// data: { name, description?, filter, is_shared? } → 201 with the saved filter
+export const createSavedFilter = (data) => api.post('/api/ai/filter/saved', data);
+// data: any of { name, description, filter, is_shared } — send only what changes
+export const updateSavedFilter = (filterId, data) => api.patch(`/api/ai/filter/saved/${filterId}`, data);
+// → 204, no body
+export const deleteSavedFilter = (filterId) => api.delete(`/api/ai/filter/saved/${filterId}`);
+// Runs a saved filter with the caller's own access; same response as searchProspectsByFilter.
+export const runSavedFilter = (filterId, { page = 1, pageSize = 25, sort = 'score_desc' } = {}) =>
+  api.post(`/api/ai/filter/saved/${filterId}/search`, { page, page_size: pageSize, sort });
+
+// ── Apollo Preview: a temporary, live look at Apollo's free search (/api/apollo) ──
+// Demo only. Results are masked and are never saved or imported. The backend decides
+// who may use it: Tenant Admins, Managers and Sales Reps of tenants it is enabled for.
+// → { enabled, reason } — reason is null when enabled, otherwise one of
+//   integration_disabled | not_configured | role_not_allowed | tenant_not_allowed
+export const getApolloStatus = () => api.get('/api/apollo/status');
+// filter: the same { version, match, conditions } format as AI Filtering.
+// pageSize 1-25, page 1-20.
+// → { items: [{ apollo_person_id, first_name, last_name_masked, job_title, company_name,
+//               has_email, has_phone, has_location }],
+//     total, page, page_size, total_pages, requests_left_today,
+//     not_translated: [{ condition, field, op, reason }],   conditions Apollo was not given
+//     approximate:    [{ condition, field, op, reason }] }  conditions Apollo matches loosely
+// 400 detail: { message, issues } for an invalid filter, or { message, not_translated } when
+// Apollo can use none of it. 429 detail: { message, retry_after }. 403 and 503: a message.
+export const searchApolloPreview = (filter, { page = 1, pageSize = 10 } = {}) =>
+  api.post('/api/apollo/search', { filter, page, page_size: pageSize });
+
 // ── AI Strategist ──
 export const getStrategistHistory = () => api.get('/api/strategist/history');
 export const strategistChat = (message) => api.post('/api/strategist/chat', { message });

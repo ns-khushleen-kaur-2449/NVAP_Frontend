@@ -126,7 +126,7 @@ function CampaignOverview({ campaign }) {
             <DetailRow icon={Calendar} label="Scheduled for">
               {formatFullDateTime(campaign.scheduled_at)}
               {campaign.timezone && <span className="block text-[11px] text-muted-foreground">Set in {campaign.timezone}</span>}
-              {campaign.calendar_event_id && <span className="block text-[11px] text-emerald-600">On your Google Calendar</span>}
+              {campaign.calendar_event_id && <span className="block text-[11px] text-emerald-600">On your calendar</span>}
             </DetailRow>
           )}
           {(starter || campaign.started_at) && (

@@ -43,7 +43,7 @@ function BookMeetingDialog({ open, onOpenChange, log, onBooked }) {
         durationMinutes: 30,
         description: context,
       });
-      toast.success('Meeting added to your Google Calendar');
+      toast.success('Meeting added to your calendar');
       onOpenChange(false);
       onBooked?.();
     } catch (e) {

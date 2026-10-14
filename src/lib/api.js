@@ -249,6 +249,21 @@ export const rollbackBuilderConfig = (id, version) =>
 export const retryBuilderConfig = (id, version) =>
   api.post(`/api/v1/assistant-builder/configs/${id}/retry/${version}`);
 
+// ── Tools (Super Admin: platform Vapi tools) ──
+export const listToolTypes = () => api.get('/api/v1/tools/types');
+export const listTools = () => api.get('/api/v1/tools');
+export const createTool = (data) => api.post('/api/v1/tools', data);
+export const updateTool = (id, data) => api.patch(`/api/v1/tools/${id}`, data);
+export const syncTool = (id) => api.post(`/api/v1/tools/${id}/sync`);
+export const deleteTool = (id) => api.delete(`/api/v1/tools/${id}`);
+export const previewTool = (data) => api.post('/api/v1/tools/preview', data);
+export const getToolTenants = (id) => api.get(`/api/v1/tools/${id}/tenants`);
+export const setToolTenants = (id, tenantIds) => api.put(`/api/v1/tools/${id}/tenants`, { tenant_ids: tenantIds });
+// Tools on one assistant (tools granted to its tenant; Tenant Admin attaches/detaches).
+export const listAssistantTools = (assistantId) => api.get(`/api/v1/assistants/${assistantId}/tools`);
+export const attachAssistantTool = (assistantId, toolId) => api.post(`/api/v1/assistants/${assistantId}/tools/${toolId}`);
+export const detachAssistantTool = (assistantId, toolId) => api.delete(`/api/v1/assistants/${assistantId}/tools/${toolId}`);
+
 // Events on one connected calendar (see src/lib/calendar.js for the "my primary calendar" helpers).
 export const listCalendarEvents = (connectionId, params) =>
   api.get(`/api/v1/calendar/connections/${connectionId}/events`, { params });
@@ -257,14 +272,18 @@ export const createCalendarEvent = (connectionId, data) =>
 export const deleteCalendarEvent = (connectionId, eventId) =>
   api.delete(`/api/v1/calendar/connections/${connectionId}/events/${encodeURIComponent(eventId)}`);
 
-// ── Calendar connections (OAuth) ──
+// ── Calendar connections (Nylas; provider = google | microsoft | icloud) ──
 export const getCalendarProviders = () => api.get('/api/v1/calendar/providers');
 export const getCalendarConnections = () => api.get('/api/v1/calendar/connections');
-export const startCalendarConnect = (provider = 'google', redirectUri) =>
+export const startCalendarConnect = (provider, redirectUri) =>
   api.post('/api/v1/calendar/connections/connect', { provider, ...(redirectUri ? { redirect_uri: redirectUri } : {}) });
 export const completeCalendarOAuth = (data) => api.post('/api/v1/calendar/oauth/callback', data);
 export const disconnectCalendarConnection = (id, force = false) =>
   api.delete(`/api/v1/calendar/connections/${id}`, { params: force ? { force: true } : {} });
+export const setPrimaryCalendarConnection = (id) => api.post(`/api/v1/calendar/connections/${id}/primary`);
+export const listConnectionCalendars = (id) => api.get(`/api/v1/calendar/connections/${id}/calendars`);
+export const setBookingCalendar = (id, calendarId) =>
+  api.put(`/api/v1/calendar/connections/${id}/booking-calendar`, { calendar_id: calendarId });
 
 // ── Agent Run Logs ──
 export const getAgentRuns = (params) => api.get('/api/agent-runs', { params });

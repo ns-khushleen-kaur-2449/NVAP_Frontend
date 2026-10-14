@@ -56,7 +56,7 @@ function NewMeetingDialog({ open, onOpenChange, connectionId, onBooked }) {
         description: description.trim(),
       });
       toast.success(
-        finalEmails.length ? `Meeting booked. Google sent the invite to ${finalEmails.length} attendee${finalEmails.length > 1 ? 's' : ''}.` : 'Meeting booked',
+        finalEmails.length ? `Meeting booked. An invite was sent to ${finalEmails.length} attendee${finalEmails.length > 1 ? 's' : ''}.` : 'Meeting booked',
         event?.html_link ? { action: { label: 'Open', onClick: () => window.open(event.html_link, '_blank', 'noopener') } } : undefined,
       );
       onOpenChange(false);
@@ -94,7 +94,7 @@ function NewMeetingDialog({ open, onOpenChange, connectionId, onBooked }) {
             <div className="mt-1.5">
               <MultiEmailInput ref={emailsInputRef} emails={emails} onChange={setEmails} />
             </div>
-            <p className="text-[11px] text-muted-foreground mt-1">Press Enter or comma after each address. Google emails each attendee an invite.</p>
+            <p className="text-[11px] text-muted-foreground mt-1">Press Enter or comma after each address. Each attendee gets an invite email from your calendar.</p>
           </div>
           <div>
             <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Description</label>
@@ -149,7 +149,7 @@ function CampaignItem({ item }) {
                 <span className="flex items-center gap-1"><User className="w-3 h-3" /> {campaign.created_by_user.name || campaign.created_by_user.email}</span>
               )}
               {campaign.calendar_event_id && (
-                <span className="flex items-center gap-1 text-emerald-600"><CalendarCheck className="w-3 h-3" /> On Google Calendar</span>
+                <span className="flex items-center gap-1 text-emerald-600"><CalendarCheck className="w-3 h-3" /> On your calendar</span>
               )}
             </div>
           </div>
@@ -175,7 +175,7 @@ function EventItem({ item, onCancel }) {
       </div>
       <div className="flex items-center gap-1 shrink-0">
         {event.html_link && (
-          <a href={event.html_link} target="_blank" rel="noreferrer" title="Open in Google Calendar"
+          <a href={event.html_link} target="_blank" rel="noreferrer" title="Open in calendar"
              className="p-1.5 rounded text-muted-foreground hover:text-foreground">
             <ExternalLink className="w-3.5 h-3.5" />
           </a>
@@ -302,7 +302,7 @@ function MonthCalendar({ month, onMonthChange, selected, onSelect, itemsByDay, l
 }
 
 /**
- * The one scheduling page: upcoming meetings from the user's Google Calendar and
+ * The one scheduling page: upcoming meetings from the user's connected calendar and
  * scheduled voice campaigns on the left, a month calendar on the right.
  */
 export default function MeetingsPage() {
@@ -420,7 +420,7 @@ export default function MeetingsPage() {
             <CalendarClock className="w-5 h-5 text-primary" /> Meetings
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Your Google Calendar meetings and scheduled campaigns.
+            Your calendar meetings and scheduled campaigns.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -516,7 +516,7 @@ export default function MeetingsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Cancel this meeting?</AlertDialogTitle>
             <AlertDialogDescription>
-              "{pendingCancel?.summary || 'Untitled'}" will be deleted from your Google Calendar.
+              "{pendingCancel?.summary || 'Untitled'}" will be deleted from your calendar.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

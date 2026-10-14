@@ -5,12 +5,15 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import GoogleCalendarSync from '@/components/GoogleCalendarSync';
+import CalendarConnections from '@/components/CalendarConnections';
+import ToolsManager from '@/components/admin/ToolsManager';
+import { useAuth } from '@/lib/AuthContext';
 import { getSettings, updateSettings } from '@/lib/api';
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState(null);
   const [saving, setSaving] = useState(false);
+  const { hasRole } = useAuth();
 
   useEffect(() => { getSettings().then((r) => setSettings(r.data)).catch(() => {}); }, []);
 
@@ -46,7 +49,10 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      <GoogleCalendarSync />
+      <CalendarConnections />
+
+      {/* Platform Vapi tools are managed by Super Admins only. */}
+      {hasRole('super_admin') && <ToolsManager />}
 
       {settings && (
         <Card className="card-base p-5 space-y-4">

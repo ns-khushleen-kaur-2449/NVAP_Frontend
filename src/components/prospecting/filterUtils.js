@@ -96,13 +96,20 @@ export function buildFilterPayload(match, conditions) {
   };
 }
 
-/** A message for conditions the user has not finished, or null when the filter can be sent. */
-export function findIncompleteCondition(conditions) {
+/**
+ * A message for conditions the user has not finished, or null when the filter can be sent.
+ * With `fieldsByKey` (key → field from GET /fields), an operator the field does not allow,
+ * for example one from an old saved filter, counts as unfinished too.
+ */
+export function findIncompleteCondition(conditions, fieldsByKey = null) {
   if ((conditions || []).length > MAX_CONDITIONS) return `A filter can have at most ${MAX_CONDITIONS} conditions.`;
   for (let index = 0; index < (conditions || []).length; index += 1) {
     const { field, op, value } = conditions[index];
     const label = `Condition ${index + 1}`;
     if (!field || !op) return `${label}: choose a field and an operator.`;
+    const known = fieldsByKey?.[field];
+    if (fieldsByKey && !known) return `${label}: choose a field.`;
+    if (known && !known.operators?.includes(op)) return `${label}: choose an operator.`;
     if (operatorTakesNoValue(op)) continue;
     if (operatorTakesList(op)) {
       if (!Array.isArray(value) || value.length === 0) return `${label}: add at least one value.`;

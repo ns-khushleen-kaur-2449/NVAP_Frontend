@@ -98,7 +98,8 @@ export default function useFilterBuilder() {
   };
 
   const atLimit = conditions.length >= MAX_CONDITIONS;
-  const incomplete = findIncompleteCondition(conditions);
+  // Until the field list has loaded, only the basic checks can run.
+  const incomplete = findIncompleteCondition(conditions, fields ? fieldsByKey : null);
 
   const addCondition = () => {
     if (atLimit || !fields?.length) return;

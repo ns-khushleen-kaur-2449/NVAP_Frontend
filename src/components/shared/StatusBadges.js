@@ -1,9 +1,10 @@
 import { Badge } from '@/components/ui/badge';
-import { STAGE_COLORS, PRIORITY_COLORS } from '@/lib/utils';
+import { STAGE_COLORS, PRIORITY_COLORS, normalizeStage } from '@/lib/utils';
 
-export const StageBadge = ({ stage }) => {
+export const StageBadge = ({ stage: raw }) => {
+  const stage = normalizeStage(raw);
   const classes = STAGE_COLORS[stage] || STAGE_COLORS.new;
-  const label = stage?.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase()) || 'Unknown';
+  const label = stage ? stage.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : 'Unknown';
   return (
     <Badge variant="outline" className={`${classes} text-xs px-2 py-0.5`}>
       {label}

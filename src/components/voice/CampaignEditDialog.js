@@ -5,7 +5,8 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { getLeads, updateVoiceCampaign } from '@/lib/api';
+import { getProspects, updateVoiceCampaign } from '@/lib/api';
+import { toLeadRow } from '@/lib/prospects';
 import { toast } from 'sonner';
 import { Loader2, Search } from 'lucide-react';
 import {
@@ -53,15 +54,15 @@ export default function CampaignEditDialog({ campaign, open, onOpenChange, onSav
     setStartTime(zoned.time);
     setCallingWindow(campaign.calling_window || null);
     setConfig({ ...DEFAULT_CONFIG, ...(campaign.calling_config || {}) });
-    setLeadIds(new Set((campaign.leads || []).map((l) => l.lead_id)));
+    setLeadIds(new Set((campaign.prospects || []).map((l) => l.prospect_id)));
     setLeadQuery('');
   }, [open, campaign]);
 
   useEffect(() => {
     if (!open || !leadsEditable) return;
     setLoadingLeads(true);
-    getLeads({ limit: 1000 })
-      .then((res) => setAllLeads(res.data?.leads || []))
+    getProspects({ leads_only: true, limit: 1000 })
+      .then((res) => setAllLeads((res.data?.prospects || []).map(toLeadRow)))
       .catch(() => setAllLeads([]))
       .finally(() => setLoadingLeads(false));
   }, [open, leadsEditable]);
@@ -69,8 +70,8 @@ export default function CampaignEditDialog({ campaign, open, onOpenChange, onSav
   // Current campaign leads first, then the rest; both filtered by the search box.
   const leadOptions = useMemo(() => {
     const known = new Map(allLeads.map((l) => [l.id, { id: l.id, name: l.name, phone: l.phone }]));
-    for (const l of campaign?.leads || []) {
-      if (!known.has(l.lead_id)) known.set(l.lead_id, { id: l.lead_id, name: l.name, phone: l.phone });
+    for (const l of campaign?.prospects || []) {
+      if (!known.has(l.prospect_id)) known.set(l.prospect_id, { id: l.prospect_id, name: l.name, phone: l.phone });
     }
     const q = leadQuery.trim().toLowerCase();
     return [...known.values()]
@@ -117,9 +118,9 @@ export default function CampaignEditDialog({ campaign, open, onOpenChange, onSav
     }
     if (leadsEditable) {
       if (leadIds.size === 0) { toast.error('Keep at least one lead in the campaign.'); return; }
-      const current = new Set((campaign.leads || []).map((l) => l.lead_id));
+      const current = new Set((campaign.prospects || []).map((l) => l.prospect_id));
       const changed = current.size !== leadIds.size || [...leadIds].some((id) => !current.has(id));
-      if (changed) body.lead_ids = Array.from(leadIds);
+      if (changed) body.prospect_ids = Array.from(leadIds);
     }
     setSaving(true);
     try {

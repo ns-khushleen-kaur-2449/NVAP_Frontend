@@ -12,14 +12,15 @@ import AgentToolsPanel from './AgentToolsPanel';
 import {
   User, Building2, MessageSquare, ShieldCheck, Book, StickyNote, Cpu,
   Loader2, Plus, X, ListRestart, Save, Rocket, RotateCcw, AlertTriangle,
-  CheckCircle2, FileEdit, History, Wrench,
+  CheckCircle2, FileEdit, History, Wrench, Sparkles,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   listBuilderConfigs, getBuilderConfig, createBuilderConfig, updateBuilderConfig,
   previewBuilderConfig, publishBuilderConfig, rollbackBuilderConfig, retryBuilderConfig,
-  getKnowledgeFiles, listAssistantTools,
+  getKnowledgeFiles, listAssistantTools, getCatalogItems,
 } from '../../lib/api';
+import { formatCurrency } from '../../lib/utils';
 
 // Option values mirror the backend contract in
 // app/schemas/requests/assistant_builder.py and the vocabularies in
@@ -28,6 +29,14 @@ const LANGUAGES = [
   { value: 'en', label: 'English' },
   { value: 'hi', label: 'Hindi' },
 ];
+const PITCH_MODES = [
+  { value: 'none', label: 'Nothing specific', hint: 'Just understand what they need' },
+  { value: 'selected', label: 'Pick from catalog', hint: 'Choose the cars to feature' },
+  { value: 'latest', label: 'Newest arrivals', hint: 'The latest cars in your catalog' },
+  { value: 'custom', label: 'Write my own', hint: 'Offers or points to talk about' },
+];
+const PITCH_MAX_ITEMS = 10;
+const TALKING_POINTS_MAX = 2000;
 const GOALS = [
   { value: 'qualify_leads', label: 'Qualify leads', hint: 'Understand needs, suggest options, offer a visit' },
   { value: 'book_appointment', label: 'Book appointments', hint: 'Go straight to scheduling a visit' },
@@ -86,8 +95,9 @@ const defaultForm = () => ({
     tone: 'friendly',
     sales_approach: 'consultative',
     conversation_length: 'balanced',
+    first_message: '',
   },
-  business: { company: '', vertical: 'automobile', locations: [] },
+  business: { company: '', vertical: 'automobile', locations: [], description: '' },
   target_customer: '',
   qualification: [],
   rules: {
@@ -97,6 +107,7 @@ const defaultForm = () => ({
     transfer_on_request: true,
   },
   knowledge_ids: [],
+  pitch: { mode: 'none', item_ids: [], latest_count: 2, talking_points: '' },
   voice_stack: { stt: 'deepgram-nova-3', llm: 'groq', tts: '11labs' },
   custom_instructions: '',
 });
@@ -108,22 +119,35 @@ const formFromPayload = (payload) => {
   return {
     ...base,
     ...payload,
-    assistant: { ...base.assistant, ...(payload.assistant || {}) },
-    business: { ...base.business, ...(payload.business || {}) },
+    assistant: { ...base.assistant, ...(payload.assistant || {}), first_message: payload.assistant?.first_message || '' },
+    business: { ...base.business, ...(payload.business || {}), description: payload.business?.description || '' },
     rules: { ...base.rules, ...(payload.rules || {}) },
     voice_stack: { ...base.voice_stack, ...(payload.voice_stack || {}) },
+    pitch: {
+      ...base.pitch,
+      ...(payload.pitch || {}),
+      item_ids: (payload.pitch?.item_ids || []).map(String),
+      talking_points: payload.pitch?.talking_points || '',
+    },
     custom_instructions: payload.custom_instructions || '',
   };
 };
 
 // The exact AssistantBuilderConfig shape (the backend forbids unknown top-level fields).
 const toPayload = (form) => ({
-  assistant: { ...form.assistant, name: form.assistant.name.trim() },
-  business: { ...form.business, company: form.business.company.trim() },
+  assistant: { ...form.assistant, name: form.assistant.name.trim(), first_message: form.assistant.first_message.trim() || null },
+  business: { ...form.business, company: form.business.company.trim(), description: form.business.description.trim() || null },
   target_customer: form.target_customer.trim(),
   qualification: form.qualification,
   rules: form.rules,
   knowledge_ids: form.knowledge_ids,
+  // The server fills pitch.items (names) from the tenant's catalog when it saves.
+  pitch: {
+    mode: form.pitch.mode,
+    item_ids: form.pitch.mode === 'selected' ? form.pitch.item_ids : [],
+    latest_count: form.pitch.latest_count,
+    talking_points: form.pitch.mode === 'none' ? null : form.pitch.talking_points.trim() || null,
+  },
   voice_stack: form.voice_stack,
   custom_instructions: form.custom_instructions.trim() || null,
 });
@@ -132,6 +156,7 @@ const missingFields = (form) => [
   !form.assistant.name.trim() && 'Agent name',
   !form.business.company.trim() && 'Company',
   !form.target_customer.trim() && 'Target customer',
+  form.pitch.mode === 'selected' && !form.pitch.item_ids.length && 'Cars to feature',
 ].filter(Boolean);
 
 const errorDetail = (e, fallback) => {
@@ -278,6 +303,7 @@ export default function AssistantBuilder() {
   const previewSeq = useRef(0);
 
   const [knowledgeFiles, setKnowledgeFiles] = useState([]);
+  const [catalogItems, setCatalogItems] = useState([]);
 
   const payload = useMemo(() => toPayload(form), [form]);
   const payloadKey = useMemo(() => JSON.stringify(payload), [payload]);
@@ -305,6 +331,9 @@ export default function AssistantBuilder() {
     getKnowledgeFiles()
       .then((res) => setKnowledgeFiles(res.data || []))
       .catch(() => setKnowledgeFiles([]));
+    getCatalogItems()
+      .then((res) => setCatalogItems(res.data?.items || []))
+      .catch(() => setCatalogItems([]));
   }, [view]);
 
   // Live prompt preview, debounced. Stale responses are dropped by sequence number.
@@ -586,6 +615,18 @@ export default function AssistantBuilder() {
                   ))}
                 </div>
               </Field>
+              <Field label="Opening line" hint="What the agent says the moment the call connects. Leave empty for a warm greeting built from your business details.">
+                <Textarea
+                  value={form.assistant.first_message}
+                  maxLength={500}
+                  onChange={(e) => update('assistant.first_message', e.target.value)}
+                  placeholder={preview?.first_message || "e.g. Hi there! This is Riya from Apex Motors. Is this a good time to chat?"}
+                  className="bg-muted border-border min-h-[70px] resize-none"
+                />
+                {!form.assistant.first_message.trim() && preview?.first_message && (
+                  <p className="text-[11px] text-muted-foreground mt-1">Will say: “{preview.first_message}”</p>
+                )}
+              </Field>
             </Section>
 
             <Section icon={Building2} title="Business" description="Facts the agent can say about your business">
@@ -599,6 +640,9 @@ export default function AssistantBuilder() {
               </div>
               <Field label="Locations" hint="Press Enter after each branch. The agent offers these when booking a visit.">
                 <TagInput values={form.business.locations} onChange={(v) => update('business.locations', v.slice(0, 50))} placeholder="e.g. Solan" />
+              </Field>
+              <Field label="About the company" hint="One line the agent says about you when it introduces itself.">
+                <Input value={form.business.description} maxLength={300} onChange={(e) => update('business.description', e.target.value)} placeholder="e.g. We've helped over ten thousand families in Himachal find their perfect car" className="bg-muted border-border" />
               </Field>
               <Field label="Target customer" required hint="Who you sell to, in a sentence.">
                 <Textarea value={form.target_customer} maxLength={2000} onChange={(e) => update('target_customer', e.target.value)} placeholder="e.g. Families and first-time car buyers in Himachal" className="bg-muted border-border min-h-[80px] resize-none" />
@@ -636,6 +680,89 @@ export default function AssistantBuilder() {
                   suggestions={QUALIFICATION_SUGGESTIONS[form.business.vertical] || []}
                 />
               </Field>
+            </Section>
+
+            <Section icon={Sparkles} title="What to pitch" description="What the agent should bring up with the customer. Only names are shared; prices and stock still come from the catalog.">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {PITCH_MODES.map((m) => (
+                  <button
+                    key={m.value}
+                    type="button"
+                    onClick={() => update('pitch.mode', m.value)}
+                    className={`text-left rounded-lg border p-3 transition-colors ${form.pitch.mode === m.value ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/40'}`}
+                  >
+                    <p className="text-sm font-medium">{m.label}</p>
+                    <p className="text-[11px] text-muted-foreground mt-1">{m.hint}</p>
+                  </button>
+                ))}
+              </div>
+              {(form.pitch.mode === 'selected' || form.pitch.mode === 'latest') && catalogItems.length === 0 && (
+                <p className="text-sm text-muted-foreground">Your catalog is empty. Import a catalog first to pitch specific cars.</p>
+              )}
+              {form.pitch.mode === 'selected' && catalogItems.length > 0 && (
+                <Field label={`Cars to feature (${form.pitch.item_ids.length}/${PITCH_MAX_ITEMS})`} hint="The agent brings up whichever one fits what the customer needs.">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-72 overflow-y-auto pr-1">
+                    {catalogItems.map((item) => {
+                      const selected = form.pitch.item_ids.includes(item.id);
+                      const full = !selected && form.pitch.item_ids.length >= PITCH_MAX_ITEMS;
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          disabled={full}
+                          onClick={() => update('pitch.item_ids', selected ? form.pitch.item_ids.filter((id) => id !== item.id) : [...form.pitch.item_ids, item.id])}
+                          className={`flex items-start gap-2 text-left rounded-lg border px-3 py-2 transition-colors disabled:opacity-50 ${selected ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/40'}`}
+                        >
+                          {selected ? <CheckCircle2 className="w-4 h-4 mt-0.5 text-primary shrink-0" /> : <Sparkles className="w-4 h-4 mt-0.5 text-muted-foreground shrink-0" />}
+                          <span className="min-w-0">
+                            <span className="block text-sm truncate">{item.name}</span>
+                            <span className="block text-[11px] text-muted-foreground capitalize">
+                              {[`₹${formatCurrency(item.price)}`, item.attrs?.fuel_type, item.attrs?.body_type].filter(Boolean).join(' · ')}
+                            </span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </Field>
+              )}
+              {form.pitch.mode === 'latest' && catalogItems.length > 0 && (
+                <Field label="How many" hint="Newest first, as of when you save. Save again after adding cars to refresh the list.">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <div className="inline-flex rounded-lg border border-border p-0.5 bg-muted">
+                      {[1, 2, 3, 4, 5].map((n) => (
+                        <button
+                          key={n}
+                          type="button"
+                          onClick={() => update('pitch.latest_count', n)}
+                          className={`px-3 py-1.5 text-sm rounded-md transition-colors ${form.pitch.latest_count === n ? 'bg-card shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground'}`}
+                        >
+                          {n}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {catalogItems.slice(0, form.pitch.latest_count).map((item) => (
+                        <Badge key={item.id} variant="secondary">{item.name}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                </Field>
+              )}
+              {form.pitch.mode !== 'none' && (
+                <Field
+                  label={form.pitch.mode === 'custom' ? 'What should the agent talk about?' : 'Anything else to highlight (optional)'}
+                  hint="Offers, launches, USPs. Brought up naturally where they fit. The agent still won't quote prices."
+                >
+                  <Textarea
+                    value={form.pitch.talking_points}
+                    maxLength={TALKING_POINTS_MAX}
+                    onChange={(e) => update('pitch.talking_points', e.target.value)}
+                    placeholder="e.g. Free first service this month. Zero processing fee on car loans. New EV charging point at the Mohali showroom."
+                    className="bg-muted border-border min-h-[90px]"
+                  />
+                </Field>
+              )}
             </Section>
 
             <Section icon={ShieldCheck} title="Guardrails" description="Protected rules layered on top of the core safety rules">
@@ -722,6 +849,12 @@ export default function AssistantBuilder() {
                     <p className="text-sm text-red-600">{previewError}</p>
                   ) : preview ? (
                     <>
+                      {preview.first_message && (
+                        <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
+                          <p className="text-[11px] font-medium text-muted-foreground uppercase mb-1">Opening line</p>
+                          <p className="text-sm">“{preview.first_message}”</p>
+                        </div>
+                      )}
                       <pre className="whitespace-pre-wrap text-xs leading-relaxed font-mono bg-muted rounded-lg p-3 border border-border">{preview.prompt}</pre>
                       <div>
                         <p className="text-xs font-medium uppercase text-muted-foreground mb-2 flex items-center gap-1.5">

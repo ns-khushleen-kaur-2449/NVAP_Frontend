@@ -5,7 +5,7 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { ChevronDown, ChevronUp, Loader2, UserPlus } from 'lucide-react';
-import { createLead } from '../../lib/api';
+import { createProspect } from '../../lib/api';
 import { toast } from 'sonner';
 
 // Dial codes, most-used first. `value` is the id Select needs; `dial` is what
@@ -101,28 +101,21 @@ export default function AddLeadDialog({ open, onOpenChange, onCreated }) {
     try {
       const digits = form.phone.replace(/\D/g, '');
       const payload = {
-        name: form.name.trim(),
+        full_name: form.name.trim(),
         // Stored E.164 so the dialler never has to guess the country.
         phone: `${dialFor(form.countryCode)}${digits}`,
-        lead_source: form.lead_source || 'manual',
+        source: form.lead_source || 'manual',
+        custom_fields: {},
       };
+      const filled = (value) => value && value.trim();
+      if (filled(form.email)) payload.email = form.email.trim();
+      if (filled(form.lead_owner)) payload.lead_owner = form.lead_owner.trim();
+      // Details with no prospect column go to custom_fields, only when filled.
+      Object.entries({ city: form.city, project: form.project, budget_range: form.budget_range, timeline: form.timeline })
+        .forEach(([key, value]) => { if (filled(value)) payload.custom_fields[key] = value.trim(); });
 
-      // Send optional fields only when filled, so blanks do not overwrite
-      // anything downstream with empty strings.
-      const optional = {
-        email: form.email,
-        city: form.city,
-        project: form.project,
-        budget_range: form.budget_range,
-        timeline: form.timeline,
-        lead_owner: form.lead_owner,
-      };
-      Object.entries(optional).forEach(([key, value]) => {
-        if (value && value.trim()) payload[key] = value.trim();
-      });
-
-      await createLead(payload);
-      toast.success(`${payload.name} added`);
+      await createProspect(payload);
+      toast.success(`${payload.full_name} added`);
       reset();
       onOpenChange(false);
       if (onCreated) await onCreated();

@@ -11,12 +11,13 @@ import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
 import { Plus, Search, Sparkles, CalendarPlus, X, ChevronRight, Users, Download, UserCog, ArrowRight, HelpCircle } from 'lucide-react';
 import {
-  getLeads, createLead, getLeadEvents, qualifyLead,
+  getProspects, createProspect, getProspectStageEvents, qualifyLead,
   getProperties, createSiteVisit,
   bulkQualifyLeads, bulkAssignLeads, bulkUpdateStage,
   exportLeadsCSV, downloadBlob
 } from '@/lib/api';
 import { formatCurrency, STAGE_OPTIONS } from '@/lib/utils';
+import { toLeadRow, stageEventsToTimeline } from '@/lib/prospects';
 import { StageBadge, PriorityBadge, StatusBadge } from '@/components/shared/StatusBadges';
 import { ScoreGauge } from '@/components/shared/ScoreGauge';
 import { Timeline } from '@/components/shared/Timeline';
@@ -75,11 +76,12 @@ export default function LeadsPage() {
 
   const fetchLeads = useCallback(async () => {
     try {
-      const params = {};
+      // Leads are prospects with a lead mapping or at QUALIFIED/CONVERTED.
+      const params = { leads_only: true, limit: 500 };
       if (search) params.search = search;
       if (stageFilter && stageFilter !== 'all') params.stage = stageFilter;
-      const r = await getLeads(params);
-      setLeads(r.data.leads);
+      const r = await getProspects(params);
+      setLeads(r.data.prospects.map(toLeadRow));
       setTotal(r.data.total);
     } catch (e) { console.error(e); }
     setLoading(false);
@@ -90,8 +92,8 @@ export default function LeadsPage() {
   const selectLead = async (lead) => {
     setSelectedLead(lead);
     try {
-      const r = await getLeadEvents(lead.id);
-      setEvents(r.data);
+      const r = await getProspectStageEvents(lead.id);
+      setEvents(stageEventsToTimeline(r.data));
     } catch (e) { setEvents([]); }
   };
 
@@ -103,8 +105,8 @@ export default function LeadsPage() {
       setSelectedLead(r.data.lead);
       toast.success(`Lead scored: ${r.data.qualification.score}/100`);
       fetchLeads();
-      const evts = await getLeadEvents(selectedLead.id);
-      setEvents(evts.data);
+      const evts = await getProspectStageEvents(selectedLead.id);
+      setEvents(stageEventsToTimeline(evts.data));
     } catch (e) {
       toast.error('Qualification failed: ' + (e.response?.data?.detail || e.message));
     }
@@ -113,16 +115,19 @@ export default function LeadsPage() {
 
   const handleCreate = async () => {
     try {
-      const data = { ...newLead };
-      if (data.phone) {
-        const trimmed = data.phone.trim();
-        data.phone = trimmed.startsWith('+') ? trimmed : `${countryCode}${trimmed}`;
-      }
-      if (data.budget_min) data.budget_min = parseFloat(data.budget_min);
-      else delete data.budget_min;
-      if (data.budget_max) data.budget_max = parseFloat(data.budget_max);
-      else delete data.budget_max;
-      await createLead(data);
+      const { name, email, phone, source, budget_min, budget_max, ...rest } = newLead;
+      const trimmed = (phone || '').trim();
+      // Details with no prospect column are kept in custom_fields.
+      const custom_fields = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== ''));
+      if (budget_min) custom_fields.budget_min = parseFloat(budget_min);
+      if (budget_max) custom_fields.budget_max = parseFloat(budget_max);
+      await createProspect({
+        full_name: name.trim(),
+        email: email || null,
+        phone: trimmed ? (trimmed.startsWith('+') ? trimmed : `${countryCode}${trimmed}`) : null,
+        source: source || 'manual',
+        custom_fields,
+      });
       toast.success('Lead created');
       setShowCreate(false);
       setNewLead({ name: '', email: '', phone: '', source: 'website', project: '', category: '', sub_category: '', budget_min: '', budget_max: '', location_preference: '', timeline: '', employment: '' });
@@ -144,8 +149,8 @@ export default function LeadsPage() {
       toast.success('Site visit scheduled');
       setShowVisitDialog(false);
       setVisitForm({ property_id: '', scheduled_at: '', notes: '' });
-      const evts = await getLeadEvents(selectedLead.id);
-      setEvents(evts.data);
+      const evts = await getProspectStageEvents(selectedLead.id);
+      setEvents(stageEventsToTimeline(evts.data));
     } catch (e) {
       toast.error('Failed to schedule visit');
     }

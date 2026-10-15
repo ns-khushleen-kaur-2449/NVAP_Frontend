@@ -10,7 +10,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { Phone, Plus, Sparkles, Clock, X, PhoneIncoming, PhoneOutgoing, AlertTriangle, Download, HelpCircle } from 'lucide-react';
-import { getCalls, createCall, getCall, summarizeCall, getLeads, exportCallsCSV, downloadBlob } from '@/lib/api';
+import { getCalls, createCall, getCall, summarizeCall, getProspects, exportCallsCSV, downloadBlob } from '@/lib/api';
+import { toLeadRow } from '@/lib/prospects';
 import { formatDuration, formatDateTime, timeAgo } from '@/lib/utils';
 import { StatusBadge } from '@/components/shared/StatusBadges';
 import { ScoreGauge } from '@/components/shared/ScoreGauge';
@@ -86,8 +87,8 @@ export default function CallsPage() {
 
   const openCreateDialog = async () => {
     try {
-      const r = await getLeads({});
-      setLeads(r.data.leads);
+      const r = await getProspects({ leads_only: true, limit: 1000 });
+      setLeads(r.data.prospects.map(toLeadRow));
     } catch (e) { setLeads([]); }
     setShowCreate(true);
   };

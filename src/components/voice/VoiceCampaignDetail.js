@@ -106,7 +106,7 @@ function CampaignOverview({ campaign }) {
   const creator = personLabel(campaign.created_by_user, campaign.created_by);
   const editor = personLabel(campaign.updated_by_user, campaign.updated_by);
   const starter = personLabel(campaign.started_by_user, campaign.started_by);
-  const leads = campaign.leads || [];
+  const leads = campaign.prospects || [];
   return (
     <Card className="bg-card border-border">
       <CardContent className="p-4 space-y-4">
@@ -167,7 +167,7 @@ function CampaignOverview({ campaign }) {
             <div className="flex flex-wrap gap-1.5">
               {leads.map((lead) => (
                 <span
-                  key={lead.lead_id}
+                  key={lead.prospect_id}
                   title={[lead.phone, lead.email, lead.stage].filter(Boolean).join(' · ')}
                   className="inline-flex items-center gap-1.5 rounded-full border border-border bg-[hsl(var(--surface-2))] px-2.5 py-1 text-[11px]"
                 >
@@ -176,9 +176,9 @@ function CampaignOverview({ campaign }) {
                 </span>
               ))}
             </div>
-            {campaign.skipped_lead_ids?.length > 0 && (
+            {campaign.skipped_prospect_ids?.length > 0 && (
               <p className="text-[11px] text-muted-foreground">
-                {campaign.skipped_lead_ids.length} selected lead(s) were skipped for having no valid phone number.
+                {campaign.skipped_prospect_ids.length} selected lead(s) were skipped for having no valid phone number.
               </p>
             )}
           </div>

@@ -87,7 +87,7 @@ export default function CampaignLaunchDialog({ open, onOpenChange, source, assis
       ...(scheduledAt ? { scheduled_at: scheduledAt } : {}),
       ...(source.type === 'csv'
         ? { contacts: source.contacts, source_filename: source.filename }
-        : { lead_ids: source.leadIds }),
+        : { prospect_ids: source.leadIds }),
     };
 
     setSubmitting(true);

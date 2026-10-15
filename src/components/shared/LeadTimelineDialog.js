@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Timeline } from '@/components/shared/Timeline';
-import { getLeadEvents } from '@/lib/api';
+import { getProspectStageEvents } from '@/lib/api';
+import { stageEventsToTimeline } from '@/lib/prospects';
 
 export default function LeadTimelineDialog({ leadId, leadName, open, onOpenChange }) {
   const [events, setEvents] = useState([]);
@@ -10,7 +11,7 @@ export default function LeadTimelineDialog({ leadId, leadName, open, onOpenChang
   useEffect(() => {
     if (!open || !leadId) return;
     setLoading(true);
-    getLeadEvents(leadId).then((r) => setEvents(r.data || [])).catch(() => setEvents([])).finally(() => setLoading(false));
+    getProspectStageEvents(leadId).then((r) => setEvents(stageEventsToTimeline(r.data || []))).catch(() => setEvents([])).finally(() => setLoading(false));
   }, [open, leadId]);
 
   return (

@@ -76,13 +76,15 @@ export const listUsers = () => authApi.get('/api/auth/users');
 export const getDashboardStats = () => api.get('/api/dashboard/stats');
 export const getSystemHealth = () => api.get('/api/admin/system-health');
 
-// ── Leads ──
-export const getLeads = (params) => api.get('/api/leads', { params });
-export const getLead = (id) => api.get(`/api/leads/${id}`);
-export const createLead = (data) => api.post('/api/leads', data);
-export const updateLead = (id, data) => api.put(`/api/leads/${id}`, data);
-export const deleteLead = (id) => api.delete(`/api/leads/${id}`);
-export const getLeadEvents = (id) => api.get(`/api/leads/${id}/events`);
+// ── Prospects (the only person record; "leads" are prospects with leads_only=true) ──
+export const getProspects = (params) => api.get('/api/v1/prospects', { params });
+export const getProspect = (id) => api.get(`/api/v1/prospects/${id}`);
+export const createProspect = (data, params) => api.post('/api/v1/prospects', data, { params });
+export const updateProspect = (id, data) => api.patch(`/api/v1/prospects/${id}`, data);
+export const deleteProspect = (id) => api.delete(`/api/v1/prospects/${id}`);
+export const changeProspectStage = (id, stage, reason) =>
+  api.post(`/api/v1/prospects/${id}/stage`, { stage: String(stage).toUpperCase(), reason });
+export const getProspectStageEvents = (id) => api.get(`/api/v1/prospects/${id}/stage-events`);
 export const createLeadEvent = (data) => api.post('/api/lead-events', data);
 
 // ── Properties ──
@@ -209,7 +211,7 @@ export const summarizeCall = (id) => api.post(`/api/agents/call-summarize/${id}`
 // ── Voice campaigns: one campaign API for selected leads and uploaded files ──
 // data: { name, description, notes, assistant_id, timezone, calling_window,
 //         calling_config, start: 'now'|'scheduled'|'draft', scheduled_at,
-//         lead_ids | contacts, source_filename }
+//         prospect_ids | contacts, source_filename }
 export const createVoiceCampaign = (data) => api.post('/api/campaigns', data);
 // Parses a CSV/XLSX without storing anything; returns { filename, total, skipped_rows, contacts }.
 export const previewCampaignCsv = (file) => {
@@ -293,6 +295,7 @@ export const uploadKnowledgeFile = (assistantId, file) => {
 export const getKnowledgeFiles = () => api.get('/api/v1/assistants/knowledge-base/files');
 
 // ── Assistant Builder (guided, versioned configs published to Vapi) ──
+export const getCatalogItems = () => api.get('/api/v1/catalog/items');
 export const previewBuilderConfig = (data) => api.post('/api/v1/assistant-builder/preview', data);
 export const listBuilderConfigs = () => api.get('/api/v1/assistant-builder/configs');
 export const getBuilderConfig = (id) => api.get(`/api/v1/assistant-builder/configs/${id}`);
@@ -346,10 +349,18 @@ export const getAgentRuns = (params) => api.get('/api/agent-runs', { params });
 export const getAgentRunStats = () => api.get('/api/agent-runs/stats');
 export const retryAgentRun = (id) => api.post(`/api/agent-runs/${id}/retry`);
 
-// ── Bulk Actions ──
-export const bulkQualifyLeads = (lead_ids) => api.post('/api/leads/bulk/qualify', { lead_ids });
-export const bulkAssignLeads = (lead_ids, assigned_to) => api.post('/api/leads/bulk/assign', { lead_ids, assigned_to });
-export const bulkUpdateStage = (lead_ids, stage) => api.post('/api/leads/bulk/stage', { lead_ids, stage });
+// ── Bulk Actions (one request per prospect; there is no bulk endpoint) ──
+const runBulk = async (ids, action, verb) => {
+  const results = await Promise.allSettled(ids.map(action));
+  const success = results.filter((r) => r.status === 'fulfilled').length;
+  return { data: { success, total: ids.length, message: `${verb} ${success}/${ids.length} prospects` } };
+};
+export const bulkQualifyLeads = (ids) =>
+  runBulk(ids, (id) => changeProspectStage(id, 'QUALIFIED', 'Bulk qualify'), 'Qualified');
+export const bulkAssignLeads = (ids, assigned_to) =>
+  runBulk(ids, (id) => updateProspect(id, { assigned_to }), 'Assigned');
+export const bulkUpdateStage = (ids, stage) =>
+  runBulk(ids, (id) => changeProspectStage(id, stage, 'Bulk stage update'), 'Updated');
 
 // ── CSV Export ──
 export const exportLeadsCSV = () => api.get('/api/export/leads', { responseType: 'blob' });

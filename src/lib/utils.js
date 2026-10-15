@@ -73,20 +73,33 @@ export function getScoreLabel(score) {
   return 'Low';
 }
 
+// Prospect stages (backend ProspectStatus, lowercase as the Leads API returns them).
 export const STAGE_OPTIONS = [
   { value: 'new', label: 'New' },
   { value: 'contacted', label: 'Contacted' },
+  { value: 'engaged', label: 'Engaged' },
   { value: 'qualified', label: 'Qualified' },
-  { value: 'site_visit', label: 'Site Visit' },
-  { value: 'negotiation', label: 'Negotiation' },
-  { value: 'closed_won', label: 'Closed Won' },
-  { value: 'closed_lost', label: 'Closed Lost' },
+  { value: 'converted', label: 'Converted' },
+  { value: 'disqualified', label: 'Disqualified' },
+  { value: 'do_not_contact', label: 'Do Not Contact' },
 ];
+
+// Old lead stages read as prospect stages.  site_visit and negotiation are not mapped
+// (candidate stages awaiting business sign-off) and show as they are.
+const LEGACY_STAGES = { closed_won: 'converted', closed_lost: 'disqualified' };
+export const normalizeStage = (stage) => {
+  const value = (stage || '').toLowerCase();
+  return LEGACY_STAGES[value] || value;
+};
 
 export const STAGE_COLORS = {
   new: 'bg-[hsla(199,70%,45%,0.18)] text-[hsl(199,70%,65%)] border border-[hsla(199,70%,45%,0.25)]',
   contacted: 'bg-[hsla(215,60%,50%,0.18)] text-[hsl(215,60%,70%)] border border-[hsla(215,60%,50%,0.25)]',
+  engaged: 'bg-[hsla(250,60%,55%,0.18)] text-[hsl(250,60%,72%)] border border-[hsla(250,60%,55%,0.25)]',
   qualified: 'bg-[hsla(173,80%,36%,0.18)] text-[hsl(173,80%,55%)] border border-[hsla(173,80%,36%,0.25)]',
+  converted: 'bg-[hsla(158,64%,42%,0.18)] text-[hsl(158,64%,55%)] border border-[hsla(158,64%,42%,0.25)]',
+  disqualified: 'bg-[hsla(0,72%,52%,0.16)] text-[hsl(0,72%,70%)] border border-[hsla(0,72%,52%,0.22)]',
+  do_not_contact: 'bg-[hsla(222,22%,40%,0.3)] text-[hsl(215,20%,70%)] border border-[hsla(222,22%,40%,0.35)]',
   site_visit: 'bg-[hsla(38,55%,62%,0.18)] text-[hsl(38,55%,72%)] border border-[hsla(38,55%,62%,0.25)]',
   negotiation: 'bg-[hsla(280,60%,50%,0.18)] text-[hsl(280,60%,70%)] border border-[hsla(280,60%,50%,0.25)]',
   closed_won: 'bg-[hsla(158,64%,42%,0.18)] text-[hsl(158,64%,55%)] border border-[hsla(158,64%,42%,0.25)]',

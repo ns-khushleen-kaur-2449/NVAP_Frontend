@@ -7,7 +7,8 @@ import { Textarea } from '../components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { toast } from 'sonner';
-import { getLeads, getProperties, getAssistants, previewCampaignCsv, getCsvCallResults, initiateSmartsdrCall, createKnowledgeBase, getKnowledgeFiles, getDashboardStats, getSystemHealth, getVoiceCallStats } from '../lib/api';
+import { getProspects, getProperties, getAssistants, previewCampaignCsv, getCsvCallResults, initiateSmartsdrCall, createKnowledgeBase, getKnowledgeFiles, getDashboardStats, getSystemHealth, getVoiceCallStats } from '../lib/api';
+import { toLeadRow } from '../lib/prospects';
 import CallLogsList from '../components/voice/CallLogsList';
 import LeadCampaignBuilder from '../components/voice/LeadCampaignBuilder';
 import CampaignLaunchDialog from '../components/voice/CampaignLaunchDialog';
@@ -107,8 +108,8 @@ export default function VoiceAgentPage() {
 
   const refreshLeads = useCallback(async () => {
     try {
-      const res = await getLeads({ limit: 1000 });
-      setLeads(res.data?.leads || []);
+      const res = await getProspects({ leads_only: true, limit: 1000 });
+      setLeads((res.data?.prospects || []).map(toLeadRow));
     } catch (err) {
       console.error('Failed to refresh leads:', err);
     }
@@ -119,13 +120,13 @@ export default function VoiceAgentPage() {
       setLoadingCampaignData(true);
       try {
         const [leadsRes, propsRes, assistantsRes] = await Promise.allSettled([
-          getLeads({ limit: 1000 }),
+          getProspects({ leads_only: true, limit: 1000 }),
           getProperties({}),
           getAssistants().catch(() => ({ data: [] }))
         ]);
 
         if (leadsRes.status === 'fulfilled') {
-          setLeads(leadsRes.value.data?.leads || []);
+          setLeads((leadsRes.value.data?.prospects || []).map(toLeadRow));
         } else {
           setLeads([]);
         }

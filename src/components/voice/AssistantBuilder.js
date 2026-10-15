@@ -8,6 +8,7 @@ import { Switch } from '../ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { ScrollArea } from '../ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
+import AgentToolsPanel from './AgentToolsPanel';
 import {
   User, Building2, MessageSquare, ShieldCheck, Book, StickyNote, Cpu,
   Loader2, Plus, X, ListRestart, Save, Rocket, RotateCcw, AlertTriangle,
@@ -17,7 +18,7 @@ import { toast } from 'sonner';
 import {
   listBuilderConfigs, getBuilderConfig, createBuilderConfig, updateBuilderConfig,
   previewBuilderConfig, publishBuilderConfig, rollbackBuilderConfig, retryBuilderConfig,
-  getKnowledgeFiles,
+  getKnowledgeFiles, listAssistantTools,
 } from '../../lib/api';
 
 // Option values mirror the backend contract in
@@ -255,6 +256,16 @@ export default function AssistantBuilder() {
   const [loadingList, setLoadingList] = useState(false);
 
   const [config, setConfig] = useState(null); // BuilderConfigResponse of the config being edited
+  // Platform tools attached to the published agent (managed in the Tools tab).
+  const [attachedTools, setAttachedTools] = useState([]);
+  const assistantId = config?.assistant_id;
+  const loadAttachedTools = useCallback(() => {
+    if (!assistantId) { setAttachedTools([]); return; }
+    listAssistantTools(assistantId)
+      .then((res) => setAttachedTools(res.data.filter((t) => t.attached)))
+      .catch(() => setAttachedTools([]));
+  }, [assistantId]);
+  useEffect(() => { loadAttachedTools(); }, [loadAttachedTools]);
   const [form, setForm] = useState(defaultForm);
   const [savedSnapshot, setSavedSnapshot] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -348,6 +359,16 @@ export default function AssistantBuilder() {
       setView('editor');
     } catch (e) {
       toast.error(errorDetail(e, 'Failed to load agent'));
+    }
+  };
+
+  // Re-read the config's Vapi version info only; keeps any unsaved edits in the form.
+  const refreshVapiState = async (id) => {
+    try {
+      const res = await getBuilderConfig(id);
+      setConfig(res.data);
+    } catch {
+      /* not critical */
     }
   };
 
@@ -682,9 +703,10 @@ export default function AssistantBuilder() {
 
         <div className="w-[420px] shrink-0 hidden lg:flex flex-col bg-card">
           <Tabs defaultValue="prompt" className="flex flex-col h-full">
-            <TabsList className="m-3 mb-0 grid grid-cols-2">
+            <TabsList className="m-3 mb-0 grid grid-cols-3">
               <TabsTrigger value="prompt">Generated prompt</TabsTrigger>
               <TabsTrigger value="versions" disabled={!config}>Versions</TabsTrigger>
+              <TabsTrigger value="tools" disabled={!config?.assistant_id}>Tools</TabsTrigger>
             </TabsList>
 
             <TabsContent value="prompt" className="flex-1 min-h-0 mt-0">
@@ -705,18 +727,30 @@ export default function AssistantBuilder() {
                         <p className="text-xs font-medium uppercase text-muted-foreground mb-2 flex items-center gap-1.5">
                           <Wrench className="w-3.5 h-3.5" /> Tools
                         </p>
-                        {preview.tools?.length ? (
+                        {preview.tools?.length || attachedTools.length ? (
                           <ul className="space-y-1.5">
-                            {preview.tools.map((t) => (
+                            {preview.tools?.map((t) => (
                               <li key={t.name} className="text-xs rounded border border-border px-2.5 py-1.5">
                                 <code className="font-mono text-primary">{t.name}</code>
                                 <p className="text-muted-foreground mt-0.5">{t.description}</p>
                               </li>
                             ))}
+                            {attachedTools.map((t) => (
+                              <li key={t.tool_id} className="text-xs rounded border border-border px-2.5 py-1.5">
+                                <code className="font-mono text-primary">{t.name}</code>
+                                <span className="ml-2 text-[10px] text-muted-foreground">attached in the Tools tab</span>
+                                {t.description && <p className="text-muted-foreground mt-0.5">{t.description}</p>}
+                              </li>
+                            ))}
                           </ul>
                         ) : (
                           <p className="text-xs text-muted-foreground">
-                            No tools attached. The agent won't quote prices or stock; a representative follows up.
+                            No tools attached. Add tools in the Tools tab once the agent is published.
+                          </p>
+                        )}
+                        {!preview.tools?.length && (
+                          <p className="text-[11px] text-muted-foreground mt-2">
+                            No catalog tool, so the agent won't quote prices or stock; a representative follows up.
                           </p>
                         )}
                       </div>
@@ -726,6 +760,14 @@ export default function AssistantBuilder() {
                   )}
                 </div>
               </ScrollArea>
+            </TabsContent>
+
+            <TabsContent value="tools" className="flex-1 min-h-0 mt-0">
+              {config?.assistant_id ? (
+                <ScrollArea className="h-full"><AgentToolsPanel assistantId={config.assistant_id} onChange={() => { loadAttachedTools(); refreshVapiState(config.id); }} /></ScrollArea>
+              ) : (
+                <p className="p-4 text-xs text-muted-foreground">Publish the agent to add tools.</p>
+              )}
             </TabsContent>
 
             <TabsContent value="versions" className="flex-1 min-h-0 mt-0">
@@ -738,9 +780,26 @@ export default function AssistantBuilder() {
                     </div>
                     <div className="rounded-lg border border-border px-3 py-2">
                       <dt className="text-[11px] text-muted-foreground">Live on Vapi</dt>
-                      <dd className="font-semibold">{config.published_version ? `v${config.published_version}` : 'Not published'}</dd>
+                      <dd className="font-semibold">
+                        {config.published_version ? `v${config.published_version}` : 'Not published'}
+                        {(config.vapi_live?.version || config.vapi_versions?.[config.published_version]) && (
+                          <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                            · Vapi {config.vapi_live?.version || config.vapi_versions[config.published_version]}
+                          </span>
+                        )}
+                      </dd>
                     </div>
                   </dl>
+                  {config.vapi_live?.changed_outside && (
+                    <div className="flex gap-2 rounded-lg border border-amber-500/25 bg-amber-500/10 p-3 text-xs text-amber-700">
+                      <AlertTriangle className="w-4 h-4 shrink-0" />
+                      <span>
+                        Vapi is running {config.vapi_live.version || 'a newer version'}
+                        {config.vapi_live.sdr_version ? `, built from v${config.vapi_live.sdr_version}` : ''}, which was changed outside SmartSDR
+                        (for example in the Vapi dashboard). Publishing a version here replaces it.
+                      </span>
+                    </div>
+                  )}
                   {config.latest?.published_at && (
                     <p className="text-xs text-muted-foreground">
                       v{config.current_version} published {new Date(config.latest.published_at).toLocaleString()}
@@ -753,6 +812,7 @@ export default function AssistantBuilder() {
                         {versionOptions.map((v) => (
                           <SelectItem key={v} value={String(v)}>
                             v{v}{v === config.current_version ? ' (latest)' : ''}{v === config.published_version ? ' · live' : ''}
+                            {config.vapi_versions?.[v] ? ` · Vapi ${config.vapi_versions[v]}` : ''}
                           </SelectItem>
                         ))}
                       </SelectContent>

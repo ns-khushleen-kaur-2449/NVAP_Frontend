@@ -257,7 +257,7 @@ export default function MiniCalendar({ selectedDate, onSelect, disabled, events 
                           </div>
                         )}
 
-                        {/* Open in Google Calendar */}
+                        {/* Open in the calendar */}
                         {evt.htmlLink && (
                           <div className="mt-3 pt-2.5 border-t border-border/60">
                             <a
@@ -267,7 +267,7 @@ export default function MiniCalendar({ selectedDate, onSelect, disabled, events 
                               className="inline-flex items-center gap-1.5 text-xs text-[hsl(var(--primary))] hover:underline"
                             >
                               <ExternalLink className="w-3 h-3" />
-                              Open in Google Calendar
+                              Open in calendar
                             </a>
                           </div>
                         )}

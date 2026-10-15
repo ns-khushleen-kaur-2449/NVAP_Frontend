@@ -212,10 +212,10 @@ export const apiErrorMessage = (e, fallback) => {
   return fallback;
 };
 
-/** Tell the user what happened to the campaign's Google Calendar entry (calendar_sync from the API). */
+/** Tell the user what happened to the campaign's calendar entry (calendar_sync from the API). */
 export const announceCalendarSync = (sync) => {
   if (!sync) return;
-  if (sync.status === 'created') toast.success('Added to your Google Calendar');
-  else if (sync.status === 'removed') toast.message('Removed from your Google Calendar');
+  if (sync.status === 'created') toast.success('Added to your calendar');
+  else if (sync.status === 'removed') toast.message('Removed from your calendar');
   else if (sync.status === 'not_connected' || sync.status === 'failed') toast.warning(sync.message);
 };

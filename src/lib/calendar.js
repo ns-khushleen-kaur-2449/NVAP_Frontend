@@ -1,6 +1,6 @@
 import { createCalendarEvent, getCalendarConnections, listCalendarEvents } from '@/lib/api';
 
-export const NOT_CONNECTED = 'Connect Google Calendar in Settings to see and book meetings.';
+export const NOT_CONNECTED = 'Connect your calendar in Settings to see and book meetings.';
 
 /** The user's primary connected calendar, or null when none is connected. */
 export async function getPrimaryCalendar() {
@@ -25,7 +25,7 @@ export async function listUpcomingEvents(connectionId, days = 30) {
   return listEventsBetween(connectionId, now, new Date(now.getTime() + days * 86400000));
 }
 
-/** Book a meeting; attendees get Google's invite email. */
+/** Book a meeting; attendees get an invite email from the calendar provider. */
 export async function bookMeeting(connectionId, { summary, start, durationMinutes = 30, attendees = [], description }) {
   const begin = new Date(start);
   const res = await createCalendarEvent(connectionId, {

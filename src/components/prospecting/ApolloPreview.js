@@ -108,7 +108,11 @@ export default function ApolloPreview() {
         const retryAfter = Number.isFinite(detail?.retry_after) ? detail.retry_after : null;
         setSearchError({ title: "Apollo's request limit has been reached", message, retryAfter });
       } else if (code === 400 && Array.isArray(detail?.not_translated)) {
-        setSearchError({ title: 'Apollo cannot search with this filter', message, notTranslated: detail.not_translated, request });
+        // location_only: Apollo could apply nothing but the location, so the backend did not search.
+        const title = detail.code === 'location_only'
+          ? 'Apollo would only search by location, so nothing was searched'
+          : 'Apollo cannot search with this filter';
+        setSearchError({ title, message, hint: detail.hint, notTranslated: detail.not_translated, request });
       } else if (code === 400) {
         builder.showConditionIssues(error, request);
         setSearchError({ title: 'This filter is not valid', message });
@@ -221,8 +225,12 @@ export default function ApolloPreview() {
                   </p>
                 )}
                 {searchError.notTranslated?.length > 0 && (
-                  <ConditionNotes notes={searchError.notTranslated} request={searchError.request} fieldsByKey={fieldsByKey} />
+                  <>
+                    <p className="text-muted-foreground">Apollo cannot apply:</p>
+                    <ConditionNotes notes={searchError.notTranslated} request={searchError.request} fieldsByKey={fieldsByKey} />
+                  </>
                 )}
+                {searchError.hint && <p className="text-muted-foreground break-words">{searchError.hint}</p>}
                 <p className="text-muted-foreground">Your filter has been kept{results ? ', and the results below are from your last successful search' : ''}.</p>
               </Notice>
             </div>
@@ -245,7 +253,9 @@ export default function ApolloPreview() {
 
               {results.not_translated?.length > 0 && (
                 <Notice tone="warning" title="Apollo did not apply these conditions">
-                  <p className="text-muted-foreground">The results below ignore them, so they are wider than your filter.</p>
+                  <p className="text-muted-foreground">
+                    The results below ignore them, so they include people who do not match these conditions.
+                  </p>
                   <ConditionNotes notes={results.not_translated} request={searched} fieldsByKey={fieldsByKey} />
                 </Notice>
               )}

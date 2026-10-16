@@ -12,7 +12,7 @@ import AgentToolsPanel from './AgentToolsPanel';
 import {
   User, Building2, MessageSquare, ShieldCheck, Book, StickyNote, Cpu,
   Loader2, Plus, X, ListRestart, Save, Rocket, RotateCcw, AlertTriangle,
-  CheckCircle2, FileEdit, History, Wrench, Sparkles,
+  CheckCircle2, FileEdit, History, Wrench, Sparkles, Pencil,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -37,6 +37,7 @@ const PITCH_MODES = [
 ];
 const PITCH_MAX_ITEMS = 10;
 const TALKING_POINTS_MAX = 2000;
+const PROMPT_OVERRIDE_MAX = 30000;
 const GOALS = [
   { value: 'qualify_leads', label: 'Qualify leads', hint: 'Understand needs, suggest options, offer a visit' },
   { value: 'book_appointment', label: 'Book appointments', hint: 'Go straight to scheduling a visit' },
@@ -110,6 +111,8 @@ const defaultForm = () => ({
   pitch: { mode: 'none', item_ids: [], latest_count: 2, talking_points: '' },
   voice_stack: { stt: 'deepgram-nova-3', llm: 'groq', tts: '11labs' },
   custom_instructions: '',
+  // Hand-edited system prompt; empty means use the generated one.
+  prompt_override: '',
 });
 
 // Merge a stored payload over the defaults so older versions missing a field still load.
@@ -130,6 +133,7 @@ const formFromPayload = (payload) => {
       talking_points: payload.pitch?.talking_points || '',
     },
     custom_instructions: payload.custom_instructions || '',
+    prompt_override: payload.prompt_override || '',
   };
 };
 
@@ -150,7 +154,14 @@ const toPayload = (form) => ({
   },
   voice_stack: form.voice_stack,
   custom_instructions: form.custom_instructions.trim() || null,
+  prompt_override: form.prompt_override.trim() || null,
 });
+
+// The generated text unchanged (or blank) is not an edit; the prompt stays auto-generated.
+const promptOverrideFrom = (draft, generated) => {
+  const text = draft.trim();
+  return text && text !== (generated || '').trim() ? text : null;
+};
 
 const missingFields = (form) => [
   !form.assistant.name.trim() && 'Agent name',
@@ -300,6 +311,8 @@ export default function AssistantBuilder() {
   const [preview, setPreview] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState(null);
+  const [editingPrompt, setEditingPrompt] = useState(false);
+  const [promptDraft, setPromptDraft] = useState('');
   const previewSeq = useRef(0);
 
   const [knowledgeFiles, setKnowledgeFiles] = useState([]);
@@ -307,7 +320,12 @@ export default function AssistantBuilder() {
 
   const payload = useMemo(() => toPayload(form), [form]);
   const payloadKey = useMemo(() => JSON.stringify(payload), [payload]);
-  const isDirty = savedSnapshot !== payloadKey;
+  // An open prompt edit counts as a change, so Save / Publish keep it even without Apply.
+  const savePayload = useMemo(() => {
+    if (!editingPrompt) return payload;
+    return { ...payload, prompt_override: promptOverrideFrom(promptDraft, preview?.generated_prompt) };
+  }, [payload, editingPrompt, promptDraft, preview]);
+  const isDirty = savedSnapshot !== JSON.stringify(savePayload);
   const missing = missingFields(form);
 
   const fetchConfigs = useCallback(async () => {
@@ -366,6 +384,7 @@ export default function AssistantBuilder() {
 
   const loadConfig = (data) => {
     setConfig(data);
+    setEditingPrompt(false);
     const loaded = formFromPayload(data.latest?.payload);
     setForm(loaded);
     setSavedSnapshot(JSON.stringify(toPayload(loaded)));
@@ -378,6 +397,7 @@ export default function AssistantBuilder() {
     setSavedSnapshot(null);
     setSelectedVersion('');
     setPreview(null);
+    setEditingPrompt(false);
     setView('editor');
   };
 
@@ -410,6 +430,21 @@ export default function AssistantBuilder() {
     }
   };
 
+  const startPromptEdit = () => {
+    setPromptDraft(preview?.prompt || '');
+    setEditingPrompt(true);
+  };
+
+  const applyPromptEdit = () => {
+    update('prompt_override', promptOverrideFrom(promptDraft, preview?.generated_prompt) || '');
+    setEditingPrompt(false);
+  };
+
+  const resetPrompt = () => {
+    update('prompt_override', '');
+    setEditingPrompt(false);
+  };
+
   const update = (path, value) => {
     setForm((prev) => {
       const [section, key] = path.split('.');
@@ -427,8 +462,8 @@ export default function AssistantBuilder() {
     setSaving(true);
     try {
       const res = config
-        ? await updateBuilderConfig(config.id, payload)
-        : await createBuilderConfig(payload);
+        ? await updateBuilderConfig(config.id, savePayload)
+        : await createBuilderConfig(savePayload);
       loadConfig(res.data);
       toast.success(`Saved as version ${res.data.current_version}`);
       return res.data;
@@ -855,7 +890,59 @@ export default function AssistantBuilder() {
                           <p className="text-sm">“{preview.first_message}”</p>
                         </div>
                       )}
-                      <pre className="whitespace-pre-wrap text-xs leading-relaxed font-mono bg-muted rounded-lg p-3 border border-border">{preview.prompt}</pre>
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <p className="text-[11px] font-medium text-muted-foreground uppercase flex items-center gap-1.5">
+                            System prompt
+                            {preview.prompt_edited && (
+                              <Badge variant="outline" className="text-[10px] normal-case border-amber-300 text-amber-700">Edited</Badge>
+                            )}
+                          </p>
+                          {!editingPrompt && (
+                            <div className="flex items-center gap-1">
+                              {preview.prompt_edited && (
+                                <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={resetPrompt}
+                                  title="Discard your edits and use the generated prompt">
+                                  <RotateCcw className="w-3.5 h-3.5 mr-1" /> Reset
+                                </Button>
+                              )}
+                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={startPromptEdit} title="Edit prompt">
+                                <Pencil className="w-3.5 h-3.5" />
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                        {editingPrompt ? (
+                          <div className="space-y-2">
+                            <Textarea
+                              value={promptDraft}
+                              onChange={(e) => setPromptDraft(e.target.value)}
+                              maxLength={PROMPT_OVERRIDE_MAX}
+                              className="min-h-[420px] text-xs leading-relaxed font-mono"
+                            />
+                            <div className="flex items-center justify-between">
+                              <span className="text-[11px] text-muted-foreground">{promptDraft.length}/{PROMPT_OVERRIDE_MAX}</span>
+                              <div className="flex gap-2">
+                                <Button variant="outline" size="sm" onClick={() => setEditingPrompt(false)}>Cancel</Button>
+                                <Button size="sm" onClick={applyPromptEdit} disabled={!promptDraft.trim()}>Apply</Button>
+                              </div>
+                            </div>
+                            <p className="text-[11px] text-muted-foreground">
+                              Save or Publish keeps your edits (no need to Apply first), and they are published as written. They don't update when you change the form; use Reset to regenerate.
+                            </p>
+                          </div>
+                        ) : (
+                          <>
+                            <pre className="whitespace-pre-wrap text-xs leading-relaxed font-mono bg-muted rounded-lg p-3 border border-border">{preview.prompt}</pre>
+                            {preview.prompt_edited && (
+                              <p className="text-[11px] text-amber-700 mt-1.5 flex items-start gap-1">
+                                <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" />
+                                Edited by hand: changes to the form above no longer update this prompt.
+                              </p>
+                            )}
+                          </>
+                        )}
+                      </div>
                       <div>
                         <p className="text-xs font-medium uppercase text-muted-foreground mb-2 flex items-center gap-1.5">
                           <Wrench className="w-3.5 h-3.5" /> Tools

@@ -36,7 +36,7 @@ export default function CampaignEditDialog({ campaign, open, onOpenChange, onSav
   const [startTime, setStartTime] = useState('');
   const [callingWindow, setCallingWindow] = useState(null);
   const [config, setConfig] = useState(DEFAULT_CONFIG);
-  const [leadIds, setLeadIds] = useState(new Set());
+  const [prospectIds, setProspectIds] = useState(new Set());
   const [allLeads, setAllLeads] = useState([]);
   const [loadingLeads, setLoadingLeads] = useState(false);
   const [leadQuery, setLeadQuery] = useState('');
@@ -54,7 +54,7 @@ export default function CampaignEditDialog({ campaign, open, onOpenChange, onSav
     setStartTime(zoned.time);
     setCallingWindow(campaign.calling_window || null);
     setConfig({ ...DEFAULT_CONFIG, ...(campaign.calling_config || {}) });
-    setLeadIds(new Set((campaign.prospects || []).map((l) => l.prospect_id)));
+    setProspectIds(new Set((campaign.prospects || []).map((l) => l.prospect_id)));
     setLeadQuery('');
   }, [open, campaign]);
 
@@ -76,11 +76,11 @@ export default function CampaignEditDialog({ campaign, open, onOpenChange, onSav
     const q = leadQuery.trim().toLowerCase();
     return [...known.values()]
       .filter((l) => !q || `${l.name || ''} ${l.phone || ''}`.toLowerCase().includes(q))
-      .sort((a, b) => Number(leadIds.has(b.id)) - Number(leadIds.has(a.id)) || String(a.name || '').localeCompare(String(b.name || '')));
-  }, [allLeads, campaign, leadQuery, leadIds]);
+      .sort((a, b) => Number(prospectIds.has(b.id)) - Number(prospectIds.has(a.id)) || String(a.name || '').localeCompare(String(b.name || '')));
+  }, [allLeads, campaign, leadQuery, prospectIds]);
 
   const toggleLead = (id) => {
-    setLeadIds((prev) => {
+    setProspectIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
@@ -117,10 +117,10 @@ export default function CampaignEditDialog({ campaign, open, onOpenChange, onSav
       }
     }
     if (leadsEditable) {
-      if (leadIds.size === 0) { toast.error('Keep at least one lead in the campaign.'); return; }
+      if (prospectIds.size === 0) { toast.error('Keep at least one lead in the campaign.'); return; }
       const current = new Set((campaign.prospects || []).map((l) => l.prospect_id));
-      const changed = current.size !== leadIds.size || [...leadIds].some((id) => !current.has(id));
-      if (changed) body.prospect_ids = Array.from(leadIds);
+      const changed = current.size !== prospectIds.size || [...prospectIds].some((id) => !current.has(id));
+      if (changed) body.prospect_ids = Array.from(prospectIds);
     }
     setSaving(true);
     try {
@@ -193,7 +193,7 @@ export default function CampaignEditDialog({ campaign, open, onOpenChange, onSav
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 {label('Leads')}
-                <span className="text-[11px] text-muted-foreground tabular-nums">{leadIds.size} selected</span>
+                <span className="text-[11px] text-muted-foreground tabular-nums">{prospectIds.size} selected</span>
               </div>
               <div className="relative">
                 <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -211,7 +211,7 @@ export default function CampaignEditDialog({ campaign, open, onOpenChange, onSav
                     {leadOptions.map((l) => (
                       <li key={l.id}>
                         <label className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-[hsl(var(--surface-2))]">
-                          <Checkbox checked={leadIds.has(l.id)} onCheckedChange={() => toggleLead(l.id)} />
+                          <Checkbox checked={prospectIds.has(l.id)} onCheckedChange={() => toggleLead(l.id)} />
                           <span className="text-xs font-medium truncate flex-1">{l.name || 'Unnamed'}</span>
                           <span className="text-[11px] text-muted-foreground tabular-nums">{l.phone || '—'}</span>
                         </label>

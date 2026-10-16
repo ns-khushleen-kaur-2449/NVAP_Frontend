@@ -24,7 +24,7 @@ function Section({ title, children }) {
 /**
  * Campaign details form shown when the user launches a campaign.
  *
- * source: { type: 'leads', leadIds: string[] }
+ * source: { type: 'leads', prospectIds: string[] }
  *       | { type: 'csv', contacts: object[], filename: string, skipped?: number }
  * Calls POST /api/campaigns with start "now" or "scheduled", then onCreated(campaign).
  */
@@ -48,7 +48,7 @@ export default function CampaignLaunchDialog({ open, onOpenChange, source, assis
     setError('');
   }, [open, defaultAssistantId, assistants]);
 
-  const contactCount = source?.type === 'csv' ? source.contacts?.length || 0 : source?.leadIds?.length || 0;
+  const contactCount = source?.type === 'csv' ? source.contacts?.length || 0 : source?.prospectIds?.length || 0;
 
   const reset = () => {
     setName(''); setDescription(''); setNotes(''); setStartMode('now'); setStartDate(''); setStartTime('');
@@ -87,7 +87,7 @@ export default function CampaignLaunchDialog({ open, onOpenChange, source, assis
       ...(scheduledAt ? { scheduled_at: scheduledAt } : {}),
       ...(source.type === 'csv'
         ? { contacts: source.contacts, source_filename: source.filename }
-        : { prospect_ids: source.leadIds }),
+        : { prospect_ids: source.prospectIds }),
     };
 
     setSubmitting(true);

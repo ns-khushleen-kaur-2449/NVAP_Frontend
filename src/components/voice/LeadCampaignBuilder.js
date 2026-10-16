@@ -687,7 +687,7 @@ export default function LeadCampaignBuilder({ onCampaignStarted, onLeadCreated, 
       <CampaignLaunchDialog
         open={launchOpen}
         onOpenChange={setLaunchOpen}
-        source={{ type: 'leads', leadIds: Array.from(selectedLeads) }}
+        source={{ type: 'leads', prospectIds: Array.from(selectedLeads) }}
         assistants={assistants}
         onCreated={handleCreated}
       />

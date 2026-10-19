@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { AlertTriangle, Building2, Eye, Loader2, Pencil, Plus, RefreshCw, Trash2, Wrench, X } from 'lucide-react';
+import { AlertTriangle, Building2, CalendarPlus, Eye, Loader2, Pencil, Plus, RefreshCw, Trash2, Wrench, X } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,7 +11,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
-  createTool, deleteTool, getToolTenants, listTools, listToolTypes, previewTool, setToolTenants, syncTool, updateTool,
+  createTool, deleteTool, getToolTenants, listTools, listToolTypes, previewTool, registerAppointmentTools, setToolTenants,
+  syncTool, updateTool,
 } from '@/lib/api';
 
 const SYNC_STYLES = {
@@ -435,6 +436,7 @@ export default function ToolsManager() {
   const [editor, setEditor] = useState({ open: false, tool: null });
   const [busyId, setBusyId] = useState(null);
   const [accessTool, setAccessTool] = useState(null);
+  const [registering, setRegistering] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -467,6 +469,27 @@ export default function ToolsManager() {
     }
   };
 
+  // Creates any of the six appointment tools that are missing and re-syncs the rest.
+  const registerAppointments = async () => {
+    setRegistering(true);
+    try {
+      const res = await registerAppointmentTools();
+      const results = res.data.tools || [];
+      const problems = results.filter((t) => t.outcome === 'failed' || t.outcome === 'conflict');
+      const created = results.filter((t) => t.outcome === 'created').length;
+      if (problems.length) {
+        toast.warning(`${problems.length} tool(s) need attention: ${problems.map((t) => `${t.name}: ${t.error}`).join('; ')}`);
+      } else {
+        toast.success(created ? `Appointment tools ready (${created} created)` : 'Appointment tools are up to date in Vapi');
+      }
+      await load();
+    } catch (e) {
+      toast.error(errorList(e, 'Failed to register appointment tools')[0]);
+    } finally {
+      setRegistering(false);
+    }
+  };
+
   const remove = async (tool) => {
     if (!window.confirm(`Delete "${tool.name}"? It is also deleted in Vapi.`)) return;
     setBusyId(tool.id);
@@ -489,9 +512,16 @@ export default function ToolsManager() {
           <h2 className="text-sm font-semibold flex items-center gap-2"><Wrench className="w-4 h-4 text-primary" /> Vapi tools</h2>
           <p className="text-xs text-muted-foreground mt-1">Tools your voice agents can use. Changes are sent to Vapi when you save.</p>
         </div>
-        <Button size="sm" onClick={() => setEditor({ open: true, tool: null })} disabled={!types.length} className="bg-primary text-primary-foreground">
-          <Plus className="w-4 h-4 mr-1" /> New tool
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button size="sm" variant="outline" onClick={registerAppointments} disabled={registering}
+            title="Create or re-sync check_availability, book_appointment, find_my_appointment, reschedule_appointment, cancel_appointment and request_callback">
+            {registering ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <CalendarPlus className="w-4 h-4 mr-1" />}
+            Register appointment tools
+          </Button>
+          <Button size="sm" onClick={() => setEditor({ open: true, tool: null })} disabled={!types.length} className="bg-primary text-primary-foreground">
+            <Plus className="w-4 h-4 mr-1" /> New tool
+          </Button>
+        </div>
       </div>
 
       {loading ? (

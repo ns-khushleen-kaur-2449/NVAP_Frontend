@@ -18,7 +18,7 @@ import { toast } from 'sonner';
 import {
   listBuilderConfigs, getBuilderConfig, createBuilderConfig, updateBuilderConfig,
   previewBuilderConfig, publishBuilderConfig, rollbackBuilderConfig, retryBuilderConfig,
-  getKnowledgeFiles, listAssistantTools, getCatalogItems,
+  getKnowledgeFiles, getCatalogItems,
 } from '../../lib/api';
 import { formatCurrency } from '../../lib/utils';
 
@@ -109,6 +109,8 @@ const defaultForm = () => ({
   },
   knowledge_ids: [],
   pitch: { mode: 'none', item_ids: [], latest_count: 2, talking_points: '' },
+  // Tool names chosen in the Tools tab; the prompt and the published agent use exactly these.
+  tools: [],
   voice_stack: { stt: 'deepgram-nova-3', llm: 'groq', tts: '11labs' },
   custom_instructions: '',
   // Hand-edited system prompt; empty means use the generated one.
@@ -132,6 +134,7 @@ const formFromPayload = (payload) => {
       item_ids: (payload.pitch?.item_ids || []).map(String),
       talking_points: payload.pitch?.talking_points || '',
     },
+    tools: payload.tools || [],
     custom_instructions: payload.custom_instructions || '',
     prompt_override: payload.prompt_override || '',
   };
@@ -152,6 +155,8 @@ const toPayload = (form) => ({
     latest_count: form.pitch.latest_count,
     talking_points: form.pitch.mode === 'none' ? null : form.pitch.talking_points.trim() || null,
   },
+  // The server validates the selection and stores what it resolves to (tool_refs).
+  tools: form.tools,
   voice_stack: form.voice_stack,
   custom_instructions: form.custom_instructions.trim() || null,
   prompt_override: form.prompt_override.trim() || null,
@@ -292,16 +297,6 @@ export default function AssistantBuilder() {
   const [loadingList, setLoadingList] = useState(false);
 
   const [config, setConfig] = useState(null); // BuilderConfigResponse of the config being edited
-  // Platform tools attached to the published agent (managed in the Tools tab).
-  const [attachedTools, setAttachedTools] = useState([]);
-  const assistantId = config?.assistant_id;
-  const loadAttachedTools = useCallback(() => {
-    if (!assistantId) { setAttachedTools([]); return; }
-    listAssistantTools(assistantId)
-      .then((res) => setAttachedTools(res.data.filter((t) => t.attached)))
-      .catch(() => setAttachedTools([]));
-  }, [assistantId]);
-  useEffect(() => { loadAttachedTools(); }, [loadAttachedTools]);
   const [form, setForm] = useState(defaultForm);
   const [savedSnapshot, setSavedSnapshot] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -408,16 +403,6 @@ export default function AssistantBuilder() {
       setView('editor');
     } catch (e) {
       toast.error(errorDetail(e, 'Failed to load agent'));
-    }
-  };
-
-  // Re-read the config's Vapi version info only; keeps any unsaved edits in the form.
-  const refreshVapiState = async (id) => {
-    try {
-      const res = await getBuilderConfig(id);
-      setConfig(res.data);
-    } catch {
-      /* not critical */
     }
   };
 
@@ -868,7 +853,7 @@ export default function AssistantBuilder() {
             <TabsList className="m-3 mb-0 grid grid-cols-3">
               <TabsTrigger value="prompt">Generated prompt</TabsTrigger>
               <TabsTrigger value="versions" disabled={!config}>Versions</TabsTrigger>
-              <TabsTrigger value="tools" disabled={!config?.assistant_id}>Tools</TabsTrigger>
+              <TabsTrigger value="tools">Tools{form.tools.length ? ` (${form.tools.length})` : ''}</TabsTrigger>
             </TabsList>
 
             <TabsContent value="prompt" className="flex-1 min-h-0 mt-0">
@@ -947,28 +932,21 @@ export default function AssistantBuilder() {
                         <p className="text-xs font-medium uppercase text-muted-foreground mb-2 flex items-center gap-1.5">
                           <Wrench className="w-3.5 h-3.5" /> Tools
                         </p>
-                        {preview.tools?.length || attachedTools.length ? (
+                        {preview.tools?.length ? (
                           <ul className="space-y-1.5">
-                            {preview.tools?.map((t) => (
+                            {preview.tools.map((t) => (
                               <li key={t.name} className="text-xs rounded border border-border px-2.5 py-1.5">
                                 <code className="font-mono text-primary">{t.name}</code>
-                                <p className="text-muted-foreground mt-0.5">{t.description}</p>
-                              </li>
-                            ))}
-                            {attachedTools.map((t) => (
-                              <li key={t.tool_id} className="text-xs rounded border border-border px-2.5 py-1.5">
-                                <code className="font-mono text-primary">{t.name}</code>
-                                <span className="ml-2 text-[10px] text-muted-foreground">attached in the Tools tab</span>
                                 {t.description && <p className="text-muted-foreground mt-0.5">{t.description}</p>}
                               </li>
                             ))}
                           </ul>
                         ) : (
                           <p className="text-xs text-muted-foreground">
-                            No tools attached. Add tools in the Tools tab once the agent is published.
+                            No tools selected. Choose them in the Tools tab; the prompt explains each one to the agent.
                           </p>
                         )}
-                        {!preview.tools?.length && (
+                        {!preview.tools?.some((t) => t.name === 'find_matching_products') && (
                           <p className="text-[11px] text-muted-foreground mt-2">
                             No catalog tool, so the agent won't quote prices or stock; a representative follows up.
                           </p>
@@ -983,11 +961,9 @@ export default function AssistantBuilder() {
             </TabsContent>
 
             <TabsContent value="tools" className="flex-1 min-h-0 mt-0">
-              {config?.assistant_id ? (
-                <ScrollArea className="h-full"><AgentToolsPanel assistantId={config.assistant_id} onChange={() => { loadAttachedTools(); refreshVapiState(config.id); }} /></ScrollArea>
-              ) : (
-                <p className="p-4 text-xs text-muted-foreground">Publish the agent to add tools.</p>
-              )}
+              <ScrollArea className="h-full">
+                <AgentToolsPanel selected={form.tools} onChange={(tools) => update('tools', tools)} />
+              </ScrollArea>
             </TabsContent>
 
             <TabsContent value="versions" className="flex-1 min-h-0 mt-0">

@@ -316,12 +316,29 @@ export const updateTool = (id, data) => api.patch(`/api/v1/tools/${id}`, data);
 export const syncTool = (id) => api.post(`/api/v1/tools/${id}/sync`);
 export const deleteTool = (id) => api.delete(`/api/v1/tools/${id}`);
 export const previewTool = (data) => api.post('/api/v1/tools/preview', data);
+// Create (or re-sync) the six appointment tools in Vapi; safe to re-run.
+export const registerAppointmentTools = () => api.post('/api/v1/tools/register');
 export const getToolTenants = (id) => api.get(`/api/v1/tools/${id}/tenants`);
 export const setToolTenants = (id, tenantIds) => api.put(`/api/v1/tools/${id}/tenants`, { tenant_ids: tenantIds });
 // Tools on one assistant (tools granted to its tenant; Tenant Admin attaches/detaches).
 export const listAssistantTools = (assistantId) => api.get(`/api/v1/assistants/${assistantId}/tools`);
+// Tools an Assistant Builder agent can be given (granted to the tenant), each with the tool types it needs.
+export const listBuilderTools = () => api.get('/api/v1/assistant-builder/tools');
 export const attachAssistantTool = (assistantId, toolId) => api.post(`/api/v1/assistants/${assistantId}/tools/${toolId}`);
 export const detachAssistantTool = (assistantId, toolId) => api.delete(`/api/v1/assistants/${assistantId}/tools/${toolId}`);
+
+// ── Scheduling (Tenant Admin edits; Managers view): meeting types and executives for the appointment tools ──
+export const listMeetingTypes = (includeInactive = false) =>
+  api.get('/api/v1/scheduling/meeting-types', { params: { include_inactive: includeInactive } });
+export const createMeetingType = (data) => api.post('/api/v1/scheduling/meeting-types', data);
+export const updateMeetingType = (id, data) => api.patch(`/api/v1/scheduling/meeting-types/${id}`, data);
+export const deactivateMeetingType = (id) => api.delete(`/api/v1/scheduling/meeting-types/${id}`);
+export const listExecutives = () => api.get('/api/v1/scheduling/executives');
+export const listExecutiveCandidates = () => api.get('/api/v1/scheduling/candidates');
+export const createExecutive = (data) => api.post('/api/v1/scheduling/executives', data);
+export const updateExecutive = (id, data) => api.patch(`/api/v1/scheduling/executives/${id}`, data);
+export const deactivateExecutive = (id) => api.delete(`/api/v1/scheduling/executives/${id}`);
+export const seedScheduling = () => api.post('/api/v1/scheduling/seed');
 
 // Events on one connected calendar (see src/lib/calendar.js for the "my primary calendar" helpers).
 export const listCalendarEvents = (connectionId, params) =>

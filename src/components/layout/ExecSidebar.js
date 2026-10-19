@@ -9,12 +9,12 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useAuth } from '@/lib/AuthContext';
 
 const NAV_ITEMS = [
-  { path: '/manager-dashboard',        label: 'Team Overview',  icon: LayoutDashboard, roles: ['agent', 'manager', 'admin'] },
-  { path: '/call-quality',             label: 'Call Quality',   icon: BarChart2,       roles: ['agent', 'manager', 'admin'] },
-  { path: '/call-quality?view=analytics', label: 'Analytics',  icon: Activity,        roles: ['agent', 'manager', 'admin'] },
-  { path: '/audio-upload',             label: 'Audio Upload',   icon: Mic,             roles: ['agent', 'manager', 'admin'] },
-  { path: '/sheets-sync',              label: 'Sheets Sync',    icon: Table2,          roles: ['manager', 'admin'] },
-  { path: '/weight-config',            label: 'Score Weights',  icon: Sliders,         roles: ['admin'] },
+  { path: '/manager-dashboard',        label: 'Team Overview',  icon: LayoutDashboard, roles: ['rep', 'manager', 'tenant_admin', 'super_admin'] },
+  { path: '/call-quality',             label: 'Call Quality',   icon: BarChart2,       roles: ['rep', 'manager', 'tenant_admin', 'super_admin'] },
+  { path: '/call-quality?view=analytics', label: 'Analytics',  icon: Activity,        roles: ['rep', 'manager', 'tenant_admin', 'super_admin'] },
+  { path: '/audio-upload',             label: 'Audio Upload',   icon: Mic,             roles: ['rep', 'manager', 'tenant_admin', 'super_admin'] },
+  { path: '/sheets-sync',              label: 'Sheets Sync',    icon: Table2,          roles: ['manager', 'tenant_admin', 'super_admin'] },
+  { path: '/weight-config',            label: 'Score Weights',  icon: Sliders,         roles: ['tenant_admin', 'super_admin'] },
 ];
 
 const navLinkClass = (isActive, collapsed) => cn(

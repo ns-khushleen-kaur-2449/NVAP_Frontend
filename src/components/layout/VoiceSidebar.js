@@ -9,7 +9,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useAuth } from '@/lib/AuthContext';
 
 const NAV_ITEMS = [
-  { path: '/voice_agent', label: 'Voice Agent', icon: PhoneCall,     roles: ['agent', 'manager', 'admin'] },
+  { path: '/voice_agent', label: 'Voice Agent', icon: PhoneCall,     roles: ['rep', 'manager', 'tenant_admin', 'super_admin'] },
 ];
 
 const navLinkClass = (isActive, collapsed) => cn(

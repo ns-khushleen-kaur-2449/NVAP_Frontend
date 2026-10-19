@@ -33,8 +33,20 @@ import KnowledgeBasePage from "@/pages/KnowledgeBase";
 // import ChatWidget from "@/components/shared/ChatWidget";
 import ProspectingPage from "@/pages/Prospecting";
 import StrategistPage from "@/pages/Strategist";
+import ForbiddenPage from "@/pages/Forbidden";
+import RoleDashboard from "@/pages/RoleDashboard";
+import UsersAdminPage from "@/pages/admin/Users";
+import TeamsAdminPage from "@/pages/admin/Teams";
+import TenantsAdminPage from "@/pages/admin/Tenants";
+import RequirePermission from "@/components/auth/RequirePermission";
+import { PERMISSIONS } from "@/lib/rbac";
+import AuthGate from "@/components/auth/AuthGate";
 import InboxPage from "@/pages/Inbox";
 import MeetingsPage from "@/pages/Meetings";
+
+// The backend's roles (lib/rbac.js).  Older routes said "admin", a role that never existed.
+const ADMINS = ['super_admin', 'tenant_admin'];
+const ADMINS_AND_MANAGERS = ['super_admin', 'tenant_admin', 'manager'];
 
 function ProtectedRoute({ children, roles }) {
   const { user, token, loading } = useAuth();
@@ -52,7 +64,7 @@ function ProtectedRoute({ children, roles }) {
   }
 
   if (roles && (!user || !roles.includes(user.role))) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/403" replace />;
   }
 
   return children;
@@ -98,18 +110,18 @@ function AppShell() {
 
   const routes = (
     <Routes>
-      <Route path="/dashboard" element={<Navigate to="/voice_agent" replace />} />
+      <Route path="/dashboard" element={<RoleDashboard />} />
       <Route path="/welcome" element={<DashboardPage />} />
       <Route path="/leads" element={<LeadsPage />} />
       <Route path="/research" element={
-        <ProtectedRoute roles={['manager', 'admin']}><ResearchPage /></ProtectedRoute>
+        <ProtectedRoute roles={ADMINS_AND_MANAGERS}><ResearchPage /></ProtectedRoute>
       } />
       <Route path="/reports" element={
-        <ProtectedRoute roles={['manager', 'admin']}><ReportsPage /></ProtectedRoute>
+        <ProtectedRoute roles={ADMINS_AND_MANAGERS}><ReportsPage /></ProtectedRoute>
       } />
       <Route path="/properties" element={<PropertiesPage />} />
       <Route path="/agent-runs" element={
-        <ProtectedRoute roles={['manager', 'admin']}><AgentRunsPage /></ProtectedRoute>
+        <ProtectedRoute roles={ADMINS_AND_MANAGERS}><AgentRunsPage /></ProtectedRoute>
       } />
       <Route path="/prospecting" element={<ProspectingPage />} />
       <Route path="/strategist" element={<StrategistPage />} />
@@ -117,6 +129,10 @@ function AppShell() {
       <Route path="/campaigns/*" element={<Navigate to="/voice-campaigns" replace />} />
       <Route path="/inbox" element={<InboxPage />} />
       <Route path="/meetings" element={<MeetingsPage />} />
+      <Route path="/403" element={<ForbiddenPage />} />
+      <Route path="/settings/users" element={<RequirePermission perm={PERMISSIONS.USERS_VIEW}><UsersAdminPage /></RequirePermission>} />
+      <Route path="/settings/teams" element={<RequirePermission perm={PERMISSIONS.TEAMS_MANAGE}><TeamsAdminPage /></RequirePermission>} />
+      <Route path="/settings/tenants" element={<RequirePermission perm={PERMISSIONS.TENANTS_MANAGE}><TenantsAdminPage /></RequirePermission>} />
       <Route path="/settings" element={<SettingsPage />} />
       <Route path="/settings/calendar" element={<SettingsPage />} />
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
@@ -210,6 +226,7 @@ function App() {
     <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false} storageKey="smartsdr-theme">
     <BrowserRouter>
       <AuthProvider>
+        <AuthGate>
         <Routes>
           <Route path="/" element={<SmartRoot />} />
           <Route path="/login" element={<LoginPage />} />
@@ -220,7 +237,7 @@ function App() {
           {/* Admin dashboard — hidden for now; /admin falls through to the
               catch-all below and redirects to /dashboard.
           <Route path="/admin" element={
-            <ProtectedRoute roles={['manager', 'admin']}>
+            <ProtectedRoute roles={ADMINS_AND_MANAGERS}>
               <AdminDashboardPage />
             </ProtectedRoute>
           } />
@@ -229,10 +246,10 @@ function App() {
           <Route path="/audio-upload" element={<SidebarShell><AudioUploadPage /></SidebarShell>} />
           <Route path="/call-quality" element={<SidebarShell><CallQualityDashboard /></SidebarShell>} />
           <Route path="/manager-dashboard" element={<SidebarShell><ManagerDashboard /></SidebarShell>} />
-          {/* <Route path="/agent-performance" element={<ExecAppShell><ProtectedRoute roles={['manager', 'admin']}><AgentPerformancePage /></ProtectedRoute></ExecAppShell>} /> */}
-          <Route path="/sheets-sync" element={<SidebarShell><ProtectedRoute roles={['manager', 'admin']}><GoogleSheetsSyncPage /></ProtectedRoute></SidebarShell>} />
-          <Route path="/weight-config" element={<SidebarShell><ProtectedRoute roles={['admin']}><WeightConfigPage /></ProtectedRoute></SidebarShell>} />
-          <Route path="/knowledge-base" element={<ExecAppShell><ProtectedRoute roles={['admin']}><KnowledgeBasePage /></ProtectedRoute></ExecAppShell>} />
+          {/* <Route path="/agent-performance" element={<ExecAppShell><ProtectedRoute roles={ADMINS_AND_MANAGERS}><AgentPerformancePage /></ProtectedRoute></ExecAppShell>} /> */}
+          <Route path="/sheets-sync" element={<SidebarShell><ProtectedRoute roles={ADMINS_AND_MANAGERS}><GoogleSheetsSyncPage /></ProtectedRoute></SidebarShell>} />
+          <Route path="/weight-config" element={<SidebarShell><ProtectedRoute roles={ADMINS}><WeightConfigPage /></ProtectedRoute></SidebarShell>} />
+          <Route path="/knowledge-base" element={<ExecAppShell><ProtectedRoute roles={ADMINS}><KnowledgeBasePage /></ProtectedRoute></ExecAppShell>} />
 
           <Route path="/voice_agent" element={<SidebarShell><VoiceAgentPage /></SidebarShell>} />
           <Route path="/voice-campaigns" element={<SidebarShell><VoiceCampaigns /></SidebarShell>} />
@@ -240,6 +257,7 @@ function App() {
           {/* <Route path="/calls" element={<SidebarShell><CallsPage /></SidebarShell>} /> */}
           <Route path="/*" element={<AppShell />} />
         </Routes>
+        </AuthGate>
         {/* <AuthedChatWidget /> */}
       </AuthProvider>
 

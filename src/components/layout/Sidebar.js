@@ -10,6 +10,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useAuth } from '@/lib/AuthContext';
 import ThemeToggle from '@/components/shared/ThemeToggle';
+import { visibleNavItems } from '@/lib/adminNav';
 
 const APP_NAV = [
   { path: '/dashboard',   label: 'Dashboard',    icon: LayoutDashboard },
@@ -217,7 +218,18 @@ export function Sidebar() {
             </Link>
           )}
           */}
-          <NavLink to="/settings" className={({ isActive }) => itemClass(isActive, collapsed)}>
+          {/* Administration: only the items this user's role may open (lib/adminNav.js). */}
+          {visibleNavItems(user).map((item) => {
+            const Icon = item.icon;
+            return (
+              <NavLink key={item.path} to={item.path} data-testid={`nav-${item.label.toLowerCase()}`}
+                className={({ isActive }) => itemClass(isActive, collapsed)} title={collapsed ? item.label : undefined}>
+                <Icon className="h-4 w-4 shrink-0 text-[var(--mist)] group-hover:text-[var(--pine)]" />
+                {!collapsed && <span>{item.label}</span>}
+              </NavLink>
+            );
+          })}
+          <NavLink to="/settings" end className={({ isActive }) => itemClass(isActive, collapsed)}>
             <Settings className="h-4 w-4 shrink-0 text-[var(--mist)] group-hover:text-[var(--pine)]" />
             {!collapsed && <span>Settings</span>}
           </NavLink>

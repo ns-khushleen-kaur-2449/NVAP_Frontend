@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Settings as SettingsIcon, Save } from 'lucide-react';
+import { Settings as SettingsIcon, Save, ChevronRight } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { visibleNavItems } from '@/lib/adminNav';
 import { toast } from 'sonner';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -14,7 +16,8 @@ import { getSettings, updateSettings } from '@/lib/api';
 export default function SettingsPage() {
   const [settings, setSettings] = useState(null);
   const [saving, setSaving] = useState(false);
-  const { hasRole } = useAuth();
+  const { hasRole, user } = useAuth();
+  const adminItems = visibleNavItems(user);
 
   useEffect(() => { getSettings().then((r) => setSettings(r.data)).catch(() => {}); }, []);
 
@@ -49,6 +52,24 @@ export default function SettingsPage() {
           </p>
         </div>
       </div>
+
+      {adminItems.length > 0 && (
+        <Card className="card-base p-5 space-y-3" data-testid="settings-admin">
+          <h2 className="text-sm font-semibold">Administration</h2>
+          <div className="divide-y divide-border rounded-lg border border-border">
+            {adminItems.map((item) => {
+              const Icon = item.icon;
+              return (
+                <Link key={item.path} to={item.path} className="flex items-center gap-3 px-3 py-2.5 text-sm hover:bg-muted/50">
+                  <Icon className="w-4 h-4 text-primary" />
+                  <span className="flex-1">{item.label}</span>
+                  <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                </Link>
+              );
+            })}
+          </div>
+        </Card>
+      )}
 
       <CalendarConnections />
 

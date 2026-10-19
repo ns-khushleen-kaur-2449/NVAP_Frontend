@@ -69,6 +69,10 @@ webpackConfig.jest = {
       ...(jestConfig.moduleNameMapper || {}),
       '^@/(.*)$': '<rootDir>/src/$1',
       '^axios$': 'axios/dist/node/axios.cjs',
+      // react-router 7 publishes through "exports", which this Jest (27) cannot read; use its CommonJS builds.
+      '^react-router-dom$': '<rootDir>/node_modules/react-router-dom/dist/index.js',
+      '^react-router$': '<rootDir>/node_modules/react-router/dist/development/index.js',
+      '^react-router/dom$': '<rootDir>/node_modules/react-router/dist/development/dom-export.js',
     },
   }),
 };

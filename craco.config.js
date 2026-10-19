@@ -60,6 +60,19 @@ let webpackConfig = {
   },
 };
 
+// Jest (craco test): resolve the same "@/..." alias as webpack, and use axios's CommonJS build
+// (its default entry is ESM, which CRA's Jest does not transform inside node_modules).
+webpackConfig.jest = {
+  configure: (jestConfig) => ({
+    ...jestConfig,
+    moduleNameMapper: {
+      ...(jestConfig.moduleNameMapper || {}),
+      '^@/(.*)$': '<rootDir>/src/$1',
+      '^axios$': 'axios/dist/node/axios.cjs',
+    },
+  }),
+};
+
 webpackConfig.devServer = (devServerConfig) => {
   // Add health check endpoints if enabled
   if (config.enableHealthCheck && setupHealthEndpoints && healthPluginInstance) {

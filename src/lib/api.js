@@ -42,8 +42,9 @@ const isValidToken = (token) => Boolean(token) && token !== 'undefined' && token
 const _addAuthInterceptor = (instance) => {
   instance.interceptors.request.use((config) => {
     const token = localStorage.getItem('estateops_token');
-    const isLoginOrRegister = config.url?.includes('/auth/login') || config.url?.includes('/auth/register');
-    if (!isLoginOrRegister && isValidToken(token)) {
+    // Only login is anonymous; creating a user (/auth/register) needs the creator's token.
+    const isLogin = config.url?.includes('/auth/login');
+    if (!isLogin && isValidToken(token)) {
       config.headers.Authorization = `Bearer ${token}`;
     } else if (config.headers.Authorization) {
       delete config.headers.Authorization;
@@ -53,6 +54,11 @@ const _addAuthInterceptor = (instance) => {
   instance.interceptors.response.use(
     (response) => response,
     (error) => {
+      // A 403 the user must act on (temporary password, suspended organisation): AuthContext shows the screen.
+      const action = error.response?.headers?.['x-auth-required-action'];
+      if (error.response?.status === 403 && action) {
+        window.dispatchEvent(new CustomEvent('auth:required-action', { detail: action }));
+      }
       if (error.response?.status === 401) {
         if (!window.location.pathname.includes('/login') && !error.config.url?.includes('/auth/')) {
           localStorage.removeItem('estateops_token');
@@ -70,7 +76,25 @@ _addAuthInterceptor(http);
 // ── Auth ──
 export const authLogin = (data) => authApi.post('/api/auth/login', data);
 export const authRegister = (data) => authApi.post('/api/auth/register', data);
-export const listUsers = () => authApi.get('/api/auth/users');
+// The logged-in user: role, tenant, team, permissions, creatable_roles, must_change_password.
+export const getMe = () => authApi.get('/api/auth/me');
+export const changePassword = (currentPassword, newPassword) =>
+  authApi.post('/api/auth/change-password', { current_password: currentPassword, new_password: newPassword });
+
+// ── Admin: users, teams, tenants, role dashboard ──
+export const listAdminUsers = (params) => api.get('/api/users', { params });
+export const updateAdminUser = (id, data) => api.patch(`/api/users/${id}`, data);
+export const deactivateUser = (id) => api.post(`/api/users/${id}/deactivate`);
+export const reactivateUser = (id) => api.post(`/api/users/${id}/reactivate`);
+export const moveUserToTeam = (id, managerUserId) => api.put(`/api/users/${id}/team`, { manager_user_id: managerUserId });
+export const listTeams = () => api.get('/api/teams');
+export const listTenants = () => api.get('/api/tenants');
+export const createTenantWithAdmin = (data) => api.post('/api/tenants/with-admin', data);
+export const suspendTenant = (id) => api.post(`/api/tenants/${id}/suspend`);
+export const activateTenant = (id) => api.post(`/api/tenants/${id}/activate`);
+export const getRoleDashboard = () => api.get('/api/v1/dashboard');
+// Users the caller may see (was /api/auth/users, which never existed).
+export const listUsers = () => authApi.get('/api/users', { params: { page_size: 100 } });
 
 // ── Dashboard & Admin ──
 export const getDashboardStats = () => api.get('/api/dashboard/stats');

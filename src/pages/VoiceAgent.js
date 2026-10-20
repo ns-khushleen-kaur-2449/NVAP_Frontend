@@ -287,7 +287,7 @@ export default function VoiceAgentPage() {
 
 
   const totalCalls = callStats?.total || 0;
-  const completedCalls = callStats?.completed || 0;
+  const completedCalls = callStats?.connected || 0;
   const failedCalls = callStats?.failed || 0;
   const bookedCalls = callStats?.appointment_booked || 0;
   const failedRuns = agentStats?.agent_runs?.failed || 0;

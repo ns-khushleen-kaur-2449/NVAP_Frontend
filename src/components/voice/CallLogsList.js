@@ -12,21 +12,18 @@ import {
   ChevronLeft, ChevronRight, PhoneCall, Trash2, Bot
 } from 'lucide-react';
 import { deleteCallLog } from '@/lib/api';
+import { CALL_STATUS_FILTERS, callStatusMeta } from '@/lib/callOutcome';
 import { useAuth } from '@/lib/AuthContext';
 import { toast } from 'sonner';
 
+const TONE_ICONS = { good: CheckCircle2, live: Loader2, waiting: AlertCircle, bad: XCircle, neutral: AlertCircle };
+
 function StatusBadge({ status }) {
-  const map = {
-    completed: { color: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/25', icon: CheckCircle2 },
-    'in-progress': { color: 'bg-blue-500/15 text-blue-400 border-blue-500/25', icon: Loader2 },
-    initiated: { color: 'bg-amber-500/15 text-amber-400 border-amber-500/25', icon: AlertCircle },
-    failed: { color: 'bg-red-500/15 text-red-400 border-red-500/25', icon: XCircle },
-  };
-  const s = map[status] || map.initiated;
-  const Icon = s.icon;
+  const meta = callStatusMeta(status);
+  const Icon = TONE_ICONS[meta.tone];
   return (
-    <Badge variant="outline" className={`${s.color} gap-1 text-[10px] font-medium`}>
-      <Icon className="w-2.5 h-2.5" /> {status || 'unknown'}
+    <Badge variant="outline" className={`${meta.className} gap-1 text-[10px] font-medium`}>
+      <Icon className="w-2.5 h-2.5" aria-hidden="true" /> {meta.label}
     </Badge>
   );
 }
@@ -168,11 +165,10 @@ export default function CallLogsList({ assistantId = '', assistantName = '', onC
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="completed">Completed</SelectItem>
-                <SelectItem value="initiated">Initiated</SelectItem>
-                <SelectItem value="in-progress">In Progress</SelectItem>
-                <SelectItem value="failed">Failed</SelectItem>
+                <SelectItem value="all">All outcomes</SelectItem>
+                {CALL_STATUS_FILTERS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <Select value={sourceFilter} onValueChange={(v) => { setSourceFilter(v === 'all' ? '' : v); setPage(1); }}>

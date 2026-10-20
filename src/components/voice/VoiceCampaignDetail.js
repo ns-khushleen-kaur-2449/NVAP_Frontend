@@ -30,24 +30,11 @@ const isOngoing = (status) => ONGOING_STATUSES.includes(String(status || '').toL
 const PAGE_SIZE = 100;
 const POLL_INTERVAL_MS = 15000;
 
-// end_reason values that mean the phone was never actually answered. A row can
-// be status "completed" — the call reached a terminal state — and still never
-// have connected, so status alone cannot answer "did we talk to them".
-const NOT_CONNECTED_REASONS = [
-  'customer-did-not-answer',
-  'customer-busy',
-  'voicemail',
-  'no-answer',
-  'busy',
-  'twilio-failed-to-connect-call',
-];
-
-const isNotConnected = (log) => {
-  const reason = String(log.end_reason || '').toLowerCase();
-  return NOT_CONNECTED_REASONS.some((r) => reason.includes(r));
-};
-
-const isFailed = (row) => ['failed', 'error'].includes(String(row.status || '').toLowerCase());
+// A contact's status comes from campaign_contacts (answered, no_answer, busy,
+// failed, ...); a call log's status is its classified outcome (lib/callOutcome).
+// Old call logs say "completed" for every ended call, so that value never means
+// connected.
+const isFailed = (row) => ['failed', 'error', 'not_reachable'].includes(String(row.status || '').toLowerCase());
 const isInProgress = (row) => ['calling', 'in-progress', 'initiated', 'ringing', 'queued', 'processing'].includes(String(row.status || '').toLowerCase());
 // campaign_contacts: "pending" is waiting for its first call or a retry; "cancelled" was never dialled.
 const isWaiting = (row) => ['pending', 'cancelled'].includes(String(row.status || '').toLowerCase());
@@ -57,12 +44,11 @@ const isWaiting = (row) => ['pending', 'cancelled'].includes(String(row.status |
 // log's end_reason, and fall back to end_reason for rows that have a log but no
 // call_records verdict.
 const isNotAnswered = (row) =>
-  ['unanswered', 'no_answer', 'busy'].includes(String(row.status || '').toLowerCase())
-  || row.was_answered === false
-  || isNotConnected(row);
+  ['unanswered', 'no_answer', 'busy', 'voicemail', 'unknown', 'no-answer'].includes(String(row.status || '').toLowerCase())
+  || row.was_answered === false;
 
-const isConnected = (row) =>
-  !isWaiting(row) && !isInProgress(row) && !isFailed(row) && !isNotAnswered(row);
+// Connected only when someone provably answered; a legacy "completed" is not proof.
+const isConnected = (row) => String(row.status || '').toLowerCase() === 'answered' || row.was_answered === true;
 
 function formatDuration(sec) {
   if (sec === null || sec === undefined) return '—';
@@ -243,6 +229,13 @@ function OutcomeBadge({ row: log }) {
       </Badge>
     );
   }
+  if (!isConnected(log)) {
+    return (
+      <Badge variant="outline" className="bg-muted text-muted-foreground border-border gap-1 text-[10px]">
+        outcome not recorded
+      </Badge>
+    );
+  }
   return (
     <Badge variant="outline" className="bg-emerald-500/15 text-emerald-400 border-emerald-500/25 gap-1 text-[10px]">
       <CheckCircle2 className="w-2.5 h-2.5" /> connected
@@ -391,7 +384,7 @@ export default function VoiceCampaignDetail() {
       if (isWaiting(row)) s.waiting += 1;
       else if (isInProgress(row)) s.inProgress += 1;
       else if (isFailed(row)) s.failed += 1;
-      else if (isNotAnswered(row)) s.notConnected += 1;
+      else if (!isConnected(row)) s.notConnected += 1;
       else {
         s.connected += 1;
         if (row.duration_seconds > 0) {
@@ -416,7 +409,7 @@ export default function VoiceCampaignDetail() {
     const filters = {
       all: () => true,
       connected: isConnected,
-      'not-connected': isNotAnswered,
+      'not-connected': (row) => !isWaiting(row) && !isInProgress(row) && !isFailed(row) && !isConnected(row),
       failed: isFailed,
       'in-progress': isInProgress,
       queued: isWaiting,

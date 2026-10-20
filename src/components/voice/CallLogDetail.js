@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import LeadTimelineDialog from '@/components/shared/LeadTimelineDialog';
 import { useCallLogDetail } from '@/hooks/useCallLogs';
 import { getCallRecordingUrl } from '@/lib/api';
+import { callStatusMeta } from '@/lib/callOutcome';
 import { NOT_CONNECTED, bookMeeting, getPrimaryCalendar } from '@/lib/calendar';
 import { toast } from 'sonner';
 import {
@@ -130,18 +131,14 @@ function RecordingPlayer({ callId }) {
   );
 }
 
+const TONE_ICONS = { good: CheckCircle2, live: Loader2, waiting: AlertCircle, bad: XCircle, neutral: AlertCircle };
+
 function StatusBadge({ status }) {
-  const map = {
-    completed: { color: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/25', icon: CheckCircle2 },
-    'in-progress': { color: 'bg-blue-500/15 text-blue-400 border-blue-500/25', icon: Loader2 },
-    initiated: { color: 'bg-amber-500/15 text-amber-400 border-amber-500/25', icon: AlertCircle },
-    failed: { color: 'bg-red-500/15 text-red-400 border-red-500/25', icon: XCircle },
-  };
-  const s = map[status] || map.initiated;
-  const Icon = s.icon;
+  const meta = callStatusMeta(status);
+  const Icon = TONE_ICONS[meta.tone];
   return (
-    <Badge variant="outline" className={`${s.color} gap-1 text-xs font-medium`}>
-      <Icon className="w-3 h-3" /> {status || 'unknown'}
+    <Badge variant="outline" className={`${meta.className} gap-1 text-xs font-medium`}>
+      <Icon className="w-3 h-3" aria-hidden="true" /> {meta.label}
     </Badge>
   );
 }

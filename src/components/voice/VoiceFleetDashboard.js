@@ -244,7 +244,7 @@ export default function VoiceFleetDashboard({ onNavigate, onViewAgentCalls }) {
 
   // Formatting metrics
   const totalCalls = stats?.total || recentLogs.length || 0;
-  const completedCalls = stats?.completed || recentLogs.filter(l => l.status === 'completed').length || 0;
+  const completedCalls = stats?.connected || recentLogs.filter(l => l.status === 'answered').length || 0;
   const failedCalls = stats?.failed || recentLogs.filter(l => l.status === 'failed').length || 0;
   const bookedCalls = stats?.appointment_booked || recentLogs.filter(l => l.appointment_booked).length || 0;
   

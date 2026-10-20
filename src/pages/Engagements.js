@@ -4,10 +4,11 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useCallLogs } from '@/hooks/useCallLogs';
+import { isConnectedStatus, isNotConnectedStatus } from '@/lib/callOutcome';
 import { Phone, Clock, Calendar, RefreshCw, Flame, Thermometer, Snowflake, Loader2, XCircle } from 'lucide-react';
 
 function getLeadTemp(log) {
-  if (log.appointment_booked || (log.status === 'completed' && log.duration_seconds >= 300)) {
+  if (log.appointment_booked || (isConnectedStatus(log.status) && log.duration_seconds >= 300)) {
     return {
       label: 'Hot',
       icon: Flame,
@@ -17,7 +18,7 @@ function getLeadTemp(log) {
         : 'Long, engaged conversation — strong buying intent.',
     };
   }
-  if (log.status === 'completed' && log.duration_seconds >= 120) {
+  if (isConnectedStatus(log.status) && log.duration_seconds >= 120) {
     return {
       label: 'Warm',
       icon: Thermometer,
@@ -29,7 +30,7 @@ function getLeadTemp(log) {
     label: 'Cold',
     icon: Snowflake,
     color: 'bg-blue-400/15 text-blue-400 border-blue-400/30',
-    reason: log.status === 'failed'
+    reason: isNotConnectedStatus(log.status)
       ? 'Call failed or was not connected.'
       : 'Very short or incomplete conversation. Low engagement.',
   };

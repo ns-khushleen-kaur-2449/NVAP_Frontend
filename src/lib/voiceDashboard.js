@@ -140,6 +140,7 @@ export const HEALTH_LABELS = {
   crm_sync: 'CRM sync',
   retry_worker: 'Retry worker',
   call_failures: 'Call failures',
+  campaign_runner: 'Campaign runner',
 };
 
 export const HEALTH_STATES = {

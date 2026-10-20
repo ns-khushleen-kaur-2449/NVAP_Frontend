@@ -1,9 +1,11 @@
 import {
+  ASSISTANT_VIEWER_ROLES,
   CAN_CREATE,
   PERMISSIONS,
   ROLE_PERMISSIONS,
   canCreate,
   canManageUser,
+  canViewAssistants,
   creatableRoles,
   hasPermission,
 } from './rbac';
@@ -96,5 +98,16 @@ describe('permissions', () => {
   test('server-provided permissions win', () => {
     expect(hasPermission({ role: 'rep', permissions: ['users.view'] }, 'users.view')).toBe(true);
     expect(hasPermission(null, 'users.view')).toBe(false);
+  });
+});
+
+
+describe('canViewAssistants (backend AssistantAction.VIEW: Manager and up)', () => {
+  it.each([['super_admin', true], ['tenant_admin', true], ['manager', true], ['rep', false]])('%s -> %s', (role, expected) => {
+    expect(canViewAssistants({ role })).toBe(expected);
+  });
+  it('refuses no user', () => {
+    expect(canViewAssistants(null)).toBe(false);
+    expect(ASSISTANT_VIEWER_ROLES).not.toContain('rep');
   });
 });

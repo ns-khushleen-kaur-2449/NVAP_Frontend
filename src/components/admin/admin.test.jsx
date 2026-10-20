@@ -194,6 +194,15 @@ describe('Sidebar shows only permitted admin items', () => {
   });
 });
 
+describe('Voice Agent dashboard nav follows /api/v1/assistants', () => {
+  test.each([
+    ['super_admin', true], ['tenant_admin', true], ['manager', true], ['rep', false],
+  ])('%s sees the Dashboard entry: %s', (role, shown) => {
+    const { container } = renderWithAuth(<Sidebar />, { user: USERS[role], path: '/voice_agent' });
+    expect(Boolean(container.querySelector('a[href="/voice_agent?tab=dashboard"]'))).toBe(shown);
+  });
+});
+
 describe('Forced password change', () => {
   test('a user with a temporary password sees only the change-password screen', () => {
     renderWithAuth(<AuthGate><p>App</p></AuthGate>, {

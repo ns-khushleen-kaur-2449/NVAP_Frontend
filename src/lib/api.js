@@ -297,6 +297,8 @@ export const getCallRecordingUrl = (id) => api.get(`/api/call-logs/${encodeURICo
 export const deleteCallLog = (id) => api.delete(`/api/call-logs/${id}`);
 export const getVoiceCallStats = () => api.get('/api/call-logs/stats');
 export const getCallStatsByAssistant = () => api.get('/api/call-logs/stats/by-assistant');
+// Every Voice Agent dashboard number for [from, to): { from, to, tz, agent_id? }.
+export const getVoiceDashboardSummary = (params) => api.get('/api/v1/voice/dashboard/summary', { params });
 export const pauseAssistant = (assistantId) => api.post(`/api/v1/assistants/${assistantId}/pause`);
 export const resumeAssistant = (assistantId) => api.post(`/api/v1/assistants/${assistantId}/resume`);
 export const getCampaigns = () => api.get('/api/call-logs/campaigns');

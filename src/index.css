@@ -378,3 +378,23 @@
 .ai-btn-glow:hover {
   box-shadow: 0 4px 14px rgba(49, 63, 128, 0.4);
 }
+/* Voice Agent dashboard. Series colours are validated categorical slots (dataviz
+   skill: light #eb6834/#2a78d6, dark #d95926/#3987e5). Accent ink #B04E14 keeps
+   text and button labels on the orange accent at >= 4.5:1. */
+.vd-root {
+  --vd-dialed: #eb6834;
+  --vd-connected: #2a78d6;
+  --vd-accent: #B04E14;
+  --vd-accent-hover: #93410F;
+  --vd-accent-ink: #B04E14;
+  --vd-good: #1f7a3d;
+  --vd-bad: #b42318;
+  --vd-track: hsl(var(--surface-3));
+}
+.dark .vd-root {
+  --vd-dialed: #d95926;
+  --vd-connected: #3987e5;
+  --vd-accent-ink: #FF9A57;
+  --vd-good: #5cc97e;
+  --vd-bad: #ff8577;
+}

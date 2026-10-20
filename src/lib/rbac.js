@@ -71,6 +71,15 @@ export function hasPermission(actor, permission) {
   return permissionsOf(actor).includes(permission);
 }
 
+// Who may view assistants: the backend's AssistantAction.VIEW (Manager and up).
+// /api/v1/assistants and the Voice Agent dashboard both follow it; a Sales Rep
+// gets 403 from the dashboard, so its nav entry is hidden.
+export const ASSISTANT_VIEWER_ROLES = Object.freeze(['super_admin', 'tenant_admin', 'manager']);
+
+export function canViewAssistants(actor) {
+  return Boolean(actor) && ASSISTANT_VIEWER_ROLES.includes(actor.role);
+}
+
 /** The roles `actor` may create, highest first. */
 export function creatableRoles(actor) {
   if (!actor) return [];

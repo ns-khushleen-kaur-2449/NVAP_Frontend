@@ -11,6 +11,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useAuth } from '@/lib/AuthContext';
 import ThemeToggle from '@/components/shared/ThemeToggle';
 import { visibleNavItems } from '@/lib/adminNav';
+import { canViewAssistants } from '@/lib/rbac';
 
 const APP_NAV = [
   { path: '/dashboard',   label: 'Dashboard',    icon: LayoutDashboard },
@@ -27,6 +28,8 @@ const PENDING_NAV = [
 // Voice Agent's own internal views — reached as /voice_agent?tab=<id>, read by
 // VoiceAgent.js's existing searchParams-sync effect.
 const VOICE_TABS = [
+  // Only for roles that may view assistants (the dashboard answers 403 otherwise).
+  { id: 'dashboard', label: 'Dashboard',                icon: LayoutDashboard, requires: canViewAssistants },
   { id: 'builder',   label: 'Lead-to-Campaign Builder', icon: Layers },
   { id: 'logs',      label: 'Call Logs',                icon: Phone },
   { id: 'create',    label: 'Create Agent',             icon: Mic },
@@ -77,7 +80,9 @@ export function Sidebar() {
   // const onReportAgent = REPORT_TABS.some(
   //   (t) => location.pathname === t.path.split('?')[0]
   // );
-  const currentTab = onVoiceAgent ? (params.get('tab') || (params.get('view') === 'logs' ? 'logs' : null)) : null;
+  // With no ?tab=, VoiceAgent shows the dashboard (or the builder for roles that cannot view assistants).
+  const defaultVoiceTab = canViewAssistants(user) ? 'dashboard' : 'builder';
+  const currentTab = onVoiceAgent ? (params.get('tab') || (params.get('view') === 'logs' ? 'logs' : defaultVoiceTab)) : null;
 
   return (
     <TooltipProvider delayDuration={0}>
@@ -131,7 +136,7 @@ export function Sidebar() {
 
             {(voiceOpen || collapsed) && (
               <div className={collapsed ? '' : 'pl-4 flex flex-col gap-0.5'}>
-                {VOICE_TABS.map((tab) => {
+                {VOICE_TABS.filter((tab) => !tab.requires || tab.requires(user)).map((tab) => {
                   const isActive = tab.path
                     ? location.pathname.startsWith(tab.path)
                     : onVoiceAgent && currentTab === tab.id;

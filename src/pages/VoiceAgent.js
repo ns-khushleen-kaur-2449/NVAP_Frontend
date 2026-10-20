@@ -16,7 +16,9 @@ import AssistantBuilder from '../components/voice/AssistantBuilder';
 import KpiCard from '../components/shared/KpiCard';
 import PendingRequestsQueue from '../components/admin/PendingRequestsQueue';
 import WebhookLogViewer from '../components/admin/WebhookLogViewer';
-import VoiceFleetDashboard from '../components/voice/VoiceFleetDashboard';
+import VoiceDashboard from '../components/voice/VoiceDashboard';
+import { useAuth } from '@/lib/AuthContext';
+import { canViewAssistants } from '@/lib/rbac';
 import VoiceAgentAnalytics from '@/components/shared/VoiceAgentAnalytics';
 import { Loader2, PhoneCall, BookOpen, Mic, UploadCloud, Phone, AlertTriangle, CheckCircle2, RotateCw, Activity, Layers, Info, FileText, Database, Search, Copy, Check, LayoutDashboard } from 'lucide-react';
 
@@ -71,12 +73,17 @@ export default function VoiceAgentPage() {
   // Active sidebar tab
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
+  // The dashboard follows /api/v1/assistants: roles that cannot view assistants
+  // (Sales Reps) land on the campaign builder instead.
+  const { user } = useAuth();
+  const canSeeDashboard = canViewAssistants(user);
+  const homeTab = canSeeDashboard ? 'dashboard' : 'builder';
   const [activeTab, setActiveTab] = useState(() => {
     const view = searchParams.get('view');
     const tab = searchParams.get('tab');
     if (view === 'logs' || tab === 'logs') return 'logs';
-    if (tab && TABS.some(t => t.id === tab)) return tab;
-    return 'dashboard';
+    if (tab && TABS.some(t => t.id === tab) && (tab !== 'dashboard' || canSeeDashboard)) return tab;
+    return homeTab;
   });
   useEffect(() => {
     const view = searchParams.get('view');
@@ -304,11 +311,6 @@ export default function VoiceAgentPage() {
     { id: 'webhook_errors', title: 'Webhook Errors', value: webhookErrors, icon: AlertTriangle, color: webhookErrors > 0 ? '#dc2626' : '#F87217', panel: 'logs' },
     { id: 'manual_followups', title: 'Manual Follow-ups', value: manualFollowups, icon: CheckCircle2, color: manualFollowups > 0 ? '#d97706' : '#F87217', panel: 'queue' },
   ];
-
-  const handleViewAgentCalls = (vapiAssistantId, name) => {
-    setLogsAssistant({ id: vapiAssistantId || '', name: name || '' });
-    setActiveTab('logs');
-  };
 
   const handleKpiClick = (kpi) => {
     if (!kpi.panel) return;
@@ -743,14 +745,14 @@ export default function VoiceAgentPage() {
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'dashboard':  return <VoiceFleetDashboard onNavigate={setActiveTab} onViewAgentCalls={handleViewAgentCalls} />;
+      case 'dashboard':  return canSeeDashboard ? <VoiceDashboard onNavigate={setActiveTab} /> : renderBuilder();
       case 'analytics':  return <div className="va-tab-content"><VoiceAgentAnalytics /></div>;
       case 'single':     return renderSingleCall();
       case 'csv':        return renderCsvCampaign();
       case 'builder':    return renderBuilder();
       case 'logs':       return (
         <CallLogsList
-          onClose={() => setActiveTab('dashboard')}
+          onClose={() => setActiveTab(homeTab)}
           assistantId={logsAssistant.id}
           assistantName={logsAssistant.name}
           onClearAssistant={() => setLogsAssistant({ id: '', name: '' })}

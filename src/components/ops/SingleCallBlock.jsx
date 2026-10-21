@@ -14,7 +14,7 @@ export default function SingleCallBlock({ block, canOverride, onOverride }) {
       {optedOut ? (
         <p className="font-semibold">
           On do-not-call list.{' '}
-          <Link to="/do-not-call?tab=all" className="underline">Open the do-not-call page</Link>
+          <Link to="/operations/do-not-call?tab=all" className="underline">Open the do-not-call page</Link>
         </p>
       ) : (
         <>

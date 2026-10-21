@@ -180,7 +180,7 @@ function ActionDialog({ action, appointment, zone, onClose, onDone }) {
       {conflict && (
         <p role="alert" className="rounded-lg border px-3 py-2 text-sm ops-tone ops-tone-bad">
           That slot is taken by the meeting at {conflict.label}.{' '}
-          <Link to={`/appointments?open=${conflict.appointment_id}`} className="font-semibold underline">Open it</Link>
+          <Link to={`/operations/appointments?open=${conflict.appointment_id}`} className="font-semibold underline">Open it</Link>
         </p>
       )}
     </ReasonDialog>

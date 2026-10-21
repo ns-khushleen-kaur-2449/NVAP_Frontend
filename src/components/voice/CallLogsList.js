@@ -18,8 +18,9 @@ import { toast } from 'sonner';
 
 const TONE_ICONS = { good: CheckCircle2, live: Loader2, waiting: AlertCircle, bad: XCircle, neutral: AlertCircle };
 
-function StatusBadge({ status }) {
-  const meta = callStatusMeta(status);
+function StatusBadge({ status, label }) {
+  // `label` is the backend's status_label ("Analysing…" while the analysis is on its way).
+  const meta = label ? { ...callStatusMeta('in-progress'), label } : callStatusMeta(status);
   const Icon = TONE_ICONS[meta.tone];
   return (
     <Badge variant="outline" className={`${meta.className} gap-1 text-[10px] font-medium`}>
@@ -226,7 +227,7 @@ export default function CallLogsList({ assistantId = '', assistantName = '', onC
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-sm font-semibold text-foreground truncate">{log.customer_name || 'Unknown'}</p>
-                      <StatusBadge status={log.status} />
+                      <StatusBadge status={log.status} label={log.status_label} />
                       <SourceBadge source={log.source_type} />
                       <LeadStatusBadge status={log.lead_status} />
                       {log.appointment_booked && (

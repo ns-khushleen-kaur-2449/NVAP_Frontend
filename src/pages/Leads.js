@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import ProspectTimeline from '@/components/ops/ProspectTimeline';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
-import { Plus, Search, Sparkles, X, ChevronRight, Users, Download, UserCog, ArrowRight, HelpCircle } from 'lucide-react';
+import { Plus, Search, Sparkles, X, ChevronRight, ChevronLeft, Users, Download, UserCog, ArrowRight, HelpCircle } from 'lucide-react';
 import {
   getProspect, getProspects, createProspect,
   bulkQualifyLeads, bulkAssignLeads, bulkUpdateStage,
@@ -83,9 +83,13 @@ export default function LeadsPage() {
 
   useEffect(() => { fetchLeads(); }, [fetchLeads]);
 
-  // /leads?prospect=<id> (links from appointments, callbacks, do-not-call) opens that prospect.
+  // /leads?prospect=<id> (links from the Operations tabs) opens that prospect.
   const [searchParams] = useSearchParams();
   const linkedProspect = searchParams.get('prospect');
+  // Opened from another screen in the app (not typed or reloaded): offer the way back to it.
+  const location = useLocation();
+  const navigate = useNavigate();
+  const canGoBack = Boolean(linkedProspect) && location.key !== 'default';
   useEffect(() => {
     if (!linkedProspect) return;
     getProspect(linkedProspect).then((r) => setSelectedLead(toLeadRow(r.data))).catch(() => toast.error('That lead is not available to you.'));
@@ -340,6 +344,11 @@ export default function LeadsPage() {
           <Card className="bg-card border-border flex-1 overflow-hidden">
             <ScrollArea className="h-full">
               <div className="p-5">
+                {canGoBack && (
+                  <Button variant="ghost" size="sm" onClick={() => navigate(-1)} className="-ml-2 mb-2 gap-1 text-muted-foreground">
+                    <ChevronLeft className="w-4 h-4" aria-hidden="true" /> Back
+                  </Button>
+                )}
                 {/* Header */}
                 <div className="flex items-start justify-between mb-4">
                   <div>

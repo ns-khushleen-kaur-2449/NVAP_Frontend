@@ -5,16 +5,22 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Link } from 'react-router-dom';
 import LeadTimelineDialog from '@/components/shared/LeadTimelineDialog';
+import IntentAssessmentDetails from '@/components/ops/IntentAssessmentDetails';
+import OpsStatusBadge from '@/components/ops/StatusBadge';
 import { useCallLogDetail } from '@/hooks/useCallLogs';
-import { getCallRecordingUrl } from '@/lib/api';
+import { useAuth } from '@/lib/AuthContext';
+import { canOperate } from '@/lib/rbac';
+import { REVIEW_TONES, humanize } from '@/lib/intent';
+import { getCallIntentAssessment, getCallRecordingUrl } from '@/lib/api';
 import { callStatusMeta } from '@/lib/callOutcome';
 import { NOT_CONNECTED, bookMeeting, getPrimaryCalendar } from '@/lib/calendar';
 import { toast } from 'sonner';
 import {
   ArrowLeft, Clock, Phone, User, FileText, Calendar,
   CheckCircle2, XCircle, AlertCircle, Loader2,
-  MessageSquare, Wrench, BarChart3, Info, Layers, CalendarPlus, History, Mic
+  MessageSquare, Wrench, BarChart3, Info, Layers, CalendarPlus, History, Mic, Target
 } from 'lucide-react';
 
 function BookMeetingDialog({ open, onOpenChange, log, onBooked }) {
@@ -188,6 +194,77 @@ function MetaRow({ icon: Icon, label, value }) {
         <p className="text-sm font-medium break-all text-foreground">{value || '--'}</p>
       </div>
     </div>
+  );
+}
+
+/** The call's review state as a badge: its review item, else accepted without review. */
+function reviewBadge(assessment, review) {
+  if (review) {
+    const label = review.review_status === 'pending' ? 'Waiting for review' : humanize(review.review_status);
+    return <OpsStatusBadge label={label} tone={REVIEW_TONES[review.review_status]} />;
+  }
+  return <OpsStatusBadge label={humanize(assessment.assessment_status)} tone={assessment.assessment_status === 'accepted' ? 'good' : 'neutral'} />;
+}
+
+/** The intent assessment made from this call (GET /api/intent-assessment/calls/{id}). */
+function CallIntentAssessment({ callId }) {
+  const { user } = useAuth();
+  const [state, setState] = useState({ loading: true });
+  const load = useCallback(async () => {
+    setState({ loading: true });
+    try {
+      const res = await getCallIntentAssessment(callId);
+      setState({ data: res.data });
+    } catch (e) {
+      setState(e.response?.status === 404
+        ? { error: 'The assessment of this call is not available to you.' }
+        : { error: 'Could not load the intent assessment.', retry: true });
+    }
+  }, [callId]);
+  useEffect(() => { load(); }, [load]);
+
+  const assessment = state.data?.assessment;
+  const review = state.data?.review;
+  return (
+    <Card className="bg-card rounded-xl border border-border shadow-sm">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base font-semibold text-foreground/80 flex flex-wrap items-center justify-between gap-2">
+          <span className="flex items-center gap-2"><Target className="w-4 h-4 text-[#F87217]" /> Intent Assessment</span>
+          {assessment && <span className="ops">{reviewBadge(assessment, review)}</span>}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="ops space-y-3">
+        {state.loading && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" /> Loading the assessment…</div>
+        )}
+        {state.error && (
+          <div className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
+            <span>{state.error}</span>
+            {state.retry && <Button variant="outline" size="sm" onClick={load}>Try again</Button>}
+          </div>
+        )}
+        {state.data && !assessment && (
+          <p className="text-sm text-muted-foreground">
+            This call has no intent assessment. Calls are assessed after they end, once the lead is known and there is a transcript.
+          </p>
+        )}
+        {assessment && (
+          <>
+            {review && (
+              <div className="rounded-lg border border-border bg-[hsl(var(--surface-2))] px-3 py-2 text-xs">
+                <p className="whitespace-pre-line text-muted-foreground">{review.reason}</p>
+                {review.review_status === 'pending' && canOperate(user) && (
+                  <Link to="/operations/intent-review" className="mt-1 inline-block font-medium text-[color:var(--ops-accent-ink)] underline">
+                    Review it in Operations
+                  </Link>
+                )}
+              </div>
+            )}
+            <IntentAssessmentDetails assessment={assessment} compact />
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -406,6 +483,8 @@ export default function CallLogDetail({ callId, onBack }) {
               <MetaRow icon={BarChart3} label="Lead Status" value={d.lead_status ? d.lead_status.toUpperCase() : "WARM"} />
             </CardContent>
           </Card>
+
+          <CallIntentAssessment callId={d.vapi_call_id || d.id} />
 
           {/* Structured Data */}
           {d.structured_data && (

@@ -1,7 +1,7 @@
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Users, Sparkles,  PhoneCall, Inbox as InboxIcon, CalendarClock,
-  Layers, Phone, Mic, BookOpen, UploadCloud, Megaphone, CalendarCheck, PhoneForwarded, PhoneOff,
+  Layers, Phone, Mic, BookOpen, UploadCloud, Megaphone, ClipboardCheck,
   ChevronDown, ChevronLeft, ChevronRight, Settings, LogOut,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -11,7 +11,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useAuth } from '@/lib/AuthContext';
 import ThemeToggle from '@/components/shared/ThemeToggle';
 import { visibleNavItems } from '@/lib/adminNav';
-import { canViewAssistants, canViewOperations } from '@/lib/rbac';
+import { canViewAssistants } from '@/lib/rbac';
 
 const APP_NAV = [
   { path: '/dashboard',   label: 'Dashboard',    icon: LayoutDashboard },
@@ -19,10 +19,9 @@ const APP_NAV = [
 
 // Secondary surfaces, listed below Voice Agent.
 const PENDING_NAV = [
-  { path: '/appointments', label: 'Appointments', icon: CalendarCheck },
-  // Callbacks and do-not-call: Tenant Admins, Managers and (view only) Super Admins.
-  { path: '/callbacks',   label: 'Callbacks',    icon: PhoneForwarded, requires: canViewOperations },
-  { path: '/do-not-call', label: 'Do-not-call',  icon: PhoneOff, requires: canViewOperations },
+  // Operations: appointments for everyone; callbacks, do-not-call and intent review only for
+  // Tenant Admins, Managers and (view only) Super Admins (pages/Operations.jsx gates each tab).
+  { path: '/operations',  label: 'Operations',   icon: ClipboardCheck },
   { path: '/prospecting', label: 'Prospecting',  icon: Users },
   { path: '/strategist',  label: 'AI Strategist', icon: Sparkles },
   { path: '/inbox',       label: 'Inbox',        icon: InboxIcon },

@@ -432,6 +432,16 @@ export const confirmDoNotCall = (id, reason) => api.post(`/api/v1/do-not-call/${
 // "Not an opt-out": { reverted, prospect_id, restored_stage, requeued_contact_ids, requeued_scheduled_call_ids }
 export const revertDoNotCall = (id, reason) => api.post(`/api/v1/do-not-call/${id}/revert`, { reason });
 
+// ── Intent review (Tenant Admin / Manager; a Super Admin passes tenant_id) ──
+// params: { status: pending | approved | rejected, page, page_size, tenant_id }
+export const getIntentReviewQueue = (params) => api.get('/api/intent-assessment/review-queue', { params });
+export const getIntentAssessment = (id, params) => api.get(`/api/intent-assessment/${id}`, { params });
+// One call log's assessment (database or Vapi id): { assessment | null, review | null }; anyone who may see it.
+export const getCallIntentAssessment = (callId) => api.get(`/api/intent-assessment/calls/${callId}`);
+// decision: approved | rejected; 409 when someone already reviewed it.
+export const reviewIntentAssessment = (id, decision, reason, params) =>
+  api.post(`/api/intent-assessment/${id}/review`, { decision, reason }, { params });
+
 // ── Tenant rules (Tenant Admin edits with a reason; Manager views; Super Admin passes tenant_id) ──
 export const getContactRules = (params) => api.get('/api/v1/contact-rules', { params });
 export const updateContactRules = (data, params) => api.put('/api/v1/contact-rules', data, { params });

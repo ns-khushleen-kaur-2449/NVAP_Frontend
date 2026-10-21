@@ -44,37 +44,12 @@ import { PERMISSIONS } from "@/lib/rbac";
 import AuthGate from "@/components/auth/AuthGate";
 import InboxPage from "@/pages/Inbox";
 import MeetingsPage from "@/pages/Meetings";
-import AppointmentsPage from "@/pages/Appointments";
-import CallbacksPage from "@/pages/Callbacks";
-import DoNotCallPage from "@/pages/DoNotCall";
+import { operationsRoutes } from "@/pages/Operations";
+import ProtectedRoute from "@/components/auth/ProtectedRoute";
 
 // The backend's roles (lib/rbac.js).  Older routes said "admin", a role that never existed.
 const ADMINS = ['super_admin', 'tenant_admin'];
 const ADMINS_AND_MANAGERS = ['super_admin', 'tenant_admin', 'manager'];
-// Callbacks and do-not-call (lib/rbac.js canViewOperations; the backend enforces it).
-const OPERATIONS_VIEWERS = ['super_admin', 'tenant_admin', 'manager'];
-
-function ProtectedRoute({ children, roles }) {
-  const { user, token, loading } = useAuth();
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-muted-foreground">Loading...</div>
-      </div>
-    );
-  }
-
-  if (!user && !token) {
-    return <Navigate to="/login" replace />;
-  }
-
-  if (roles && (!user || !roles.includes(user.role))) {
-    return <Navigate to="/403" replace />;
-  }
-
-  return children;
-}
 
 /** Shows LandingPage for guests; redirects logged-in users to /dashboard */
 function SmartRoot() {
@@ -93,7 +68,7 @@ function SmartRoot() {
 // Pages that get the persistent left Sidebar instead of the TopBar. Everything
 // else in AppShell keeps the TopBar exactly as before.
 const SIDEBAR_SECTION_PATHS = ['/dashboard', '/prospecting', '/strategist', '/inbox', '/meetings', '/settings',
-  '/appointments', '/callbacks', '/do-not-call'];
+  '/operations', '/leads'];
 
 function AppShell() {
   const { user, token, loading } = useAuth();
@@ -136,9 +111,8 @@ function AppShell() {
       <Route path="/campaigns/*" element={<Navigate to="/voice-campaigns" replace />} />
       <Route path="/inbox" element={<InboxPage />} />
       <Route path="/meetings" element={<MeetingsPage />} />
-      <Route path="/appointments" element={<AppointmentsPage />} />
-      <Route path="/callbacks" element={<ProtectedRoute roles={OPERATIONS_VIEWERS}><CallbacksPage /></ProtectedRoute>} />
-      <Route path="/do-not-call" element={<ProtectedRoute roles={OPERATIONS_VIEWERS}><DoNotCallPage /></ProtectedRoute>} />
+      {/* Appointments, callbacks, do-not-call and intent review (old /appointments, /callbacks and /do-not-call redirect). */}
+      {operationsRoutes()}
       <Route path="/403" element={<ForbiddenPage />} />
       <Route path="/settings/users" element={<RequirePermission perm={PERMISSIONS.USERS_VIEW}><UsersAdminPage /></RequirePermission>} />
       <Route path="/settings/teams" element={<RequirePermission perm={PERMISSIONS.TEAMS_MANAGE}><TeamsAdminPage /></RequirePermission>} />

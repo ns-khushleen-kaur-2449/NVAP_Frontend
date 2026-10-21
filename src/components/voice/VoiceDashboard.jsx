@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import { Plus, RotateCw } from 'lucide-react';
+import { RotateCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -145,10 +145,6 @@ export default function VoiceDashboard({ onNavigate }) {
           <button type="button" onClick={() => load()} disabled={refreshing} aria-label="Refresh the dashboard"
                   className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card hover:bg-[hsl(var(--surface-2))] disabled:opacity-60">
             <RotateCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} aria-hidden="true" />
-          </button>
-          <button type="button" onClick={() => onNavigate?.('create')}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[var(--vd-accent)] hover:bg-[var(--vd-accent-hover)] px-4 text-sm font-semibold text-white">
-            <Plus className="w-4 h-4" aria-hidden="true" /> New agent
           </button>
         </div>
       </header>

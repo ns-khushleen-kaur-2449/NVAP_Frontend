@@ -239,12 +239,15 @@ export const deleteVoiceCampaign = (id) => api.delete(`/api/campaigns/${id}`);
 // assistant, timezone, scheduled_at and contacts only while draft or scheduled.
 export const updateVoiceCampaign = (id, data) => api.patch(`/api/campaigns/${id}`, data);
 // One immediate outbound call (Single Call tab).
-export const initiateSmartsdrCall = ({ phone_number, user_name, assistant_id }) => {
+export const initiateSmartsdrCall = ({ phone_number, user_name, assistant_id, prospect_id }) => {
   const body = new URLSearchParams();
   body.append('phone_number', phone_number || '');
   body.append('user_name', user_name || '');
   if (assistant_id) {
     body.append('assistant_id', assistant_id);
+  }
+  if (prospect_id) {
+    body.append('prospect_id', prospect_id);
   }
   return api.post('/api/smartsdr-calls', body, {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },

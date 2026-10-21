@@ -216,7 +216,8 @@ export default function VoiceAgentPage() {
       await initiateSmartsdrCall({
         phone_number: callPhone,
         user_name: callName,
-        assistant_id: selectedAssistantId || undefined
+        assistant_id: selectedAssistantId || undefined,
+        prospect_id: selectedLeadId || undefined,
       });
       toast.success('Call initiated', {
         description: 'It is listed in Call Logs now and updates when the call ends.',
@@ -392,7 +393,7 @@ export default function VoiceAgentPage() {
               <Input
                 placeholder="Enter customer name"
                 value={callName}
-                onChange={(e) => setCallName(e.target.value)}
+                onChange={(e) => { setCallName(e.target.value); setSelectedLeadId(''); }}
                 className="bg-[hsl(var(--surface-2))] border-border"
               />
             </div>
@@ -401,7 +402,7 @@ export default function VoiceAgentPage() {
               <Input
                 placeholder="+1 (555) 000-0000"
                 value={callPhone}
-                onChange={(e) => setCallPhone(e.target.value)}
+                onChange={(e) => { setCallPhone(e.target.value); setSelectedLeadId(''); }}
                 className="bg-[hsl(var(--surface-2))] border-border"
               />
             </div>

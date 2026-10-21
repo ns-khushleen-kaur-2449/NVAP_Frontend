@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import ProspectTimeline from '@/components/ops/ProspectTimeline';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,19 +11,16 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
-import { Plus, Search, Sparkles, CalendarPlus, X, ChevronRight, Users, Download, UserCog, ArrowRight, HelpCircle } from 'lucide-react';
+import { Plus, Search, Sparkles, X, ChevronRight, Users, Download, UserCog, ArrowRight, HelpCircle } from 'lucide-react';
 import {
-  getProspects, createProspect, getProspectStageEvents, qualifyLead,
-  getProperties, createSiteVisit,
+  getProspect, getProspects, createProspect,
   bulkQualifyLeads, bulkAssignLeads, bulkUpdateStage,
   exportLeadsCSV, downloadBlob
 } from '@/lib/api';
 import { formatCurrency, STAGE_OPTIONS } from '@/lib/utils';
-import { toLeadRow, stageEventsToTimeline } from '@/lib/prospects';
+import { toLeadRow } from '@/lib/prospects';
 import { StageBadge, PriorityBadge, StatusBadge } from '@/components/shared/StatusBadges';
 import { ScoreGauge } from '@/components/shared/ScoreGauge';
-import { Timeline } from '@/components/shared/Timeline';
-import { AgentButton } from '@/components/shared/AgentButton';
 
 const ScoreFactorsPanel = ({ factors, whyScore }) => {
   if (!factors || factors.length === 0) return null;
@@ -59,11 +58,7 @@ export default function LeadsPage() {
   const [search, setSearch] = useState('');
   const [stageFilter, setStageFilter] = useState('all');
   const [selectedLead, setSelectedLead] = useState(null);
-  const [events, setEvents] = useState([]);
-  const [qualifying, setQualifying] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
-  const [showVisitDialog, setShowVisitDialog] = useState(false);
-  const [properties, setProperties] = useState([]);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [bulkAction, setBulkAction] = useState('');
   const [bulkAssignTo, setBulkAssignTo] = useState('');
@@ -72,7 +67,6 @@ export default function LeadsPage() {
   const [showBulkDialog, setShowBulkDialog] = useState(false);
   const [newLead, setNewLead] = useState({ name: '', email: '', phone: '', source: 'website', project: '', category: '', sub_category: '', budget_min: '', budget_max: '', location_preference: '', timeline: '', employment: '' });
   const [countryCode, setCountryCode] = useState('+91');
-  const [visitForm, setVisitForm] = useState({ property_id: '', scheduled_at: '', notes: '' });
 
   const fetchLeads = useCallback(async () => {
     try {
@@ -89,29 +83,15 @@ export default function LeadsPage() {
 
   useEffect(() => { fetchLeads(); }, [fetchLeads]);
 
-  const selectLead = async (lead) => {
-    setSelectedLead(lead);
-    try {
-      const r = await getProspectStageEvents(lead.id);
-      setEvents(stageEventsToTimeline(r.data));
-    } catch (e) { setEvents([]); }
-  };
+  // /leads?prospect=<id> (links from appointments, callbacks, do-not-call) opens that prospect.
+  const [searchParams] = useSearchParams();
+  const linkedProspect = searchParams.get('prospect');
+  useEffect(() => {
+    if (!linkedProspect) return;
+    getProspect(linkedProspect).then((r) => setSelectedLead(toLeadRow(r.data))).catch(() => toast.error('That lead is not available to you.'));
+  }, [linkedProspect]);
 
-  const handleQualify = async () => {
-    if (!selectedLead) return;
-    setQualifying(true);
-    try {
-      const r = await qualifyLead(selectedLead.id);
-      setSelectedLead(r.data.lead);
-      toast.success(`Lead scored: ${r.data.qualification.score}/100`);
-      fetchLeads();
-      const evts = await getProspectStageEvents(selectedLead.id);
-      setEvents(stageEventsToTimeline(evts.data));
-    } catch (e) {
-      toast.error('Qualification failed: ' + (e.response?.data?.detail || e.message));
-    }
-    setQualifying(false);
-  };
+  const selectLead = (lead) => setSelectedLead(lead);
 
   const handleCreate = async () => {
     try {
@@ -135,33 +115,6 @@ export default function LeadsPage() {
     } catch (e) {
       toast.error('Failed to create lead');
     }
-  };
-
-  const handleScheduleVisit = async () => {
-    if (!selectedLead || !visitForm.property_id || !visitForm.scheduled_at) return;
-    try {
-      await createSiteVisit({
-        lead_id: selectedLead.id,
-        property_id: visitForm.property_id,
-        scheduled_at: new Date(visitForm.scheduled_at).toISOString(),
-        notes: visitForm.notes
-      });
-      toast.success('Site visit scheduled');
-      setShowVisitDialog(false);
-      setVisitForm({ property_id: '', scheduled_at: '', notes: '' });
-      const evts = await getProspectStageEvents(selectedLead.id);
-      setEvents(stageEventsToTimeline(evts.data));
-    } catch (e) {
-      toast.error('Failed to schedule visit');
-    }
-  };
-
-  const openVisitDialog = async () => {
-    try {
-      const r = await getProperties({});
-      setProperties(r.data.properties);
-    } catch (e) { setProperties([]); }
-    setShowVisitDialog(true);
   };
 
   const toggleSelect = (id) => {
@@ -215,7 +168,7 @@ export default function LeadsPage() {
   return (
     <div className="flex gap-4 h-[calc(100vh-120px)]">
       {/* Left: Lead List */}
-      <div className="flex flex-col w-full xl:w-[55%] min-w-0">
+      <div className={`${selectedLead ? 'hidden xl:flex' : 'flex'} flex-col w-full xl:w-[55%] min-w-0`}>
         {/* Filters */}
         <div className="flex items-center gap-3 mb-4 flex-wrap">
           <div className="relative flex-1 min-w-[160px]">
@@ -382,7 +335,7 @@ export default function LeadsPage() {
       </div>
 
       {/* Right: Lead Detail */}
-      <div className="hidden xl:flex flex-col w-[45%] min-w-0">
+      <div className={`${selectedLead ? 'flex' : 'hidden xl:flex'} flex-col w-full xl:w-[45%] min-w-0`}>
         {selectedLead ? (
           <Card className="bg-card border-border flex-1 overflow-hidden">
             <ScrollArea className="h-full">
@@ -397,7 +350,7 @@ export default function LeadsPage() {
                       {selectedLead.ai_priority && <PriorityBadge priority={selectedLead.ai_priority} />}
                     </div>
                   </div>
-                  <Button variant="ghost" size="icon" onClick={() => setSelectedLead(null)}>
+                  <Button variant="ghost" size="icon" aria-label="Close the lead" onClick={() => setSelectedLead(null)}>
                     <X className="w-4 h-4" />
                   </Button>
                 </div>
@@ -451,21 +404,16 @@ export default function LeadsPage() {
                   </div>
                 )}
 
-                {/* Actions */}
-                <div className="flex gap-2 mb-5">
-                  <AgentButton onClick={handleQualify} loading={qualifying} icon={Sparkles} data-testid="lead-qualification-run-button">
-                    Run AI Qualification
-                  </AgentButton>
-                  <Button variant="secondary" size="sm" onClick={openVisitDialog} className="bg-[hsl(var(--surface-2))] hover:bg-[hsl(var(--surface-3))]" data-testid="schedule-visit-button">
-                    <CalendarPlus className="w-4 h-4 mr-1" /> Schedule Visit
-                  </Button>
-                </div>
+                {/* AI qualification and site visits used endpoints the backend no longer has. */}
+                <p className="mb-5 rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground">
+                  AI qualification is not available yet.
+                </p>
 
-                {/* Timeline */}
-                <div>
-                  <h4 className="text-sm font-semibold mb-3">Activity Timeline</h4>
-                  <Timeline events={events} />
-                </div>
+                {/* Calls, stage changes, appointment and do-not-call events in one list. */}
+                <section aria-labelledby="prospect-timeline">
+                  <h4 id="prospect-timeline" className="text-sm font-semibold mb-3">Timeline</h4>
+                  <ProspectTimeline prospectId={selectedLead.id} />
+                </section>
               </div>
             </ScrollArea>
           </Card>
@@ -478,43 +426,6 @@ export default function LeadsPage() {
           </Card>
         )}
       </div>
-
-      {/* Site Visit Dialog */}
-      <Dialog open={showVisitDialog} onOpenChange={setShowVisitDialog}>
-        <DialogContent className="bg-card border-border">
-          <DialogHeader>
-            <DialogTitle className="font-display">Schedule Site Visit</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <Select value={visitForm.property_id} onValueChange={v => setVisitForm({...visitForm, property_id: v})}>
-              <SelectTrigger className="bg-[hsl(var(--surface-2))] border-border" data-testid="visit-property-select">
-                <SelectValue placeholder="Select Property" />
-              </SelectTrigger>
-              <SelectContent>
-                {properties.map(p => (
-                  <SelectItem key={p.id} value={p.id}>{p.name} - {p.location}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Input
-              type="datetime-local"
-              value={visitForm.scheduled_at}
-              onChange={e => setVisitForm({...visitForm, scheduled_at: e.target.value})}
-              className="bg-[hsl(var(--surface-2))] border-border"
-              data-testid="visit-date-input"
-            />
-            <Input
-              placeholder="Notes (optional)"
-              value={visitForm.notes}
-              onChange={e => setVisitForm({...visitForm, notes: e.target.value})}
-              className="bg-[hsl(var(--surface-2))] border-border"
-            />
-            <Button onClick={handleScheduleVisit} disabled={!visitForm.property_id || !visitForm.scheduled_at} className="bg-primary text-primary-foreground" data-testid="confirm-visit-button">
-              Schedule Visit
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* Bulk Action Dialog */}
       <Dialog open={showBulkDialog} onOpenChange={setShowBulkDialog}>

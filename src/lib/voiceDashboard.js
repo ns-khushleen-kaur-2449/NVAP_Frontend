@@ -141,6 +141,7 @@ export const HEALTH_LABELS = {
   retry_worker: 'Retry worker',
   call_failures: 'Call failures',
   campaign_runner: 'Campaign runner',
+  calendar_sync: 'Calendar sync',
 };
 
 export const HEALTH_STATES = {

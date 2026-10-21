@@ -8,8 +8,9 @@ import { createVoiceCampaign } from '@/lib/api';
 import { toast } from 'sonner';
 import { Loader2, Play, CalendarClock, Users, FileSpreadsheet } from 'lucide-react';
 import {
-  CallingConfigFields, CallingWindowFields, DEFAULT_CONFIG, TimeZoneField,
-  announceCalendarSync, apiErrorMessage, browserTimeZone, validateSettings, zonedToIso,
+  CallingConfigFields, CallingWindowFields, DEFAULT_CONFIG, ScheduleWarnings, TimeZoneField,
+  announceCalendarSync, apiErrorMessage, browserTimeZone, configErrors, useScheduleCheck, validateSettings,
+  withRetryDefaults, zonedToIso,
 } from './CampaignSettingsFields';
 
 function Section({ title, children }) {
@@ -48,14 +49,26 @@ export default function CampaignLaunchDialog({ open, onOpenChange, source, assis
     setError('');
   }, [open, defaultAssistantId, assistants]);
 
+  const [tried, setTried] = useState(false);
+  let plannedStart = null;
+  try { plannedStart = startMode === 'scheduled' ? zonedToIso(startDate, startTime, timeZone.trim()) : null; } catch { plannedStart = null; }
+  // The backend's calling-hours notes before saving, and the tenant's retry delays to start from.
+  const check = useScheduleCheck({ scheduledAt: plannedStart, timeZone: timeZone.trim(), callingWindow, enabled: open });
+  useEffect(() => {
+    if (check.retryDefaults) setConfig((prev) => withRetryDefaults(prev, check.retryDefaults));
+  }, [check.retryDefaults]);
+  const errors = tried ? configErrors(config) : {};
+
   const contactCount = source?.type === 'csv' ? source.contacts?.length || 0 : source?.prospectIds?.length || 0;
 
   const reset = () => {
     setName(''); setDescription(''); setNotes(''); setStartMode('now'); setStartDate(''); setStartTime('');
-    setCallingWindow(null); setConfig(DEFAULT_CONFIG); setTimeZone(browserTimeZone()); setError('');
+    setCallingWindow(null); setConfig(withRetryDefaults(DEFAULT_CONFIG, check.retryDefaults)); setTimeZone(browserTimeZone());
+    setError(''); setTried(false);
   };
 
   const submit = async () => {
+    setTried(true);
     const problem =
       (!name.trim() && 'Give the campaign a name.') ||
       (!description.trim() && 'Say what the campaign is about.') ||
@@ -115,7 +128,7 @@ export default function CampaignLaunchDialog({ open, onOpenChange, source, assis
 
   return (
     <Dialog open={open} onOpenChange={(next) => !submitting && onOpenChange(next)}>
-      <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="ops max-w-xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Launch campaign</DialogTitle>
           <DialogDescription className="flex items-center gap-1.5">
@@ -199,10 +212,11 @@ export default function CampaignLaunchDialog({ open, onOpenChange, source, assis
           </Section>
 
           <Section title="Calling rules">
-            <CallingConfigFields value={config} onChange={setConfig} />
+            <CallingConfigFields value={config} onChange={setConfig} errors={errors} />
           </Section>
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          <ScheduleWarnings check={check} />
+          {error && <p role="alert" className="text-sm text-[#b42318]">{error}</p>}
         </div>
 
         <DialogFooter>

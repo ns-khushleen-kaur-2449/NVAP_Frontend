@@ -1,726 +1,446 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { cancelVoiceCampaign, getVoiceCampaign, getVoiceCampaignContacts, startVoiceCampaign } from '@/lib/api';
-import { toast } from 'sonner';
+import { ArrowLeft, MoreHorizontal, RotateCw } from 'lucide-react';
 import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import { announceCalendarSync, apiErrorMessage, describeConfig, describeWindow } from './CampaignSettingsFields';
-import { useCallLogs } from '@/hooks/useCallLogs';
-import CallLogDetail from './CallLogDetail';
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  campaignContactAction, cancelVoiceCampaign, closeVoiceCampaign, getVoiceCampaign, getVoiceCampaignContacts,
+  getVoiceCampaignEvents, pauseVoiceCampaign, resumeVoiceCampaign, startVoiceCampaign,
+} from '@/lib/api';
+import { useAuth } from '@/lib/AuthContext';
+import { canOperate } from '@/lib/rbac';
+import { formatDateTime } from '@/lib/ops';
+import { formatDuration } from '@/lib/voiceDashboard';
+import { callStatusMeta } from '@/lib/callOutcome';
+import { campaignBanner, insideWindow } from '@/lib/campaignView';
+import usePolling from '@/hooks/usePolling';
+import useApiAction, { errorMessage } from '@/hooks/useApiAction';
+import StatusBadge, { CAMPAIGN_TONES } from '@/components/ops/StatusBadge';
+import EventTimeline, { campaignEventItems } from '@/components/ops/EventTimeline';
+import ReasonDialog from '@/components/ops/ReasonDialog';
+import ConfirmDialog from '@/components/ops/ConfirmDialog';
+import RelativeTime from '@/components/ops/RelativeTime';
+import OpsButton from '@/components/ops/OpsButton';
+import { EmptyState, ErrorState, ScrollTable, Skeleton, SkeletonRows } from '@/components/ops/States';
+import { describeConfig, describeRetryDelays, describeWindow, isoToZoned, zonedToIso } from './CampaignSettingsFields';
 import CampaignEditDialog from './CampaignEditDialog';
+import CallLogDetail from './CallLogDetail';
 import { IdChip } from './VoiceCampaigns';
-import {
-  ArrowLeft, Loader2, AlertCircle, Megaphone, Clock, Calendar,
-  CheckCircle2, XCircle, PhoneCall, RefreshCw, Pencil, Bot, User, Users, StickyNote, Play, Ban, Hourglass, Settings2,
-} from 'lucide-react';
 
-// Matches VoiceCampaigns.js — campaigns.status, not inferred.
-const ONGOING_STATUSES = ['processing', 'created', 'scheduled', 'running'];
-const isOngoing = (status) => ONGOING_STATUSES.includes(String(status || '').toLowerCase());
+const REFRESH_MS = 30000;
+const TABS = [{ id: 'overview', label: 'Overview' }, { id: 'contacts', label: 'Contacts' }, { id: 'activity', label: 'Activity' }];
+const FINAL = ['completed', 'cancelled', 'failed'];
 
-// One page of campaign rows. The call-log endpoint caps page_size at 100, so
-// this is the largest single fetch it allows — aggregates below are computed
-// over the rows actually fetched, and the summary says so when there are more.
-const PAGE_SIZE = 100;
-const POLL_INTERVAL_MS = 15000;
+// Campaign buttons by allowed_actions (the backend decides; these only label them).
+export const CAMPAIGN_ACTIONS = {
+  start: { label: 'Start now' },
+  schedule: { label: 'Schedule' },
+  reschedule: { label: 'Reschedule' },
+  pause: { label: 'Pause' },
+  resume: { label: 'Resume' },
+  close: { label: 'Close campaign', operator: true },
+  cancel: { label: 'Cancel', danger: true },
+};
 
-// A contact's status comes from campaign_contacts (answered, no_answer, busy,
-// failed, ...); a call log's status is its classified outcome (lib/callOutcome).
-// Old call logs say "completed" for every ended call, so that value never means
-// connected.
-const isFailed = (row) => ['failed', 'error', 'not_reachable'].includes(String(row.status || '').toLowerCase());
-const isInProgress = (row) => ['calling', 'in-progress', 'initiated', 'ringing', 'queued', 'processing'].includes(String(row.status || '').toLowerCase());
-// campaign_contacts: "pending" is waiting for its first call or a retry; "cancelled" was never dialled.
-const isWaiting = (row) => ['pending', 'cancelled'].includes(String(row.status || '').toLowerCase());
+// Contact row actions (row.actions carries enabled / reason for each).
+export const CONTACT_ACTIONS = {
+  requeue: { label: 'Requeue', path: 'requeue', success: 'Contact requeued' },
+  dial_now: { label: 'Dial now', path: 'dial-now', success: 'It will be dialled at the next runner tick' },
+  next_attempt: { label: 'Change next attempt', path: 'next-attempt', success: 'Next attempt changed' },
+  attempts: { label: 'Reset attempts / change max', path: 'attempts', success: 'Attempts updated' },
+  remove: { label: 'Remove', path: 'remove', success: 'Contact removed', danger: true },
+};
 
-// call_records carries its own verdict: was_answered, and status 'unanswered'
-// for a contact that never picked up. Prefer those over inferring from the call
-// log's end_reason, and fall back to end_reason for rows that have a log but no
-// call_records verdict.
-const isNotAnswered = (row) =>
-  ['unanswered', 'no_answer', 'busy', 'voicemail', 'unknown', 'no-answer'].includes(String(row.status || '').toLowerCase())
-  || row.was_answered === false;
-
-// Connected only when someone provably answered; a legacy "completed" is not proof.
-const isConnected = (row) => String(row.status || '').toLowerCase() === 'answered' || row.was_answered === true;
-
-function formatDuration(sec) {
-  if (sec === null || sec === undefined) return '—';
-  const n = Number(sec);
-  if (Number.isNaN(n) || n <= 0) return '—';
-  const m = Math.floor(n / 60);
-  const s = Math.round(n % 60);
-  return m > 0 ? `${m}m ${s}s` : `${s}s`;
+/** The row menu's items for a role: nothing for those who cannot override; disabled ones say why. */
+export function contactMenuItems(row, user) {
+  if (!canOperate(user)) return [];
+  return (row.actions || []).filter((a) => CONTACT_ACTIONS[a.action])
+    .map((a) => ({ ...a, label: CONTACT_ACTIONS[a.action].label }));
 }
 
-function formatDateTime(iso) {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-}
-
-function formatFullDateTime(iso) {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-}
-
-const personLabel = (person, fallbackId) =>
-  person ? (person.name || person.email || `User #${person.id}`) : (fallbackId ? `User #${fallbackId}` : null);
-
-function DetailRow({ icon: Icon, label, children }) {
+function DateTimeFields({ date, time, setDate, setTime, zone }) {
   return (
-    <div className="flex items-start gap-2.5 min-w-0">
-      <Icon className="w-3.5 h-3.5 mt-0.5 text-muted-foreground shrink-0" />
-      <div className="min-w-0">
-        <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
-        <div className="text-xs text-foreground mt-0.5">{children}</div>
-      </div>
+    <div className="grid grid-cols-2 gap-2">
+      <label className="flex flex-col gap-1 text-sm font-medium">Date
+        <input type="date" required value={date} onChange={(e) => setDate(e.target.value)} className="h-9 rounded-lg border border-border bg-background px-2" />
+      </label>
+      <label className="flex flex-col gap-1 text-sm font-medium">Time ({zone})
+        <input type="time" required value={time} onChange={(e) => setTime(e.target.value)} className="h-9 rounded-lg border border-border bg-background px-2" />
+      </label>
     </div>
   );
 }
 
-function CampaignOverview({ campaign }) {
-  const creator = personLabel(campaign.created_by_user, campaign.created_by);
-  const editor = personLabel(campaign.updated_by_user, campaign.updated_by);
-  const starter = personLabel(campaign.started_by_user, campaign.started_by);
-  const leads = campaign.prospects || [];
+function CampaignActionDialog({ action, campaign, onClose, onDone }) {
+  const zone = campaign.timezone || 'Asia/Kolkata';
+  const start = isoToZoned(campaign.scheduled_at, zone);
+  const [date, setDate] = useState(start.date);
+  const [time, setTime] = useState(start.time);
+  const [toppedUp, setToppedUp] = useState(false);
+  const version = { expected_version: campaign.version };
+  const systemPause = campaign.status === 'paused' && campaign.paused_by_kind !== 'user';
+  const credits = campaign.pause_reason_code === 'vapi_credits';
+  const request = useCallback((reason) => {
+    switch (action) {
+      case 'start': return startVoiceCampaign(campaign.id, null, version);
+      case 'schedule':
+      case 'reschedule': return startVoiceCampaign(campaign.id, zonedToIso(date, time, zone), { ...version, ...(reason ? { reason } : {}) });
+      case 'pause': return pauseVoiceCampaign(campaign.id, { ...version, reason });
+      case 'resume': return resumeVoiceCampaign(campaign.id, { ...version, ...(reason ? { reason } : {}), credits_topped_up: toppedUp });
+      case 'cancel': return cancelVoiceCampaign(campaign.id, { ...version, reason });
+      case 'close': return closeVoiceCampaign(campaign.id, reason);
+      default: return Promise.reject(new Error('unknown action'));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [action, campaign, date, time, zone, toppedUp]);
+  const { run } = useApiAction(request, { success: 'Done', onSuccess: onDone, onConflict: onDone });
+  const confirm = async (reason) => Boolean(await run(reason));
+  const close = (open) => { if (!open) onClose(); };
+  const name = campaign.name;
+
+  if (action === 'start' || (action === 'resume' && !systemPause)) {
+    return (
+      <ConfirmDialog open onOpenChange={close} title={action === 'start' ? `Start ${name} now?` : `Resume ${name}?`}
+        description={action === 'start' ? 'Dialling begins inside its calling hours.' : 'Dialling continues where it stopped.'}
+        confirmLabel={CAMPAIGN_ACTIONS[action].label} onConfirm={() => confirm(null)} />
+    );
+  }
+  const config = {
+    schedule: { title: `Schedule ${name}`, changes: ['The campaign starts at the chosen time (inside its calling hours).'], requireReason: false },
+    reschedule: { title: `Reschedule ${name}`, changes: ['The missed campaign is scheduled for the new time.'] },
+    pause: { title: `Pause ${name}`, changes: ['No new calls are placed; calls in progress finish. It stays paused until someone resumes it.'] },
+    resume: { title: `Resume ${name}`, changes: ['Dialling continues; pre-flight checks run first.'] },
+    cancel: { title: `Cancel ${name}`, changes: ['No more calls are placed; calls in progress finish. This cannot be undone.'], danger: true },
+    close: { title: `Close ${name}`, changes: ['The campaign is marked completed; contacts still waiting are skipped.'] },
+  }[action];
   return (
-    <Card className="bg-card border-border">
-      <CardContent className="p-4 space-y-4">
-        <div>
-          <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">About this campaign</p>
-          {campaign.description
-            ? <p className="text-sm text-foreground mt-1 whitespace-pre-wrap">{campaign.description}</p>
-            : <p className="text-sm text-muted-foreground mt-1 italic">No description yet. Use Edit to add what this campaign is about.</p>}
+    <ReasonDialog open onOpenChange={close} title={config.title} changes={config.changes} danger={config.danger}
+      confirmLabel={CAMPAIGN_ACTIONS[action].label} requireReason={config.requireReason !== false}
+      canConfirm={(action !== 'schedule' && action !== 'reschedule') || Boolean(date && time)}
+      onConfirm={confirm}>
+      {(action === 'schedule' || action === 'reschedule') && (
+        <DateTimeFields date={date} time={time} setDate={setDate} setTime={setTime} zone={zone} />
+      )}
+      {action === 'resume' && credits && (
+        <label className="flex items-center gap-2 text-sm font-medium">
+          <input type="checkbox" checked={toppedUp} onChange={(e) => setToppedUp(e.target.checked)} />
+          I've topped up credits
+        </label>
+      )}
+      {action === 'resume' && credits && !toppedUp && (
+        <p className="text-xs text-muted-foreground">Vapi shows no balance; the first call checks the top-up for real.</p>
+      )}
+    </ReasonDialog>
+  );
+}
+
+function ContactActionDialog({ action, contact, campaign, onClose, onDone }) {
+  const meta = CONTACT_ACTIONS[action];
+  const zone = campaign.timezone || 'Asia/Kolkata';
+  const initial = isoToZoned(contact.next_attempt_at || new Date().toISOString(), zone);
+  const [phone, setPhone] = useState('');
+  const [date, setDate] = useState(initial.date);
+  const [time, setTime] = useState(initial.time);
+  const [reset, setReset] = useState(true);
+  const [maxAttempts, setMaxAttempts] = useState(contact.max_attempts || '');
+  const request = useCallback((reason) => {
+    const body = { reason };
+    if (action === 'requeue' && phone.trim()) body.phone_number = phone.trim();
+    if (action === 'next_attempt') body.next_attempt_at = zonedToIso(date, time, zone);
+    if (action === 'attempts') {
+      body.reset = reset;
+      if (maxAttempts !== '') body.max_attempts = Number(maxAttempts);
+    }
+    return campaignContactAction(campaign.id, contact.contact_id, meta.path, body);
+  }, [action, campaign, contact, meta, phone, date, time, zone, reset, maxAttempts]);
+  const { run } = useApiAction(request, { success: meta.success, onSuccess: onDone, onConflict: onDone });
+  const inHours = insideWindow(campaign.calling_window, date, time);
+  const attemptsValid = action !== 'attempts' || reset || (maxAttempts !== '' && Number(maxAttempts) >= 1 && Number(maxAttempts) <= 10);
+  const changes = {
+    requeue: ['The contact goes back to the queue (the normal rules apply).'],
+    dial_now: ['The contact is dialled at the next runner tick, skipping the timing rules once. Never do-not-call or the outer bound.'],
+    next_attempt: ['The next call to this contact happens at the new time.'],
+    attempts: [reset ? 'The attempt count goes back to 0.' : 'The attempt count stays.', maxAttempts !== '' ? `This contact may be tried up to ${maxAttempts} times.` : 'The campaign\'s attempt limit applies.'],
+    remove: ['The contact is never called by this campaign.'],
+  }[action];
+  return (
+    <ReasonDialog open onOpenChange={(open) => { if (!open) onClose(); }} title={`${meta.label}: ${contact.name || contact.phone_number}`}
+      changes={changes} confirmLabel={meta.label} danger={meta.danger}
+      canConfirm={(action !== 'next_attempt' || inHours) && attemptsValid}
+      onConfirm={async (reason) => Boolean(await run(reason))}>
+      {action === 'requeue' && (
+        <label className="flex flex-col gap-1 text-sm font-medium">Corrected phone number (optional)
+          <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={contact.phone_number}
+            className="h-9 rounded-lg border border-border bg-background px-3" />
+        </label>
+      )}
+      {action === 'next_attempt' && (
+        <>
+          <DateTimeFields date={date} time={time} setDate={setDate} setTime={setTime} zone={zone} />
+          <p className={`text-xs ${inHours ? 'text-muted-foreground' : 'text-[color:var(--ops-bad)] font-semibold'}`}>
+            Calling hours: {describeWindow(campaign.calling_window)}{inHours ? '' : ' — pick a time inside them.'}
+          </p>
+        </>
+      )}
+      {action === 'attempts' && (
+        <div className="space-y-2">
+          <label className="flex items-center gap-2 text-sm font-medium">
+            <input type="checkbox" checked={reset} onChange={(e) => setReset(e.target.checked)} /> Reset the attempt count
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium">Max attempts for this contact (1–10, optional)
+            <input type="number" min={1} max={10} value={maxAttempts} onChange={(e) => setMaxAttempts(e.target.value)}
+              className="h-9 w-32 rounded-lg border border-border bg-background px-3" />
+          </label>
         </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          <DetailRow icon={User} label="Created by">
-            {creator || '—'}
-            <span className="block text-[11px] text-muted-foreground">{formatFullDateTime(campaign.created_at)}</span>
-          </DetailRow>
-          {campaign.scheduled_at && (
-            <DetailRow icon={Calendar} label="Scheduled for">
-              {formatFullDateTime(campaign.scheduled_at)}
-              {campaign.timezone && <span className="block text-[11px] text-muted-foreground">Set in {campaign.timezone}</span>}
-              {campaign.calendar_event_id && <span className="block text-[11px] text-emerald-600">On your calendar</span>}
-            </DetailRow>
-          )}
-          {(starter || campaign.started_at) && (
-            <DetailRow icon={PhoneCall} label="Started by">
-              {starter || '—'}
-              <span className="block text-[11px] text-muted-foreground">{formatFullDateTime(campaign.started_at)}</span>
-            </DetailRow>
-          )}
-          <DetailRow icon={Bot} label="Assistant">
-            {campaign.assistant?.name || campaign.assistant?.vapi_assistant_id || campaign.assistant_id || '—'}
-          </DetailRow>
-          <DetailRow icon={Clock} label="Calling hours">
-            {describeWindow(campaign.calling_window)}
-            {campaign.timezone && <span className="block text-[11px] text-muted-foreground">{campaign.timezone}</span>}
-          </DetailRow>
-          <DetailRow icon={Settings2} label="Calling rules">
-            {describeConfig(campaign.calling_config)}
-          </DetailRow>
-          {editor && (
-            <DetailRow icon={Pencil} label="Last edited by">
-              {editor}
-              <span className="block text-[11px] text-muted-foreground">{formatFullDateTime(campaign.updated_at)}</span>
-            </DetailRow>
-          )}
-        </div>
-
-        {campaign.notes && (
-          <DetailRow icon={StickyNote} label="Notes">
-            <span className="whitespace-pre-wrap">{campaign.notes}</span>
-          </DetailRow>
-        )}
-
-        {leads.length > 0 && (
-          <div className="space-y-2 pt-3 border-t border-border">
-            <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-              <Users className="w-3 h-3" /> Leads in this campaign ({leads.length})
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {leads.map((lead) => (
-                <span
-                  key={lead.prospect_id}
-                  title={[lead.phone, lead.email, lead.stage].filter(Boolean).join(' · ')}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-border bg-[hsl(var(--surface-2))] px-2.5 py-1 text-[11px]"
-                >
-                  <span className="font-medium text-foreground">{lead.name || 'Unnamed'}</span>
-                  <span className="text-muted-foreground tabular-nums">{lead.phone || '—'}</span>
-                </span>
-              ))}
-            </div>
-            {campaign.skipped_prospect_ids?.length > 0 && (
-              <p className="text-[11px] text-muted-foreground">
-                {campaign.skipped_prospect_ids.length} selected lead(s) were skipped for having no valid phone number.
-              </p>
-            )}
-          </div>
-        )}
-      </CardContent>
-    </Card>
+      )}
+    </ReasonDialog>
   );
 }
 
-function Stat({ label, value, hint }) {
+function RowMenu({ row, user, onPick }) {
+  const items = contactMenuItems(row, user);
+  if (!items.length) return null;
   return (
-    <div className="rounded-lg border border-border bg-[hsl(var(--surface-2))] px-3 py-2.5">
-      <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
-      <p className="text-lg font-semibold tabular-nums text-foreground mt-0.5">{value}</p>
-      {hint && <p className="text-[10px] text-muted-foreground mt-0.5">{hint}</p>}
-    </div>
-  );
-}
-
-function LeadStatusBadge({ status }) {
-  const map = {
-    hot: 'bg-red-500/15 text-red-400 border-red-500/25',
-    warm: 'bg-amber-500/15 text-amber-400 border-amber-500/25',
-    cold: 'bg-sky-500/15 text-sky-400 border-sky-500/25',
-  };
-  const s = String(status || 'warm').toLowerCase();
-  return (
-    <Badge variant="outline" className={`${map[s] || map.warm} text-[10px] font-semibold uppercase tracking-wider`}>
-      {s}
-    </Badge>
-  );
-}
-
-function OutcomeBadge({ row: log }) {
-  if (isWaiting(log)) {
-    const cancelled = String(log.status).toLowerCase() === 'cancelled';
-    return (
-      <Badge variant="outline" className="bg-muted text-muted-foreground border-border gap-1 text-[10px]">
-        {cancelled ? <Ban className="w-2.5 h-2.5" /> : <Hourglass className="w-2.5 h-2.5" />}
-        {cancelled ? 'cancelled' : (log.attempts ? 'retry queued' : 'queued')}
-      </Badge>
-    );
-  }
-  if (isInProgress(log)) {
-    return (
-      <Badge variant="outline" className="bg-blue-500/15 text-blue-400 border-blue-500/25 gap-1 text-[10px]">
-        <Loader2 className="w-2.5 h-2.5 animate-spin" /> in progress
-      </Badge>
-    );
-  }
-  if (isFailed(log)) {
-    return (
-      <Badge variant="outline" className="bg-red-500/15 text-red-400 border-red-500/25 gap-1 text-[10px]">
-        <XCircle className="w-2.5 h-2.5" /> failed
-      </Badge>
-    );
-  }
-  if (isNotAnswered(log)) {
-    return (
-      <Badge variant="outline" className="bg-muted text-muted-foreground border-border gap-1 text-[10px]">
-        <XCircle className="w-2.5 h-2.5" /> {log.status || 'unanswered'}
-      </Badge>
-    );
-  }
-  if (!isConnected(log)) {
-    return (
-      <Badge variant="outline" className="bg-muted text-muted-foreground border-border gap-1 text-[10px]">
-        outcome not recorded
-      </Badge>
-    );
-  }
-  return (
-    <Badge variant="outline" className="bg-emerald-500/15 text-emerald-400 border-emerald-500/25 gap-1 text-[10px]">
-      <CheckCircle2 className="w-2.5 h-2.5" /> connected
-    </Badge>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button type="button" aria-label={`Actions for ${row.name || row.phone_number}`}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg hover:bg-[hsl(var(--surface-2))]">
+          <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="ops w-72">
+        {items.map((item) => (
+          <DropdownMenuItem key={item.action} disabled={!item.enabled} onSelect={() => item.enabled && onPick(item.action)}
+            title={item.reason || undefined} className="flex-col items-start gap-0.5">
+            <span>{item.label}</span>
+            {!item.enabled && item.reason && <span className="text-xs text-muted-foreground">{item.reason}</span>}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
 const SORTS = {
-  latest: { label: 'Newest first', fn: (a, b) => new Date(b.scheduled_at || 0) - new Date(a.scheduled_at || 0) },
-  oldest: { label: 'Oldest first', fn: (a, b) => new Date(a.scheduled_at || 0) - new Date(b.scheduled_at || 0) },
-  duration: { label: 'Longest call', fn: (a, b) => (b.duration_seconds || 0) - (a.duration_seconds || 0) },
-  name: { label: 'Name A–Z', fn: (a, b) => String(a.name || '').localeCompare(String(b.name || '')) },
+  queue: { label: 'Queue order', fn: () => 0 },
+  next: { label: 'Next allowed time', fn: (a, b) => String(a.next_attempt_at || '~').localeCompare(String(b.next_attempt_at || '~')) },
+  attempts: { label: 'Most attempts', fn: (a, b) => (b.attempts || 0) - (a.attempts || 0) },
+  score: { label: 'Lead score', fn: (a, b) => (b.lead_score ?? -1) - (a.lead_score ?? -1) },
+  name: { label: 'Name', fn: (a, b) => String(a.name || '').localeCompare(String(b.name || '')) },
 };
+
+function ContactsTab({ campaign, contacts, user, onChanged, onOpenCall }) {
+  const [status, setStatus] = useState('all');
+  const [sort, setSort] = useState('queue');
+  const [acting, setActing] = useState(null);
+  const statuses = useMemo(() => [...new Map(contacts.map((c) => [c.status, c.status_label])).entries()], [contacts]);
+  const rows = useMemo(() => {
+    const list = contacts.filter((c) => status === 'all' || c.status === status);
+    return sort === 'queue' ? list : [...list].sort(SORTS[sort].fn);
+  }, [contacts, status, sort]);
+  const operator = canOperate(user);
+  const zone = campaign.timezone || 'Asia/Kolkata';
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">Status
+          <select value={status} onChange={(e) => setStatus(e.target.value)} className="h-9 rounded-lg border border-border bg-card px-3 text-sm">
+            <option value="all">All ({contacts.length})</option>
+            {statuses.map(([value, label]) => (
+              <option key={value} value={value}>{label} ({contacts.filter((c) => c.status === value).length})</option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">Sort
+          <select value={sort} onChange={(e) => setSort(e.target.value)} className="h-9 rounded-lg border border-border bg-card px-3 text-sm">
+            {Object.entries(SORTS).map(([id, s]) => <option key={id} value={id}>{s.label}</option>)}
+          </select>
+        </label>
+      </div>
+      {rows.length === 0 ? <EmptyState title="No contacts with this status." /> : (
+        <ScrollTable label="Contacts">
+          <thead className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
+            <tr>
+              <th className="px-3 py-2">Lead</th><th className="px-3 py-2">Status</th><th className="px-3 py-2">Reason</th>
+              <th className="px-3 py-2">Next allowed</th><th className="px-3 py-2">Attempts</th><th className="px-3 py-2">Duration</th>
+              <th className="px-3 py-2">Lead score</th><th className="px-3 py-2">Last outcome</th>
+              {operator && <th className="px-3 py-2"><span className="sr-only">Actions</span></th>}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((c) => (
+              <tr key={c.contact_id} className="border-b border-border align-top last:border-0">
+                <td className="px-3 py-2.5">
+                  <span className="font-medium">{c.name || '—'}</span>
+                  <span className="ops-num block text-xs text-muted-foreground">{c.phone_number}</span>
+                </td>
+                <td className="px-3 py-2.5"><StatusBadge label={c.status_label} tone={c.on_do_not_call ? 'bad' : 'neutral'} /></td>
+                <td className="max-w-[220px] px-3 py-2.5 text-muted-foreground">{c.reason_display || '—'}</td>
+                <td className="whitespace-nowrap px-3 py-2.5">
+                  {c.next_attempt_at ? <span title={formatDateTime(c.next_attempt_at, zone)}><RelativeTime iso={c.next_attempt_at} /></span> : '—'}
+                </td>
+                <td className="ops-num px-3 py-2.5">{c.attempts ?? 0}{c.max_attempts ? ` / ${c.max_attempts}` : ''}</td>
+                <td className="ops-num px-3 py-2.5">{formatDuration(c.duration_seconds)}</td>
+                <td className="ops-num px-3 py-2.5">{c.lead_score ?? '—'}</td>
+                <td className="px-3 py-2.5">
+                  {c.last_outcome ? callStatusMeta(c.last_outcome).label : '—'}
+                  {c.call_id && (
+                    <button type="button" onClick={() => onOpenCall(c.call_id)} className="block text-xs font-semibold text-[color:var(--ops-accent-ink)] underline">
+                      View call
+                    </button>
+                  )}
+                </td>
+                {operator && <td className="px-3 py-2.5 text-right"><RowMenu row={c} user={user} onPick={(a) => setActing({ action: a, contact: c })} /></td>}
+              </tr>
+            ))}
+          </tbody>
+        </ScrollTable>
+      )}
+      {acting && <ContactActionDialog action={acting.action} contact={acting.contact} campaign={campaign}
+        onClose={() => setActing(null)} onDone={onChanged} />}
+    </div>
+  );
+}
+
+function Overview({ campaign, contacts, onEditRules, canEditRules }) {
+  const stats = useMemo(() => [...contacts.reduce((m, c) => m.set(c.status_label, (m.get(c.status_label) || 0) + 1), new Map())],
+    [contacts]);
+  return (
+    <div className="grid gap-4 lg:grid-cols-3">
+      <section className="ops-card space-y-3 p-4 lg:col-span-2">
+        <h2 className="text-sm font-semibold">About this campaign</h2>
+        <p className="text-sm">{campaign.description || '—'}</p>
+        {campaign.notes && <p className="whitespace-pre-wrap text-sm text-muted-foreground">{campaign.notes}</p>}
+        <dl className="grid grid-cols-[auto,1fr] gap-x-4 gap-y-1.5 text-sm">
+          <dt className="text-muted-foreground">Calling hours</dt><dd>{describeWindow(campaign.calling_window)} ({campaign.timezone})</dd>
+          <dt className="text-muted-foreground">Calling rules</dt><dd>{describeConfig(campaign.calling_config)}</dd>
+          <dt className="text-muted-foreground">Retry delays</dt><dd>{describeRetryDelays(campaign.calling_config)}</dd>
+          <dt className="text-muted-foreground">Leads</dt><dd className="ops-num">{campaign.total_leads}</dd>
+          <dt className="text-muted-foreground">Created by</dt><dd>{campaign.created_by_user?.name || '—'}</dd>
+        </dl>
+        {canEditRules && (
+          <div className="flex flex-wrap items-center gap-3">
+            <OpsButton size="sm" onClick={onEditRules}>Edit rules</OpsButton>
+            <span className="text-xs text-muted-foreground">Applies to future dials only.</span>
+          </div>
+        )}
+      </section>
+      <section className="ops-card p-4" aria-labelledby="campaign-stats">
+        <h2 id="campaign-stats" className="mb-3 text-sm font-semibold">Contacts</h2>
+        {stats.length === 0 ? <p className="text-sm text-muted-foreground">No contacts yet.</p> : (
+          <dl className="grid grid-cols-2 gap-3">
+            {stats.map(([label, n]) => (
+              <div key={label} className="rounded-lg border border-border px-3 py-2">
+                <dt className="text-xs text-muted-foreground">{label}</dt>
+                <dd className="ops-num text-xl font-semibold">{n}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+      </section>
+    </div>
+  );
+}
 
 export default function VoiceCampaignDetail() {
   const { campaignId } = useParams();
   const navigate = useNavigate();
-
+  const { user } = useAuth();
   const [campaign, setCampaign] = useState(null);
-  const [loadingCampaign, setLoadingCampaign] = useState(true);
-  const [campaignError, setCampaignError] = useState(null);
-  const [outcomeFilter, setOutcomeFilter] = useState('all');
-  const [sortKey, setSortKey] = useState('latest');
-  const [selectedCallId, setSelectedCallId] = useState(null);
   const [contacts, setContacts] = useState([]);
-  const [loadingContacts, setLoadingContacts] = useState(true);
-  const [contactsError, setContactsError] = useState(null);
+  const [events, setEvents] = useState([]);
+  const [error, setError] = useState(null);
+  const [tab, setTab] = useState('overview');
+  const [action, setAction] = useState(null);
   const [editOpen, setEditOpen] = useState(false);
-  const [confirmCancel, setConfirmCancel] = useState(false);
-  const [acting, setActing] = useState(false);
+  const [callId, setCallId] = useState(null);
 
-  const runAction = async (action, success) => {
-    setActing(true);
+  const load = useCallback(async () => {
     try {
-      const res = await action();
-      setCampaign(res.data);
-      fetchContacts();
-      toast.success(success);
-      announceCalendarSync(res.data.calendar_sync);
+      const [c, k, e] = await Promise.all([
+        getVoiceCampaign(campaignId), getVoiceCampaignContacts(campaignId), getVoiceCampaignEvents(campaignId),
+      ]);
+      setCampaign(c.data);
+      setContacts(k.data.contacts || []);
+      setEvents(e.data || []);
+      setError(null);
     } catch (err) {
-      toast.error(apiErrorMessage(err, 'Action failed'));
-    } finally {
-      setActing(false);
-    }
-  };
-
-  const fetchContacts = useCallback(async () => {
-    try {
-      setContactsError(null);
-      const res = await getVoiceCampaignContacts(campaignId);
-      const data = res.data || res;
-      setContacts(data.contacts || []);
-    } catch (err) {
-      if (err?.response?.status !== 404) {
-        setContactsError(err?.response?.data?.detail || 'Failed to load contacts');
-      }
-      setContacts([]);
-    } finally {
-      setLoadingContacts(false);
+      const status = err?.response?.status;
+      setError(status === 404 ? 'This campaign does not exist or is not yours to see.'
+        : status === 403 ? "You don't have permission" : errorMessage(err, 'Check your connection and try again.'));
     }
   }, [campaignId]);
+  const refresh = usePolling(load, REFRESH_MS, [load]);
 
-  const fetchCampaign = useCallback(async () => {
-    try {
-      setCampaignError(null);
-      const res = await getVoiceCampaign(campaignId);
-      setCampaign(res.data || res);
-    } catch (err) {
-      setCampaignError(
-        err?.response?.status === 404
-          ? 'notfound'
-          : (err?.response?.data?.detail || 'Failed to load campaign')
-      );
-      setCampaign(null);
-    } finally {
-      setLoadingCampaign(false);
-    }
-  }, [campaignId]);
-
-  useEffect(() => { setLoadingCampaign(true); fetchCampaign(); }, [fetchCampaign]);
-  useEffect(() => { setLoadingContacts(true); fetchContacts(); }, [fetchContacts]);
-
-  const ongoing = isOngoing(campaign?.status);
-
-  // Always scoped to this campaign. campaignId is required by the route, so
-  // there is no path where this hook runs without one and pulls the global feed.
-  const { logs, total, loading: loadingLogs, error: logsError, refresh } = useCallLogs({
-    page: 1,
-    pageSize: PAGE_SIZE,
-    campaignId,
-    sortBy: 'latest',
-    autoRefresh: ongoing,
-    refreshInterval: POLL_INTERVAL_MS,
-  });
-
-  // Poll the campaign row itself alongside the logs, so status flipping to
-  // "completed" ends the polling on both.
-  useEffect(() => {
-    if (!ongoing) return undefined;
-    const id = setInterval(() => { fetchCampaign(); fetchContacts(); }, POLL_INTERVAL_MS);
-    return () => clearInterval(id);
-  }, [ongoing, fetchCampaign, fetchContacts]);
-
-  // call_records is the row source — one per dialled contact, unanswered ones
-  // included. The call log adds duration and lead_status where Vapi webhooked
-  // back, matched on call_id. Contacts with no log keep their call_records
-  // verdict and show "—" for the log-only columns rather than a fabricated one.
-  const rows = useMemo(() => {
-    const byCallId = new Map();
-    for (const log of logs) {
-      if (log.vapi_call_id) byCallId.set(log.vapi_call_id, log);
-    }
-    return contacts.map((c) => {
-      const log = c.call_id ? byCallId.get(c.call_id) : undefined;
-      return {
-        ...c,
-        name: c.name || log?.customer_name || null,
-        phone_number: c.phone_number || log?.phone_number || null,
-        // call_records has the definitive per-contact status; the log's status
-        // only exists for contacts Vapi reported on.
-        status: c.status || log?.status || null,
-        summary: c.summary || log?.summary || null,
-        scheduled_at: c.created_at || log?.started_at || log?.created_at || null,
-        duration_seconds: log?.duration_seconds ?? null,
-        lead_status: log?.lead_status || null,
-        end_reason: log?.end_reason || null,
-        vapi_call_id: log?.vapi_call_id || null,
-      };
-    });
-  }, [contacts, logs]);
-
-  // Every aggregate in one pass over the merged rows.
-  const stats = useMemo(() => {
-    const s = {
-      dialed: rows.length,
-      connected: 0,
-      notConnected: 0,
-      failed: 0,
-      inProgress: 0,
-      waiting: 0,
-      connectedDurationTotal: 0,
-      connectedWithDuration: 0,
-      leadStatus: { hot: 0, warm: 0, cold: 0 },
-    };
-    for (const row of rows) {
-      if (isWaiting(row)) s.waiting += 1;
-      else if (isInProgress(row)) s.inProgress += 1;
-      else if (isFailed(row)) s.failed += 1;
-      else if (!isConnected(row)) s.notConnected += 1;
-      else {
-        s.connected += 1;
-        if (row.duration_seconds > 0) {
-          s.connectedDurationTotal += Number(row.duration_seconds);
-          s.connectedWithDuration += 1;
-        }
-      }
-      // Only counted where a call log actually produced one — an unanswered
-      // contact has no lead status and must not be bucketed as warm.
-      const ls = String(row.lead_status || '').toLowerCase();
-      if (ls in s.leadStatus) s.leadStatus[ls] += 1;
-    }
-    s.dialed -= s.waiting;
-    s.connectRate = s.dialed > 0 ? Math.round((s.connected / s.dialed) * 100) : 0;
-    s.avgConnectedDuration = s.connectedWithDuration > 0
-      ? Math.round(s.connectedDurationTotal / s.connectedWithDuration)
-      : null;
-    return s;
-  }, [rows]);
-
-  const visibleRows = useMemo(() => {
-    const filters = {
-      all: () => true,
-      connected: isConnected,
-      'not-connected': (row) => !isWaiting(row) && !isInProgress(row) && !isFailed(row) && !isConnected(row),
-      failed: isFailed,
-      'in-progress': isInProgress,
-      queued: isWaiting,
-    };
-    return [...rows].filter(filters[outcomeFilter] || filters.all).sort(SORTS[sortKey].fn);
-  }, [rows, outcomeFilter, sortKey]);
-
-  if (loadingCampaign) {
-    return (
-      <div className="va-tab-content">
-        <div className="flex items-center justify-center py-16 text-muted-foreground">
-          <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading campaign…
-        </div>
-      </div>
-    );
-  }
-
-  if (campaignError) {
-    return (
-      <div className="va-tab-content">
-        <Card className="bg-card border-border">
-          <CardContent className="p-10 text-center space-y-3">
-            <AlertCircle className="w-7 h-7 text-muted-foreground mx-auto" />
-            <p className="text-sm font-medium text-foreground">
-              {campaignError === 'notfound' ? 'Campaign not found' : 'Could not load this campaign'}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {campaignError === 'notfound'
-                ? `No campaign with id "${campaignId}". It may have been deleted.`
-                : campaignError}
-            </p>
-            <Button variant="outline" size="sm" onClick={() => navigate('/voice-campaigns')}>
-              <ArrowLeft className="w-3.5 h-3.5 mr-1.5" /> Back to campaigns
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  // A row was clicked — reuse the existing detail component rather than
-  // rebuilding it. There is no route for a single call, so it renders inline
-  // exactly as CallLogsList does.
-  if (selectedCallId) {
-    return (
-      <div className="va-tab-content">
-        <CallLogDetail callId={selectedCallId} onBack={() => setSelectedCallId(null)} />
-      </div>
-    );
-  }
+  if (callId) return <div className="p-4"><CallLogDetail callId={callId} onBack={() => setCallId(null)} /></div>;
+  const zone = campaign?.timezone || 'Asia/Kolkata';
+  const banner = campaignBanner(campaign, zone);
+  const operator = canOperate(user);
+  const actions = (campaign?.allowed_actions || []).filter((a) => CAMPAIGN_ACTIONS[a] && (!CAMPAIGN_ACTIONS[a].operator || operator)
+    && !(a === 'resume' && campaign.paused_by_kind === 'system' && !operator));
+  const bannerActions = { missed: ['start', 'reschedule'], waiting: ['close'], credits: ['resume'], system_pause: ['resume'] }[banner?.kind] || [];
 
   return (
-    <div className="va-tab-content">
-      <div className="va-tab-header">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 shrink-0"
-          onClick={() => navigate('/voice-campaigns')}
-          aria-label="Back to campaigns"
-        >
-          <ArrowLeft className="w-4 h-4" />
-        </Button>
-        <div className="va-tab-icon-wrap"><Megaphone className="w-5 h-5" /></div>
-        <div className="flex-1 min-w-0">
-          <h2 className="text-lg font-semibold truncate">{campaign?.name || 'Campaign'}</h2>
-          <p className="text-sm text-muted-foreground flex items-center gap-3 flex-wrap">
-            <span className="flex items-center gap-1">
-              <Calendar className="w-3 h-3" /> {formatDateTime(campaign?.created_at)}
-            </span>
-            <span className="capitalize">{campaign?.status}</span>
-            {campaign?.filename && <span className="truncate">{campaign.filename}</span>}
-            <IdChip id={campaign?.id} label="campaign" full />
-            <IdChip id={campaign?.csv_process_id} label="csv" full />
-          </p>
-        </div>
-        {['draft', 'scheduled'].includes(campaign?.status) && (
-          <Button
-            size="sm"
-            onClick={() => runAction(() => startVoiceCampaign(campaign.id), 'Campaign started')}
-            disabled={acting}
-            className="bg-primary text-primary-foreground"
-          >
-            <Play className="w-3.5 h-3.5 mr-1.5" /> Start now
-          </Button>
-        )}
-        {['draft', 'scheduled', 'processing'].includes(campaign?.status) && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setConfirmCancel(true)}
-            disabled={acting}
-            className="border-border bg-card hover:bg-red-500/10 hover:text-red-500"
-          >
-            <Ban className="w-3.5 h-3.5 mr-1.5" /> Cancel
-          </Button>
-        )}
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setEditOpen(true)}
-          className="border-border bg-card hover:bg-[hsl(var(--surface-2))]"
-        >
-          <Pencil className="w-3.5 h-3.5 mr-1.5" /> Edit
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => { refresh(); fetchCampaign(); }}
-          disabled={loadingLogs}
-          className="border-border bg-card hover:bg-[hsl(var(--surface-2))]"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${loadingLogs ? 'animate-spin' : ''}`} /> Refresh
-        </Button>
-      </div>
+    <div className="ops mx-auto max-w-7xl space-y-5 p-4 sm:p-6">
+      <button type="button" onClick={() => navigate('/voice-campaigns')} className="inline-flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground">
+        <ArrowLeft className="h-4 w-4" aria-hidden="true" /> All campaigns
+      </button>
+      {error && <ErrorState message={error} onRetry={load} />}
+      {!error && !campaign && <div className="space-y-3"><Skeleton className="h-24" /><SkeletonRows rows={4} /></div>}
+      {campaign && (
+        <>
+          <header className="flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0 space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-2xl font-semibold tracking-tight">{campaign.name}</h1>
+                <StatusBadge label={campaign.display_label || campaign.status_label} tone={CAMPAIGN_TONES[campaign.status]} />
+              </div>
+              <p className="text-sm text-muted-foreground">
+                {campaign.scheduled_at ? <>Scheduled for {formatDateTime(campaign.scheduled_at, zone)}</>
+                  : campaign.started_at ? <>Started {formatDateTime(campaign.started_at, zone)}</> : 'Not scheduled'}
+                {' · '}Assistant: {campaign.assistant?.name || '—'}
+              </p>
+              <IdChip id={campaign.id} label="campaign id" full />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {actions.map((a) => (
+                <OpsButton key={a} size="sm" variant={a === 'start' || a === 'resume' ? 'primary' : CAMPAIGN_ACTIONS[a].danger ? 'quiet' : 'outline'}
+                  onClick={() => setAction(a)}>{CAMPAIGN_ACTIONS[a].label}</OpsButton>
+              ))}
+              <OpsButton size="sm" variant="outline" onClick={() => setEditOpen(true)}>Edit</OpsButton>
+              <OpsButton size="sm" variant="quiet" onClick={refresh} aria-label="Refresh the campaign"><RotateCw className="h-4 w-4" aria-hidden="true" /></OpsButton>
+            </div>
+          </header>
 
-      <CampaignOverview campaign={campaign} />
-
-      <AlertDialog open={confirmCancel} onOpenChange={setConfirmCancel}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Cancel this campaign?</AlertDialogTitle>
-            <AlertDialogDescription>
-              No new calls will be placed and queued retries are dropped. Calls already ringing finish normally.
-              This cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Keep running</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => runAction(() => cancelVoiceCampaign(campaign.id), 'Campaign cancelled')}
-              className="bg-red-600 text-white hover:bg-red-700"
-            >
-              Cancel campaign
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <CampaignEditDialog
-        campaign={campaign}
-        open={editOpen}
-        onOpenChange={setEditOpen}
-        onSaved={(updated) => { setCampaign(updated); fetchContacts(); }}
-      />
-
-      {/* Summary */}
-      <Card className="bg-card border-border">
-        <CardContent className="p-4 space-y-3">
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-            {/* Contacts comes from the campaign row (the CSV batch size), not
-                from the call logs, so it is shown only when it was recorded. */}
-            {campaign?.total_leads > 0 && <Stat label="Contacts" value={campaign.total_leads} />}
-            <Stat label="Dialled" value={stats.dialed} />
-            <Stat label="Connected" value={stats.connected} />
-            <Stat label="Not connected" value={stats.notConnected} />
-            <Stat label="Failed" value={stats.failed} />
-            <Stat label="In progress" value={stats.inProgress} />
-            {stats.waiting > 0 && <Stat label="Queued" value={stats.waiting} hint="waiting or retrying" />}
-            <Stat label="Connect rate" value={`${stats.connectRate}%`} hint="of dialled" />
-            {stats.avgConnectedDuration !== null && (
-              <Stat
-                label="Avg duration"
-                value={formatDuration(stats.avgConnectedDuration)}
-                hint="connected calls"
-              />
-            )}
-          </div>
-
-          {/* Lead status distribution. The numeric ai_qualification_score is not
-              returned by the call-log endpoints, so this is the three-bucket
-              lead_status, which is. */}
-          {stats.dialed > 0 && (
-            <div className="flex items-center gap-2 pt-1 border-t border-border">
-              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                Lead status
-              </span>
-              {['hot', 'warm', 'cold'].map((k) => (
-                <span key={k} className="flex items-center gap-1">
-                  <LeadStatusBadge status={k} />
-                  <span className="text-xs tabular-nums text-muted-foreground">{stats.leadStatus[k]}</span>
-                </span>
+          {banner && (
+            <div role="status" className={`ops-tone ops-tone-${banner.tone} flex flex-wrap items-center gap-3 rounded-[14px] px-4 py-3 text-sm`}>
+              <span className="flex-1 font-semibold">{banner.text}</span>
+              {bannerActions.filter((a) => actions.includes(a)).map((a) => (
+                <OpsButton key={a} size="sm" variant="outline" onClick={() => setAction(a)}>{CAMPAIGN_ACTIONS[a].label}</OpsButton>
               ))}
             </div>
           )}
 
-          {total > logs.length && (
-            <p className="text-[10px] text-muted-foreground">
-              Every contact is listed below. Duration and lead score come from the call log,
-              which is fetched {logs.length} rows at a time — the {total - logs.length} oldest
-              calls show "—" in those two columns until you page back through Call Logs.
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Per-contact rows */}
-      <Card className="bg-card border-border">
-        <CardContent className="p-4 space-y-3">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex-1">
-              Contacts
-            </h3>
-            <Select value={outcomeFilter} onValueChange={setOutcomeFilter}>
-              <SelectTrigger className="h-8 w-[150px] text-xs bg-[hsl(var(--surface-2))] border-border">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All outcomes</SelectItem>
-                <SelectItem value="connected">Connected</SelectItem>
-                <SelectItem value="not-connected">Not connected</SelectItem>
-                <SelectItem value="failed">Failed</SelectItem>
-                <SelectItem value="in-progress">In progress</SelectItem>
-                <SelectItem value="queued">Queued</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={sortKey} onValueChange={setSortKey}>
-              <SelectTrigger className="h-8 w-[150px] text-xs bg-[hsl(var(--surface-2))] border-border">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(SORTS).map(([k, v]) => (
-                  <SelectItem key={k} value={k}>{v.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div role="tablist" aria-label="Campaign" className="flex flex-wrap gap-1 border-b border-border">
+            {TABS.map((t) => (
+              <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)}
+                className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${tab === t.id ? 'border-[var(--ops-accent)] text-[color:var(--ops-accent-ink)]' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
+                {t.label}{t.id === 'contacts' ? ` (${contacts.length})` : ''}
+              </button>
+            ))}
           </div>
 
-          {loadingContacts && rows.length === 0 ? (
-            <div className="flex items-center justify-center py-12 text-muted-foreground">
-              <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading contacts…
-            </div>
-          ) : contactsError ? (
-            <p className="text-sm text-muted-foreground py-8 text-center">{contactsError}</p>
-          ) : rows.length === 0 ? (
-            <div className="py-10 text-center space-y-2">
-              <PhoneCall className="w-6 h-6 text-muted-foreground mx-auto" />
-              <p className="text-sm font-medium text-foreground">No contacts for this campaign</p>
-              <p className="text-xs text-muted-foreground max-w-md mx-auto">
-                {ongoing
-                  ? 'The campaign is still running — rows appear as each contact is dialled.'
-                  : 'No contacts were dialled under this campaign id.'}
-              </p>
-            </div>
-          ) : visibleRows.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-8 text-center">
-              No calls match this filter.
-            </p>
-          ) : (
-            <div className="rounded-lg border border-border overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-[hsl(var(--surface-2))]">
-                    <tr className="text-left text-[10px] uppercase tracking-wider text-muted-foreground">
-                      <th className="px-3 py-2 font-medium">Lead</th>
-                      <th className="px-3 py-2 font-medium">Status</th>
-                      <th className="px-3 py-2 font-medium">Attempts</th>
-                      <th className="px-3 py-2 font-medium">Duration</th>
-                      <th className="px-3 py-2 font-medium">Lead score</th>
-                      <th className="px-3 py-2 font-medium">Scheduled</th>
-                      <th className="px-3 py-2 font-medium min-w-[280px]">Message</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {visibleRows.map((row) => (
-                      <tr
-                        key={row.contact_id || row.call_id || `${row.phone_number}-${row.scheduled_at}`}
-                        onClick={() => row.vapi_call_id && setSelectedCallId(row.vapi_call_id)}
-                        className={`border-t border-border align-top ${row.vapi_call_id ? 'cursor-pointer hover:bg-[hsl(var(--surface-2))]' : ''}`}
-                      >
-                        <td className="px-3 py-2.5">
-                          <p className="font-medium text-foreground text-xs truncate max-w-[180px]">
-                            {row.name || 'Unknown'}
-                          </p>
-                          <p className="text-[11px] text-muted-foreground tabular-nums">
-                            {row.phone_number || '—'}
-                          </p>
-                        </td>
-                        <td className="px-3 py-2.5"><OutcomeBadge row={row} /></td>
-                        <td className="px-3 py-2.5 text-xs text-muted-foreground whitespace-nowrap">
-                          {row.attempts ?? '—'}
-                          {row.next_attempt_at && String(row.status) === 'pending' && (
-                            <span className="block text-[10px]">next {formatDateTime(row.next_attempt_at)}</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2.5 text-xs tabular-nums text-muted-foreground whitespace-nowrap">
-                          <span className="flex items-center gap-1">
-                            <Clock className="w-3 h-3" /> {formatDuration(row.duration_seconds)}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2.5">
-                          {/* Only where a call log produced one. */}
-                          {row.lead_status
-                            ? <LeadStatusBadge status={row.lead_status} />
-                            : <span className="text-xs text-muted-foreground">—</span>}
-                        </td>
-                        <td className="px-3 py-2.5 text-xs text-muted-foreground whitespace-nowrap">
-                          {formatDateTime(row.scheduled_at)}
-                        </td>
-                        <td className="px-3 py-2.5 text-xs text-muted-foreground">
-                          {row.summary || row.last_error || '—'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          {tab === 'overview' && <Overview campaign={campaign} contacts={contacts} onEditRules={() => setEditOpen(true)}
+            canEditRules={!FINAL.includes(campaign.status) && ['processing', 'paused'].includes(campaign.status)} />}
+          {tab === 'contacts' && <ContactsTab campaign={campaign} contacts={contacts} user={user} onChanged={load} onOpenCall={setCallId} />}
+          {tab === 'activity' && <div className="ops-card p-4"><EventTimeline items={campaignEventItems(events)} /></div>}
+
+          {action && <CampaignActionDialog action={action} campaign={campaign} onClose={() => setAction(null)} onDone={load} />}
+          <CampaignEditDialog campaign={campaign} open={editOpen} onOpenChange={setEditOpen} onSaved={() => load()} />
+        </>
+      )}
     </div>
   );
 }

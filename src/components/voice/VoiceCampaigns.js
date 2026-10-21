@@ -1,53 +1,18 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import { Progress } from '@/components/ui/progress';
-import { getVoiceCampaigns, deleteVoiceCampaign } from '@/lib/api';
 import { toast } from 'sonner';
-import {
-  Megaphone, Loader2, RefreshCw, Trash2, Calendar, Users, PhoneCall,
-  CheckCircle2, AlertCircle, ChevronRight, Copy, Check, Clock, User, FileEdit, Ban,
-} from 'lucide-react';
+import { Copy, Check, Trash2 } from 'lucide-react';
+import { deleteVoiceCampaign, getVoiceCampaigns } from '@/lib/api';
+import { useAuth } from '@/lib/AuthContext';
+import usePolling from '@/hooks/usePolling';
+import useApiAction, { errorMessage } from '@/hooks/useApiAction';
+import StatusBadge, { CAMPAIGN_TONES } from '@/components/ops/StatusBadge';
+import RelativeTime from '@/components/ops/RelativeTime';
+import ConfirmDialog from '@/components/ops/ConfirmDialog';
+import OpsButton from '@/components/ops/OpsButton';
+import { EmptyState, ErrorState, ScrollTable, SkeletonRows } from '@/components/ops/States';
 
-// campaigns.status is written by the backend: "processing" while the CSV batch
-// is dialling, "completed" when it finishes, "created" for a campaign row that
-// exists but has not started. Anything still running is grouped as Ongoing.
-const ONGOING_STATUSES = ['processing', 'created', 'scheduled', 'running'];
-
-const isOngoing = (status) => ONGOING_STATUSES.includes(String(status || '').toLowerCase());
-// Drafts are listed with ongoing work but nothing about them changes on its own, so they are not polled for.
-const isActiveOrDraft = (status) => isOngoing(status) || String(status || '').toLowerCase() === 'draft';
-
-// Poll only while something is actually running; a page of finished campaigns
-// should not keep hitting the API.
-const POLL_INTERVAL_MS = 15000;
-
-function StatusBadge({ status }) {
-  const s = String(status || '').toLowerCase();
-  const map = {
-    completed: { color: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/25', icon: CheckCircle2 },
-    processing: { color: 'bg-blue-500/15 text-blue-400 border-blue-500/25', icon: Loader2 },
-    created: { color: 'bg-amber-500/15 text-amber-400 border-amber-500/25', icon: AlertCircle },
-    scheduled: { color: 'bg-violet-500/15 text-violet-400 border-violet-500/25', icon: Clock },
-    draft: { color: 'bg-muted text-muted-foreground border-border', icon: FileEdit },
-    cancelled: { color: 'bg-muted text-muted-foreground border-border', icon: Ban },
-    failed: { color: 'bg-red-500/15 text-red-400 border-red-500/25', icon: AlertCircle },
-  };
-  const cfg = map[s] || map.created;
-  const Icon = cfg.icon;
-  return (
-    <Badge variant="outline" className={`${cfg.color} gap-1 text-[10px] font-medium`}>
-      <Icon className={`w-2.5 h-2.5 ${s === 'processing' ? 'animate-spin' : ''}`} />
-      {status || 'unknown'}
-    </Badge>
-  );
-}
+const REFRESH_MS = 30000;
 
 /**
  * An id, click-to-copy, prefixed with what kind of id it is.
@@ -100,248 +65,119 @@ export function IdChip({ id, label = 'id', full = false, className = '' }) {
   );
 }
 
-function formatDate(iso) {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+/** The status chips the filter offers: every display label present, in list order. */
+export function statusFilters(campaigns) {
+  const seen = new Map();
+  (campaigns || []).forEach((c) => {
+    const label = c.display_label?.startsWith('Waiting') ? 'Waiting' : (c.display_label || c.status_label || c.status);
+    if (!seen.has(label)) seen.set(label, 0);
+    seen.set(label, seen.get(label) + 1);
+  });
+  return [...seen.entries()].map(([label, count]) => ({ label, count }));
 }
 
-function CampaignCard({ campaign, onOpen, onDelete, deleting }) {
-  const ongoing = isOngoing(campaign.status);
-
-  // total_leads is the CSV batch size, written once the upload is parsed.
-  // calls_logged is how many of those have produced a call log so far — it is
-  // what moves during a run, so it is the numerator for progress.
-  const total = campaign.total_leads || 0;
-  const logged = campaign.calls_logged || 0;
-  const pct = total > 0 ? Math.min(100, Math.round((logged / total) * 100)) : 0;
-
-  return (
-    <Card className="bg-card border-border hover:border-primary/40 transition-colors">
-      <CardContent className="p-4">
-        <div className="flex items-start justify-between gap-3">
-          <button
-            onClick={() => onOpen(campaign.id)}
-            className="flex-1 min-w-0 text-left group"
-          >
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-semibold text-sm text-foreground truncate group-hover:text-primary transition-colors">
-                {campaign.name || 'Untitled campaign'}
-              </span>
-              <StatusBadge status={campaign.status} />
-              <IdChip id={campaign.id} label="campaign" />
-              <IdChip id={campaign.csv_process_id} label="csv" full />
-            </div>
-
-            {campaign.description && (
-              <p className="mt-1.5 text-xs text-muted-foreground line-clamp-2">{campaign.description}</p>
-            )}
-
-            <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground flex-wrap">
-              <span className="flex items-center gap-1">
-                <Calendar className="w-3 h-3" /> {formatDate(campaign.created_at)}
-              </span>
-              {campaign.created_by_user && (
-                <span className="flex items-center gap-1">
-                  <User className="w-3 h-3" /> {campaign.created_by_user.name || campaign.created_by_user.email}
-                </span>
-              )}
-              {campaign.status === 'scheduled' && campaign.scheduled_at && (
-                <span className="flex items-center gap-1 text-violet-400">
-                  <Clock className="w-3 h-3" /> starts {new Date(campaign.scheduled_at).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                </span>
-              )}
-              <span className="flex items-center gap-1 tabular-nums">
-                <Users className="w-3 h-3" /> {total || '—'} contacts
-              </span>
-              <span className="flex items-center gap-1 tabular-nums">
-                <PhoneCall className="w-3 h-3" /> {logged} dialled
-              </span>
-            </div>
-
-            {/* Progress only where there is a denominator to divide by. */}
-            {ongoing && total > 0 && (
-              <div className="mt-3 space-y-1">
-                <Progress value={pct} className="h-1.5" />
-                <p className="text-[10px] text-muted-foreground tabular-nums">
-                  {logged} of {total} dialled ({pct}%)
-                </p>
-              </div>
-            )}
-          </button>
-
-          <div className="flex items-center gap-1 shrink-0">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-muted-foreground hover:text-red-400"
-              onClick={() => onDelete(campaign)}
-              disabled={deleting}
-              aria-label={`Delete campaign ${campaign.name || campaign.id}`}
-            >
-              {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-            </Button>
-            <ChevronRight className="w-4 h-4 text-muted-foreground" />
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
+const chipOf = (c) => (c.display_label?.startsWith('Waiting') ? 'Waiting' : (c.display_label || c.status_label || c.status));
 
 export default function VoiceCampaigns() {
   const navigate = useNavigate();
-  const [campaigns, setCampaigns] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
+  const [campaigns, setCampaigns] = useState(null);
   const [error, setError] = useState(null);
-  const [pendingDelete, setPendingDelete] = useState(null);
-  const [deletingId, setDeletingId] = useState(null);
+  const [status, setStatus] = useState('all');
+  const [deleting, setDeleting] = useState(null);
 
-  const fetchCampaigns = useCallback(async () => {
+  const load = useCallback(async () => {
     try {
-      setError(null);
       const res = await getVoiceCampaigns();
-      const data = res.data || res;
-      setCampaigns(data.campaigns || []);
+      setCampaigns(res.data.campaigns || []);
+      setError(null);
     } catch (err) {
-      setError(err?.response?.data?.detail || 'Failed to load campaigns');
-      setCampaigns([]);
-    } finally {
-      setLoading(false);
+      setError(err?.response?.status === 403 ? "You don't have permission" : errorMessage(err, 'Check your connection and try again.'));
     }
   }, []);
+  usePolling(load, REFRESH_MS);
 
-  useEffect(() => { fetchCampaigns(); }, [fetchCampaigns]);
-
-  const { ongoing, completed } = useMemo(() => {
-    const on = [];
-    const done = [];
-    for (const c of campaigns) (isActiveOrDraft(c.status) ? on : done).push(c);
-    return { ongoing: on, completed: done };
-  }, [campaigns]);
-
-  // Poll while at least one campaign is still running, and stop once none are.
-  // The effect keys on the count, not the array, so a refetch that changes
-  // nothing does not tear down and rebuild the interval.
-  const ongoingCount = ongoing.filter((c) => isOngoing(c.status)).length;
-  useEffect(() => {
-    if (ongoingCount === 0) return undefined;
-    const id = setInterval(fetchCampaigns, POLL_INTERVAL_MS);
-    return () => clearInterval(id);
-  }, [ongoingCount, fetchCampaigns]);
-
-  const handleDelete = async () => {
-    if (!pendingDelete) return;
-    const { id, name } = pendingDelete;
-    setPendingDelete(null);
-    setDeletingId(id);
-    try {
-      await deleteVoiceCampaign(id);
-      setCampaigns((prev) => prev.filter((c) => c.id !== id));
-      toast.success(`Campaign "${name || id}" deleted. Its call logs were kept.`);
-    } catch (err) {
-      toast.error(err?.response?.data?.detail || 'Failed to delete campaign');
-    } finally {
-      setDeletingId(null);
-    }
-  };
-
-  const renderGroup = (title, rows, emptyText) => (
-    <div className="space-y-2">
-      <div className="flex items-center gap-2">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</h3>
-        <Badge variant="outline" className="text-[10px] tabular-nums">{rows.length}</Badge>
-      </div>
-      {rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground px-1 py-3">{emptyText}</p>
-      ) : (
-        <div className="space-y-2">
-          {rows.map((c) => (
-            <CampaignCard
-              key={c.id}
-              campaign={c}
-              onOpen={(id) => navigate(`/voice-campaigns/${id}`)}
-              onDelete={setPendingDelete}
-              deleting={deletingId === c.id}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
+  const remove = useApiAction(() => deleteVoiceCampaign(deleting.id), {
+    success: 'Campaign deleted', onSuccess: () => setCampaigns((prev) => prev.filter((c) => c.id !== deleting.id)),
+    onConflict: load,
+  });
+  const filters = useMemo(() => statusFilters(campaigns), [campaigns]);
+  const shown = useMemo(() => (campaigns || []).filter((c) => status === 'all' || chipOf(c) === status), [campaigns, status]);
+  // Sales Reps delete nothing; the backend decides for everyone else (a Manager: own or team's).
+  const canDelete = user?.role && user.role !== 'rep';
 
   return (
-    <div className="va-tab-content">
-      <div className="va-tab-header">
-        <div className="va-tab-icon-wrap"><Megaphone className="w-5 h-5" /></div>
-        <div className="flex-1">
-          <h2 className="text-lg font-semibold">Voice Campaigns</h2>
-          <p className="text-sm text-muted-foreground">Calling campaigns and how far each one got</p>
+    <div className="ops mx-auto max-w-7xl space-y-5 p-4 sm:p-6">
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Voice campaigns</h1>
+          <p className="text-sm text-muted-foreground">Every campaign, its state and its progress.</p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={fetchCampaigns}
-          disabled={loading}
-          className="border-border bg-card hover:bg-[hsl(var(--surface-2))]"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} /> Refresh
-        </Button>
-      </div>
+        <OpsButton variant="primary" onClick={() => navigate('/voice_agent?tab=builder')}>New campaign</OpsButton>
+      </header>
 
-      {loading && campaigns.length === 0 ? (
-        <div className="flex items-center justify-center py-16 text-muted-foreground">
-          <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading campaigns…
-        </div>
-      ) : error ? (
-        <Card className="bg-card border-border">
-          <CardContent className="p-8 text-center space-y-3">
-            <AlertCircle className="w-6 h-6 text-red-400 mx-auto" />
-            <p className="text-sm text-muted-foreground">{error}</p>
-            <Button variant="outline" size="sm" onClick={fetchCampaigns}>Try again</Button>
-          </CardContent>
-        </Card>
-      ) : campaigns.length === 0 ? (
-        <Card className="bg-card border-border">
-          <CardContent className="p-10 text-center space-y-2">
-            <Megaphone className="w-7 h-7 text-muted-foreground mx-auto" />
-            <p className="text-sm font-medium text-foreground">No campaigns yet</p>
-            <p className="text-xs text-muted-foreground max-w-md mx-auto">
-              Select leads in the Lead-to-Campaign Builder (or upload a contact file) and click
-              Launch Campaign to start one now or schedule it.
-            </p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-6">
-          {renderGroup('Ongoing', ongoing, 'Nothing running right now.')}
-          {renderGroup('Finished', completed, 'No finished campaigns yet.')}
+      {campaigns && filters.length > 0 && (
+        <div role="group" aria-label="Filter by status" className="flex flex-wrap gap-1.5">
+          {[{ label: 'All', count: campaigns.length, id: 'all' }, ...filters].map((f) => {
+            const id = f.id || f.label;
+            return (
+              <button key={id} type="button" aria-pressed={status === id} onClick={() => setStatus(id)}
+                className={`rounded-full border px-3 py-1 text-xs font-medium ${status === id
+                  ? 'border-[var(--ops-accent)] bg-[var(--ops-accent)] text-white' : 'border-border hover:bg-[hsl(var(--surface-2))]'}`}>
+                {f.label} <span className="ops-num">({f.count})</span>
+              </button>
+            );
+          })}
         </div>
       )}
 
-      <AlertDialog open={!!pendingDelete} onOpenChange={(open) => !open && setPendingDelete(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete this campaign?</AlertDialogTitle>
-            <AlertDialogDescription>
-              "{pendingDelete?.name || pendingDelete?.id}"{' '}
-              (<span className="font-mono text-xs">{pendingDelete?.id}</span>) will be removed
-              from this list. Its call logs are kept and stay visible in Call Logs — they just
-              stop being grouped under this campaign. This cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDelete}
-              className="bg-red-600 text-white hover:bg-red-700"
-            >
-              Delete campaign
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {error && <ErrorState message={error} onRetry={load} />}
+      {!error && campaigns === null && <SkeletonRows rows={5} label="Loading campaigns" />}
+      {!error && campaigns?.length === 0 && (
+        <EmptyState title="No campaigns yet." body="Pick leads in the Lead-to-Campaign Builder or upload a file to start one."
+          action={<OpsButton variant="primary" onClick={() => navigate('/voice_agent?tab=builder')}>New campaign</OpsButton>} />
+      )}
+      {!error && campaigns?.length > 0 && shown.length === 0 && <EmptyState title="No campaigns with this status." />}
+      {!error && shown.length > 0 && (
+        <ScrollTable label="Campaigns">
+          <thead className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
+            <tr>
+              <th className="px-4 py-2">Campaign</th><th className="px-4 py-2">Status</th><th className="px-4 py-2">Scheduled / started</th>
+              <th className="px-4 py-2">Leads</th><th className="px-4 py-2">Created by</th>
+              {canDelete && <th className="px-4 py-2"><span className="sr-only">Actions</span></th>}
+            </tr>
+          </thead>
+          <tbody>
+            {shown.map((c) => (
+              <tr key={c.id} className="border-b border-border last:border-0 hover:bg-[hsl(var(--surface-2))]">
+                <td className="px-4 py-2.5">
+                  <button type="button" onClick={() => navigate(`/voice-campaigns/${c.id}`)}
+                    className="text-left font-semibold text-[color:var(--ops-accent-ink)] hover:underline">{c.name}</button>
+                  <span className="mt-0.5 block"><IdChip id={c.id} label="id" /></span>
+                </td>
+                <td className="px-4 py-2.5"><StatusBadge label={c.display_label || c.status_label} tone={CAMPAIGN_TONES[c.status]} /></td>
+                <td className="whitespace-nowrap px-4 py-2.5">
+                  <RelativeTime iso={c.scheduled_at || c.started_at} mode="absolute" />
+                </td>
+                <td className="ops-num px-4 py-2.5">{c.processed_leads ?? 0} / {c.total_leads ?? 0}</td>
+                <td className="px-4 py-2.5">{c.created_by_user?.name || '—'}</td>
+                {canDelete && (
+                  <td className="px-4 py-2.5 text-right">
+                    <button type="button" aria-label={`Delete ${c.name}`} onClick={() => setDeleting(c)}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-[hsl(var(--surface-2))] hover:text-foreground">
+                      <Trash2 className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </ScrollTable>
+      )}
+      <ConfirmDialog open={Boolean(deleting)} onOpenChange={(o) => !o && setDeleting(null)} danger confirmLabel="Delete"
+        title={`Delete ${deleting?.name || 'this campaign'}?`}
+        description="The campaign and its contact list are deleted. Call logs are kept."
+        onConfirm={async () => Boolean(await remove.run())} />
     </div>
   );
 }

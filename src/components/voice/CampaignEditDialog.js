@@ -10,12 +10,14 @@ import { toLeadRow } from '@/lib/prospects';
 import { toast } from 'sonner';
 import { Loader2, Search } from 'lucide-react';
 import {
-  CallingConfigFields, CallingWindowFields, DEFAULT_CONFIG, TimeZoneField,
-  announceCalendarSync, apiErrorMessage, isoToZoned, validateSettings, zonedToIso,
+  CallingConfigFields, CallingWindowFields, DEFAULT_CONFIG, ScheduleWarnings, TimeZoneField,
+  announceCalendarSync, apiErrorMessage, configErrors, isoToZoned, useScheduleCheck, validateSettings, zonedToIso,
 } from './CampaignSettingsFields';
 
 const OPEN_STATUSES = ['draft', 'scheduled'];
 const FINAL_STATUSES = ['completed', 'failed', 'cancelled'];
+// Changing the calling window or rules of these needs a reason and only affects future dials.
+const LIVE_STATUSES = ['processing', 'paused'];
 
 /**
  * Edit a campaign through PATCH /api/campaigns/{id}. What can change depends on
@@ -24,6 +26,7 @@ const FINAL_STATUSES = ['completed', 'failed', 'cancelled'];
  */
 export default function CampaignEditDialog({ campaign, open, onOpenChange, onSaved }) {
   const status = campaign?.status;
+  const live = LIVE_STATUSES.includes(status);
   const isOpen = OPEN_STATUSES.includes(status);
   const settingsEditable = !FINAL_STATUSES.includes(status);
   const leadsEditable = isOpen && campaign?.source_type === 'leads';
@@ -41,6 +44,9 @@ export default function CampaignEditDialog({ campaign, open, onOpenChange, onSav
   const [loadingLeads, setLoadingLeads] = useState(false);
   const [leadQuery, setLeadQuery] = useState('');
   const [saving, setSaving] = useState(false);
+  const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
+  const [formError, setFormError] = useState('');
 
   useEffect(() => {
     if (!open || !campaign) return;
@@ -56,7 +62,16 @@ export default function CampaignEditDialog({ campaign, open, onOpenChange, onSav
     setConfig({ ...DEFAULT_CONFIG, ...(campaign.calling_config || {}) });
     setProspectIds(new Set((campaign.prospects || []).map((l) => l.prospect_id)));
     setLeadQuery('');
+    setReason(''); setTried(false); setFormError('');
   }, [open, campaign]);
+
+  let plannedStart = null;
+  try { plannedStart = isOpen && startDate && startTime ? zonedToIso(startDate, startTime, timeZone.trim()) : null; } catch { plannedStart = null; }
+  const check = useScheduleCheck({ scheduledAt: plannedStart, timeZone: timeZone.trim(), callingWindow,
+    enabled: open && settingsEditable });
+  const rulesChanged = Boolean(campaign) && (JSON.stringify(callingWindow || null) !== JSON.stringify(campaign.calling_window || null)
+    || JSON.stringify(config) !== JSON.stringify({ ...DEFAULT_CONFIG, ...(campaign.calling_config || {}) }));
+  const errors = tried ? configErrors(config) : {};
 
   useEffect(() => {
     if (!open || !leadsEditable) return;
@@ -88,16 +103,20 @@ export default function CampaignEditDialog({ campaign, open, onOpenChange, onSav
   };
 
   const save = async () => {
+    setTried(true);
+    setFormError('');
     if (!name.trim() || !description.trim()) {
-      toast.error('Name and description are required.');
+      setFormError('Name and description are required.');
       return;
     }
     const body = { name: name.trim(), description: description.trim(), notes: notes.trim() };
-    if (settingsEditable) {
+    if (settingsEditable && (!live || rulesChanged)) {
       const problem = validateSettings({ window: callingWindow, config, timeZone });
-      if (problem) { toast.error(problem); return; }
+      if (problem) { setFormError(problem); return; }
+      if (live && !reason.trim()) { setFormError('Say why the rules change while the campaign runs.'); return; }
       body.calling_window = callingWindow;
       body.calling_config = config;
+      if (live) body.reason = reason.trim();
     }
     if (isOpen) {
       body.timezone = timeZone.trim();
@@ -130,7 +149,9 @@ export default function CampaignEditDialog({ campaign, open, onOpenChange, onSav
       onSaved?.(res.data);
       onOpenChange(false);
     } catch (e) {
-      toast.error(apiErrorMessage(e, 'Failed to update campaign'));
+      const message = apiErrorMessage(e, 'Failed to update campaign');
+      setFormError(message);
+      toast.error(message);
     } finally {
       setSaving(false);
     }
@@ -140,7 +161,7 @@ export default function CampaignEditDialog({ campaign, open, onOpenChange, onSav
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="ops max-w-xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit campaign</DialogTitle>
           <DialogDescription>
@@ -184,10 +205,20 @@ export default function CampaignEditDialog({ campaign, open, onOpenChange, onSav
 
           {settingsEditable && (
             <>
+              {live && <p className="rounded-lg ops-tone ops-tone-info px-3 py-2 text-sm">Changes to calling hours and rules apply to future dials only.</p>}
               <CallingWindowFields value={callingWindow} onChange={setCallingWindow} />
-              <CallingConfigFields value={config} onChange={setConfig} />
+              <CallingConfigFields value={config} onChange={setConfig} errors={errors} />
+              <ScheduleWarnings check={check} />
+              {live && rulesChanged && (
+                <div className="space-y-1.5">
+                  <label htmlFor="edit-rules-reason" className="text-xs font-medium text-muted-foreground">Why change the rules now? *</label>
+                  <Textarea id="edit-rules-reason" value={reason} maxLength={1000} onChange={(e) => setReason(e.target.value)}
+                    aria-required="true" className="min-h-[56px]" placeholder="Kept in the campaign's history" />
+                </div>
+              )}
             </>
           )}
+          {formError && <p role="alert" className="text-sm text-[#b42318]">{formError}</p>}
 
           {leadsEditable && (
             <div className="space-y-1.5">

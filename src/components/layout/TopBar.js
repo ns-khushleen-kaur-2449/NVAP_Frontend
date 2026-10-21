@@ -8,6 +8,7 @@ import {
 import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import ThemeToggle from '@/components/shared/ThemeToggle';
+import NotificationBell from '@/components/ops/NotificationBell';
 
 // ── Nav definitions (same as old sidebars) ──────────────────────
 const MAIN_NAV = [
@@ -144,6 +145,8 @@ export const TopBar = () => {
               </Link>
             )}
             */}
+
+            {user && <NotificationBell />}
 
             <ThemeToggle />
 

@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
+import { checkCampaignSchedule } from '@/lib/api';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 
@@ -15,11 +17,27 @@ export const RETRY_OUTCOMES = [
   { value: 'failed', label: 'Failed' },
 ];
 export const DEFAULT_WINDOW = { days: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat'], start_time: '10:00', end_time: '19:00' };
+// Per-outcome retry delays (CallingConfig.retry_*_minutes). The values themselves come from the
+// tenant's contact rules (schedule-check's retry_defaults) or the campaign; only the bounds live here.
+export const RETRY_DELAY_FIELDS = [
+  { key: 'retry_no_answer_minutes', label: 'After no answer', min: 120, max: 240, hint: '2–4 hours' },
+  { key: 'retry_busy_minutes', label: 'After busy', min: 1, max: 1440 },
+  { key: 'retry_failed_minutes', label: 'After unreachable', min: 1, max: 1440 },
+];
 export const DEFAULT_CONFIG = {
   max_concurrent_calls: 3,
   max_attempts_per_lead: 3,
-  retry_interval_minutes: 30,
   retry_on: ['no_answer', 'busy', 'failed'],
+};
+
+/** `config` with any missing retry delay taken from the tenant's defaults. */
+export const withRetryDefaults = (config, defaults) => {
+  const out = { ...config };
+  RETRY_DELAY_FIELDS.forEach(({ key }) => {
+    if ((out[key] === undefined || out[key] === null) && defaults?.[key] != null) out[key] = defaults[key];
+  });
+  delete out.retry_interval_minutes; // the old single delay; the backend no longer stores it
+  return out;
 };
 
 export const browserTimeZone = () => {
@@ -78,8 +96,71 @@ export const describeWindow = (window) => {
 export const describeConfig = (config) => {
   if (!config) return '—';
   const retryOn = RETRY_OUTCOMES.filter((o) => config.retry_on?.includes(o.value)).map((o) => o.label.toLowerCase()).join(', ');
-  return `${config.max_concurrent_calls} at a time · up to ${config.max_attempts_per_lead} attempts · retry after ${config.retry_interval_minutes} min${retryOn ? ` on ${retryOn}` : ''}`;
+  return `${config.max_concurrent_calls} at a time · up to ${config.max_attempts_per_lead} attempts${retryOn ? ` · retries on ${retryOn}` : ''}`;
 };
+
+/** "No answer 3 h · Busy 45 min · Unreachable 30 min". */
+export const describeRetryDelays = (config) => RETRY_DELAY_FIELDS
+  .map(({ key, label }) => {
+    const minutes = config?.[key];
+    if (minutes == null) return null;
+    const text = minutes % 60 === 0 && minutes >= 60 ? `${minutes / 60} h` : `${minutes} min`;
+    return `${label.replace(/^After /, '').replace(/^\w/, (c) => c.toUpperCase())} ${text}`;
+  })
+  .filter(Boolean)
+  .join(' · ') || '—';
+
+/** Field-by-field problems in the calling rules: { key: message }. */
+export const configErrors = (config) => {
+  const errors = {};
+  const inRange = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
+  if (!inRange(config.max_concurrent_calls, 1, 20)) errors.max_concurrent_calls = 'Between 1 and 20.';
+  if (!inRange(config.max_attempts_per_lead, 1, 10)) errors.max_attempts_per_lead = 'Between 1 and 10.';
+  RETRY_DELAY_FIELDS.forEach(({ key, min, max, hint }) => {
+    if (config[key] !== undefined && !inRange(config[key], min, max)) {
+      errors[key] = `Between ${min} and ${max} minutes${hint ? ` (${hint})` : ''}.`;
+    }
+  });
+  return errors;
+};
+
+/**
+ * POST /api/campaigns/schedule-check as the form changes (debounced): the calling-hours
+ * warnings to show before saving, the effective start, and the tenant's retry defaults.
+ * A 422 (hours outside the allowed bound) comes back as `error`.
+ */
+export function useScheduleCheck({ scheduledAt, timeZone, callingWindow, enabled = true }) {
+  const [result, setResult] = useState({ warnings: [], retryDefaults: null, startsAt: null, error: null });
+  const windowKey = JSON.stringify(callingWindow);
+  useEffect(() => {
+    if (!enabled) return undefined;
+    const timer = setTimeout(async () => {
+      try {
+        const res = await checkCampaignSchedule({
+          scheduled_at: scheduledAt || null, timezone: timeZone || null, calling_window: callingWindow || null,
+        });
+        setResult({ warnings: res.data.warnings || [], retryDefaults: res.data.retry_defaults || null,
+          startsAt: res.data.starts_at, error: null });
+      } catch (e) {
+        setResult((prev) => ({ ...prev, warnings: [], error: apiErrorMessage(e, null) }));
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scheduledAt, timeZone, windowKey, enabled]);
+  return result;
+}
+
+/** The backend's calling-hours notes (and a refusal) shown before saving. */
+export function ScheduleWarnings({ check }) {
+  if (!check?.error && !check?.warnings?.length) return null;
+  return (
+    <div role="status" className="ops-tone ops-tone-warn space-y-1 rounded-[14px] px-3 py-2 text-sm">
+      {check.error && <p className="font-semibold">{check.error}</p>}
+      {check.warnings.map((w) => <p key={w}>{w}</p>)}
+    </div>
+  );
+}
 
 const Label = ({ children }) => <label className="text-xs font-medium text-muted-foreground">{children}</label>;
 
@@ -145,9 +226,10 @@ export function CallingWindowFields({ value, onChange }) {
   );
 }
 
-export function CallingConfigFields({ value, onChange }) {
+export function CallingConfigFields({ value, onChange, errors = {} }) {
   const config = value || DEFAULT_CONFIG;
   const setNumber = (key) => (e) => onChange({ ...config, [key]: e.target.value === '' ? '' : Number(e.target.value) });
+  const fieldError = (key) => errors[key] && <p id={`err-${key}`} className="text-[11px] text-[color:var(--ops-bad,#b42318)]">{errors[key]}</p>;
   const toggleRetry = (outcome) => {
     const retry_on = config.retry_on.includes(outcome)
       ? config.retry_on.filter((o) => o !== outcome)
@@ -156,20 +238,33 @@ export function CallingConfigFields({ value, onChange }) {
   };
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
           <Label>Calls at once</Label>
-          <Input type="number" min={1} max={20} value={config.max_concurrent_calls} onChange={setNumber('max_concurrent_calls')} />
+          <Input type="number" min={1} max={20} value={config.max_concurrent_calls} onChange={setNumber('max_concurrent_calls')}
+            aria-invalid={Boolean(errors.max_concurrent_calls)} aria-describedby={errors.max_concurrent_calls ? 'err-max_concurrent_calls' : undefined} />
+          {fieldError('max_concurrent_calls')}
         </div>
         <div className="space-y-1.5">
           <Label>Attempts per lead</Label>
-          <Input type="number" min={1} max={10} value={config.max_attempts_per_lead} onChange={setNumber('max_attempts_per_lead')} />
-        </div>
-        <div className="space-y-1.5">
-          <Label>Retry after (min)</Label>
-          <Input type="number" min={1} max={1440} value={config.retry_interval_minutes} onChange={setNumber('retry_interval_minutes')} />
+          <Input type="number" min={1} max={10} value={config.max_attempts_per_lead} onChange={setNumber('max_attempts_per_lead')}
+            aria-invalid={Boolean(errors.max_attempts_per_lead)} aria-describedby={errors.max_attempts_per_lead ? 'err-max_attempts_per_lead' : undefined} />
+          {fieldError('max_attempts_per_lead')}
         </div>
       </div>
+      <fieldset className="space-y-1.5">
+        <legend className="text-xs font-medium text-muted-foreground">Wait before retrying (minutes)</legend>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {RETRY_DELAY_FIELDS.map(({ key, label, min, max, hint }) => (
+            <div key={key} className="space-y-1.5">
+              <label htmlFor={`field-${key}`} className="text-xs font-medium text-muted-foreground">{label}{hint ? ` (${hint})` : ''}</label>
+              <Input id={`field-${key}`} type="number" min={min} max={max} value={config[key] ?? ''} onChange={setNumber(key)}
+                placeholder="Tenant default" aria-invalid={Boolean(errors[key])} aria-describedby={errors[key] ? `err-${key}` : undefined} />
+              {fieldError(key)}
+            </div>
+          ))}
+        </div>
+      </fieldset>
       <div className="space-y-1.5">
         <Label>Retry when the call</Label>
         <div className="flex flex-wrap gap-4">
@@ -194,10 +289,7 @@ export const validateSettings = ({ window, config, timeZone }) => {
       return 'Calling hours must end after they start (overnight windows are not supported).';
     }
   }
-  const inRange = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
-  if (!inRange(config.max_concurrent_calls, 1, 20)) return 'Calls at once must be between 1 and 20.';
-  if (!inRange(config.max_attempts_per_lead, 1, 10)) return 'Attempts per lead must be between 1 and 10.';
-  if (!inRange(config.retry_interval_minutes, 1, 1440)) return 'Retry interval must be between 1 and 1440 minutes.';
+  if (Object.keys(configErrors(config)).length) return 'Fix the calling rules marked below.';
   return null;
 };
 

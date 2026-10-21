@@ -1,7 +1,7 @@
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Users, Sparkles,  PhoneCall, Inbox as InboxIcon, CalendarClock,
-  Layers, Phone, Mic, BookOpen, Activity, UploadCloud, Calendar, Megaphone,
+  Layers, Phone, Mic, BookOpen, UploadCloud, Megaphone, CalendarCheck, PhoneForwarded, PhoneOff,
   ChevronDown, ChevronLeft, ChevronRight, Settings, LogOut,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -11,7 +11,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useAuth } from '@/lib/AuthContext';
 import ThemeToggle from '@/components/shared/ThemeToggle';
 import { visibleNavItems } from '@/lib/adminNav';
-import { canViewAssistants } from '@/lib/rbac';
+import { canViewAssistants, canViewOperations } from '@/lib/rbac';
 
 const APP_NAV = [
   { path: '/dashboard',   label: 'Dashboard',    icon: LayoutDashboard },
@@ -19,6 +19,10 @@ const APP_NAV = [
 
 // Secondary surfaces, listed below Voice Agent.
 const PENDING_NAV = [
+  { path: '/appointments', label: 'Appointments', icon: CalendarCheck },
+  // Callbacks and do-not-call: Tenant Admins, Managers and (view only) Super Admins.
+  { path: '/callbacks',   label: 'Callbacks',    icon: PhoneForwarded, requires: canViewOperations },
+  { path: '/do-not-call', label: 'Do-not-call',  icon: PhoneOff, requires: canViewOperations },
   { path: '/prospecting', label: 'Prospecting',  icon: Users },
   { path: '/strategist',  label: 'AI Strategist', icon: Sparkles },
   { path: '/inbox',       label: 'Inbox',        icon: InboxIcon },
@@ -34,7 +38,6 @@ const VOICE_TABS = [
   { id: 'logs',      label: 'Call Logs',                icon: Phone },
   { id: 'create',    label: 'Create Agent',             icon: Mic },
   { id: 'kb',        label: 'Knowledge Base',           icon: BookOpen },
-  { id: 'analytics', label: 'Analytics',                icon: Activity },
   { id: 'csv',       label: 'CSV Call Campaign',        icon: UploadCloud },
   // Its own route rather than a ?tab= view, so it carries `path`. The render
   // below falls back to the ?tab= form for every entry without one.
@@ -67,8 +70,11 @@ const iconClass = (isActive) => cn(
   isActive ? 'text-white' : 'text-[var(--mist)] group-hover:text-[var(--pine)]'
 );
 
+// Phone width: start collapsed (icons only) so the page keeps the screen.
+const startCollapsed = () => Boolean(window.matchMedia?.('(max-width: 767px)').matches);
+
 export function Sidebar() {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(startCollapsed);
   // Voice Agent is the primary surface, so its sub-list starts expanded.
   const [voiceOpen, setVoiceOpen] = useState(true);
   // const [reportOpen, setReportOpen] = useState(false);
@@ -106,7 +112,7 @@ export function Sidebar() {
               const isActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
               const Icon = item.icon;
               const link = (
-                <Link key={item.path} to={item.path} className={itemClass(isActive, collapsed)}>
+                <Link key={item.path} to={item.path} aria-label={collapsed ? item.label : undefined} className={itemClass(isActive, collapsed)}>
                   <Icon className={iconClass(isActive)} />
                   {!collapsed && <span>{item.label}</span>}
                 </Link>
@@ -123,9 +129,12 @@ export function Sidebar() {
                 Purely a toggle: it does not navigate anywhere by itself, it just
                 opens/closes the sub-list below. */}
             <button
+              type="button"
               onClick={() => setVoiceOpen((v) => !v)}
               className={cn(itemClass(onVoiceAgent, collapsed), 'w-full')}
               title="Voice Agent"
+              aria-label="Voice Agent"
+              aria-expanded={voiceOpen}
             >
               <PhoneCall className={iconClass(onVoiceAgent)} />
               {!collapsed && <span className="flex-1 text-left">Voice Agent</span>}
@@ -142,7 +151,7 @@ export function Sidebar() {
                     : onVoiceAgent && currentTab === tab.id;
                   const Icon = tab.icon;
                   const link = (
-                    <Link key={tab.id} to={tab.path || `/voice_agent?tab=${tab.id}`} className={itemClass(isActive, collapsed)}>
+                    <Link key={tab.id} to={tab.path || `/voice_agent?tab=${tab.id}`} aria-label={collapsed ? tab.label : undefined} className={itemClass(isActive, collapsed)}>
                       <Icon className={iconClass(isActive)} />
                       {!collapsed && <span>{tab.label}</span>}
                     </Link>
@@ -195,11 +204,11 @@ export function Sidebar() {
             )}
             */}
 
-            {PENDING_NAV.map((item) => {
+            {PENDING_NAV.filter((item) => !item.requires || item.requires(user)).map((item) => {
               const isActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
               const Icon = item.icon;
               const link = (
-                <Link key={item.path} to={item.path} className={itemClass(isActive, collapsed)}>
+                <Link key={item.path} to={item.path} aria-label={collapsed ? item.label : undefined} className={itemClass(isActive, collapsed)}>
                   <Icon className={iconClass(isActive)} />
                   {!collapsed && <span>{item.label}</span>}
                 </Link>
@@ -234,7 +243,7 @@ export function Sidebar() {
               </NavLink>
             );
           })}
-          <NavLink to="/settings" end className={({ isActive }) => itemClass(isActive, collapsed)}>
+          <NavLink to="/settings" end aria-label={collapsed ? 'Settings' : undefined} className={({ isActive }) => itemClass(isActive, collapsed)}>
             <Settings className="h-4 w-4 shrink-0 text-[var(--mist)] group-hover:text-[var(--pine)]" />
             {!collapsed && <span>Settings</span>}
           </NavLink>
@@ -243,6 +252,8 @@ export function Sidebar() {
             <ThemeToggle className="h-8 w-8 shrink-0" />
           </div>
           <button
+            type="button"
+            aria-label={collapsed ? 'Logout' : undefined}
             onClick={logout}
             className={cn(
               'flex items-center gap-3 w-full rounded-xl px-3 py-2.5 text-sm font-medium text-[var(--mist)] hover:text-[var(--pine)] hover:bg-[var(--stone)] transition-colors',
@@ -255,6 +266,8 @@ export function Sidebar() {
         </div>
 
         <button
+          type="button"
+          aria-label={collapsed ? 'Expand the sidebar' : 'Collapse the sidebar'}
           onClick={() => setCollapsed((v) => !v)}
           className="flex items-center justify-center py-2.5 border-t border-[var(--line)] text-[var(--mist)] hover:text-[var(--pine)] hover:bg-[var(--stone)] transition-colors shrink-0"
         >

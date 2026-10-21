@@ -398,3 +398,42 @@
   --vd-good: #5cc97e;
   --vd-bad: #ff8577;
 }
+/* Operations screens (campaigns, callbacks, do-not-call, appointments, notifications).
+   #B04E14 is the orange for text and button labels on light backgrounds (>= 4.5:1);
+   status tones always pair a colour with text, never colour alone. */
+.ops {
+  --ops-accent: #B04E14;
+  --ops-accent-hover: #93410F;
+  --ops-accent-ink: #B04E14;
+  --ops-good: #1f7a3d;
+  --ops-bad: #b42318;
+  --ops-warn: #8a4b08;
+  --ops-info: #1d4f91;
+}
+.dark .ops {
+  --ops-accent-ink: #FF9A57;
+  --ops-good: #5cc97e;
+  --ops-bad: #ff8577;
+  --ops-warn: #f5c26b;
+  --ops-info: #8ab8f0;
+}
+.ops-card {
+  border: 1px solid hsl(var(--border));
+  border-radius: 14px;
+  background: hsl(var(--card));
+}
+.ops-num { font-variant-numeric: tabular-nums; }
+.ops :focus-visible { outline: 2px solid var(--ops-accent); outline-offset: 2px; }
+.ops-tone { border-width: 1px; border-style: solid; }
+.ops-tone-neutral { color: hsl(var(--foreground)); background: hsl(var(--surface-2)); border-color: hsl(var(--border)); }
+.ops-tone-info, .ops-tone-good, .ops-tone-warn, .ops-tone-bad, .ops-tone-accent {
+  color: var(--tone); border-color: color-mix(in srgb, var(--tone) 35%, transparent);
+  background: color-mix(in srgb, var(--tone) 10%, transparent);
+}
+.ops-tone-info { --tone: var(--ops-info); }
+.ops-tone-good { --tone: var(--ops-good); }
+.ops-tone-warn { --tone: var(--ops-warn); }
+.ops-tone-bad { --tone: var(--ops-bad); }
+.ops-tone-accent { --tone: var(--ops-accent-ink); }
+.ops-border-bad { border-color: color-mix(in srgb, var(--ops-bad) 45%, transparent); }
+.ops-row-alert { background: color-mix(in srgb, var(--ops-bad) 6%, transparent); }

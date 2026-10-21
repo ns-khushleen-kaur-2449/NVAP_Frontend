@@ -245,10 +245,24 @@ export const previewCampaignCsv = (file) => {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
 };
-// Start a draft/scheduled campaign now, or pass scheduledAt to (re)schedule it.
-export const startVoiceCampaign = (id, scheduledAt) =>
-  api.post(`/api/campaigns/${id}/start`, scheduledAt ? { scheduled_at: scheduledAt } : {});
-export const cancelVoiceCampaign = (id) => api.post(`/api/campaigns/${id}/cancel`);
+// Start a draft/scheduled/missed campaign now, or pass scheduledAt to (re)schedule it (reason recorded).
+export const startVoiceCampaign = (id, scheduledAt, extra = {}) =>
+  api.post(`/api/campaigns/${id}/start`, scheduledAt ? { scheduled_at: scheduledAt, ...extra } : extra);
+// body: { reason?, expected_version?, credits_topped_up? } (CampaignActionRequest)
+export const cancelVoiceCampaign = (id, body = {}) => api.post(`/api/campaigns/${id}/cancel`, body);
+export const pauseVoiceCampaign = (id, body = {}) => api.post(`/api/campaigns/${id}/pause`, body);
+export const resumeVoiceCampaign = (id, body = {}) => api.post(`/api/campaigns/${id}/resume`, body);
+// A "Waiting" or paused campaign -> completed; reason required.
+export const closeVoiceCampaign = (id, reason) => api.post(`/api/campaigns/${id}/close`, { reason });
+export const getVoiceCampaignEvents = (id) => api.get(`/api/campaigns/${id}/events`);
+// { warnings, calling_window, effective_window, starts_at, retry_defaults } before saving a campaign.
+export const checkCampaignSchedule = (data) => api.post('/api/campaigns/schedule-check', data);
+// Manual actions on one contact (Tenant Admin / Manager; every body carries a reason).
+// action: requeue {phone_number?} | dial-now | next-attempt {next_attempt_at} | attempts {reset, max_attempts} | remove
+export const campaignContactAction = (campaignId, contactId, action, body) =>
+  api.post(`/api/campaigns/${campaignId}/contacts/${contactId}/${action}`, body);
+export const getCampaignContactEvents = (campaignId, contactId) =>
+  api.get(`/api/campaigns/${campaignId}/contacts/${contactId}/events`);
 // History of uploads made before files became a campaign source.
 export const getCsvCallResults = (processId) => api.get(`/api/csv/results/${processId}`);
 
@@ -262,13 +276,19 @@ export const deleteVoiceCampaign = (id) => api.delete(`/api/campaigns/${id}`);
 // Name/description/notes any time; calling settings until it finishes;
 // assistant, timezone, scheduled_at and contacts only while draft or scheduled.
 export const updateVoiceCampaign = (id, data) => api.patch(`/api/campaigns/${id}`, data);
-// One immediate outbound call (Single Call tab).
-export const initiateSmartsdrCall = ({ phone_number, user_name, assistant_id }) => {
+// One immediate outbound call (Single Call tab).  A number the contact rules hold back is a 409
+// { code, allowed_at, message }; allow_recent + reason calls it anyway (Tenant Admin / Manager only).
+// code "opted_out" (do-not-call) can never be overridden.
+export const initiateSmartsdrCall = ({ phone_number, user_name, assistant_id, allow_recent, reason }) => {
   const body = new URLSearchParams();
   body.append('phone_number', phone_number || '');
   body.append('user_name', user_name || '');
   if (assistant_id) {
     body.append('assistant_id', assistant_id);
+  }
+  if (allow_recent) {
+    body.append('allow_recent', 'true');
+    body.append('reason', reason || '');
   }
   return api.post('/api/smartsdr-calls', body, {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -386,6 +406,51 @@ export const setPrimaryCalendarConnection = (id) => api.post(`/api/v1/calendar/c
 export const listConnectionCalendars = (id) => api.get(`/api/v1/calendar/connections/${id}/calendars`);
 export const setBookingCalendar = (id, calendarId) =>
   api.put(`/api/v1/calendar/connections/${id}/booking-calendar`, { calendar_id: calendarId });
+
+// ── Notifications (the signed-in user's) ──
+export const getNotifications = (params) => api.get('/api/v1/notifications', { params });
+export const getUnreadNotificationCount = () => api.get('/api/v1/notifications/unread-count');
+export const markNotificationRead = (id) => api.post(`/api/v1/notifications/${id}/read`);
+export const markAllNotificationsRead = () => api.post('/api/v1/notifications/read-all');
+
+// ── Scheduled calls and callbacks (Tenant Admin / Manager) ──
+export const getScheduledCalls = (params) => api.get('/api/v1/scheduled-calls', { params });
+export const getScheduledCallEvents = (id) => api.get(`/api/v1/scheduled-calls/${id}/events`);
+// action: requeue | dial-now | next-attempt | attempts | reschedule {scheduled_time} | reassign {assistant_id}
+//         | cancel | handled; every body carries a reason.
+export const scheduledCallAction = (id, action, body) => api.post(`/api/v1/scheduled-calls/${id}/${action}`, body);
+
+// ── Do-not-call (Tenant Admin / Manager; a Super Admin passes tenant_id) ──
+export const getDoNotCallEntries = (params) => api.get('/api/v1/do-not-call', { params });
+export const getDoNotCallHistory = (params) => api.get('/api/v1/do-not-call/history', { params });
+export const addDoNotCall = (phoneNumber, reason) => api.post('/api/v1/do-not-call', { phone_number: phoneNumber, reason });
+export const removeDoNotCall = (id, reason) => api.delete(`/api/v1/do-not-call/${id}`, { data: { reason } });
+export const confirmDoNotCall = (id, reason) => api.post(`/api/v1/do-not-call/${id}/confirm`, reason ? { reason } : {});
+// "Not an opt-out": { reverted, prospect_id, restored_stage, requeued_contact_ids, requeued_scheduled_call_ids }
+export const revertDoNotCall = (id, reason) => api.post(`/api/v1/do-not-call/${id}/revert`, { reason });
+
+// ── Tenant rules (Tenant Admin edits with a reason; Manager views; Super Admin passes tenant_id) ──
+export const getContactRules = (params) => api.get('/api/v1/contact-rules', { params });
+export const updateContactRules = (data, params) => api.put('/api/v1/contact-rules', data, { params });
+export const getContactRulesHistory = (params) => api.get('/api/v1/contact-rules/history', { params });
+export const getCallingBound = (params) => api.get('/api/v1/contact-rules/calling-bound', { params });
+export const updateCallingBound = (data, params) => api.put('/api/v1/contact-rules/calling-bound', data, { params });
+export const getAppointmentRules = (params) => api.get('/api/v1/appointment-rules', { params });
+export const updateAppointmentRules = (data, params) => api.put('/api/v1/appointment-rules', data, { params });
+export const getAppointmentRulesHistory = (params) => api.get('/api/v1/appointment-rules/history', { params });
+
+// ── Appointments ──
+// params: { tab, agent, campaign, executive, from, to, q, page, page_size, tenant_id }
+// -> { items, total, page, page_size, tab, counts: {tab: n}, calendar: {disconnected, message} }
+export const getAppointments = (params) => api.get('/api/v1/appointments', { params });
+export const getAppointment = (id) => api.get(`/api/v1/appointments/${id}`);
+// action: cancel | reschedule {start_at, end_at?} | restore | complete | no-show; body carries reason (+ expected_version)
+export const appointmentAction = (id, action, body) => api.post(`/api/v1/appointments/${id}/${action}`, body);
+export const relinkAppointment = (id, body) => api.patch(`/api/v1/appointments/${id}/link`, body);
+export const getProspectTimeline = (id) => api.get(`/api/v1/prospects/${id}/timeline`);
+
+// Can this assistant place calls? { status: ready | ready_with_warnings | not_ready, blocking[], warnings[] }
+export const getAssistantReadiness = (id) => api.get(`/api/v1/assistants/${id}/readiness`);
 
 // ── Agent Run Logs ──
 export const getAgentRuns = (params) => api.get('/api/agent-runs', { params });

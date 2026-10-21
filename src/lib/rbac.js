@@ -105,3 +105,32 @@ export function canManageUser(actor, target) {
 }
 
 export const roleLabel = (role) => ROLE_LABELS[role] || role;
+
+// Operations screens (campaign overrides, callbacks, do-not-call, appointments). Mirrors the
+// backend's OVERRIDE_ROLES / appointments.access: Tenant Admins and Managers change things;
+// a Super Admin views only; a Sales Rep records outcomes on their own meetings only.
+export const OPERATOR_ROLES = Object.freeze(['tenant_admin', 'manager']);
+
+/** May override automatic decisions and manage callbacks, do-not-call and appointments. */
+export function canOperate(actor) {
+  return Boolean(actor) && OPERATOR_ROLES.includes(actor.role);
+}
+
+/** May read the operations screens (callbacks, do-not-call, contact rules). */
+export function canViewOperations(actor) {
+  return Boolean(actor) && [...OPERATOR_ROLES, 'super_admin'].includes(actor.role);
+}
+
+export function isSuperAdmin(actor) {
+  return actor?.role === ROLES.SUPER_ADMIN;
+}
+
+/** May edit tenant settings (contact and appointment rules); a Super Admin only views them. */
+export function canEditTenantRules(actor) {
+  return actor?.role === ROLES.TENANT_ADMIN;
+}
+
+/** Only a Super Admin changes the outer calling bound. */
+export function canEditCallingBound(actor) {
+  return isSuperAdmin(actor);
+}

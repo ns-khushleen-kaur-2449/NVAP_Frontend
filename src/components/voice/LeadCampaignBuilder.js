@@ -58,15 +58,7 @@ const DATE_ADDED_OPTIONS = [
   { value: 'month', label: 'Last 30 days' },
 ];
 
-const PROPERTY_TYPE_OPTIONS = [
-  { value: '2BHK', label: '2 BHK' },
-  { value: '3BHK', label: '3 BHK' },
-  { value: '4BHK', label: '4 BHK' },
-  { value: 'Plot', label: 'Plot' },
-  { value: 'Villa', label: 'Villa' },
-];
-
-export default function LeadCampaignBuilder({ onCampaignStarted, onLeadCreated, leads = [], properties = [], assistants = [], loading = false }) {
+export default function LeadCampaignBuilder({ onCampaignStarted, onLeadCreated, leads = [], assistants = [], loading = false }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [addLeadOpen, setAddLeadOpen] = useState(false);
   const [selectedLeads, setSelectedLeads] = useState(new Set());
@@ -86,7 +78,6 @@ export default function LeadCampaignBuilder({ onCampaignStarted, onLeadCreated, 
     lastCall: 'all',
     location: 'all',
     dateAdded: 'all',
-    propertyType: 'all'
   });
 
   const activeFiltersCount = useMemo(() => {
@@ -97,20 +88,18 @@ export default function LeadCampaignBuilder({ onCampaignStarted, onLeadCreated, 
   }, [filters]);
 
   const projectList = useMemo(() => {
-    const fromProps = properties.map(p => p.name);
     const fromLeads = leads.map(l => l.project).filter(Boolean);
     const fromModelLeads = leads.map(l => l.initial_project).filter(Boolean);
     const fromModelFinal = leads.map(l => l.final_project).filter(Boolean);
     const fromModelStandard = leads.map(l => l.project_standardized).filter(Boolean);
     
     return Array.from(new Set([
-      ...fromProps, 
       ...fromLeads, 
       ...fromModelLeads, 
       ...fromModelFinal, 
       ...fromModelStandard
     ])).sort();
-  }, [properties, leads]);
+  }, [leads]);
 
   const categoryList = useMemo(() => {
     const fromLeads = leads.map(l => l.category).filter(Boolean);
@@ -206,10 +195,6 @@ export default function LeadCampaignBuilder({ onCampaignStarted, onLeadCreated, 
       result = result.filter(l => l.location_preference?.toLowerCase().includes(filters.location.toLowerCase()));
     }
 
-    // Filter by Property Type (mapped to category for generic search)
-    if (filters.propertyType !== 'all') {
-      result = result.filter(l => l.category?.toLowerCase().includes(filters.propertyType.toLowerCase()));
-    }
 
     // Filter by Date Added
     if (filters.dateAdded !== 'all') {
@@ -290,7 +275,6 @@ export default function LeadCampaignBuilder({ onCampaignStarted, onLeadCreated, 
       lastCall: 'all',
       location: 'all',
       dateAdded: 'all',
-      propertyType: 'all'
     });
   };
 

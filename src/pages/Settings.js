@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import CalendarConnections from '@/components/CalendarConnections';
 import ToolsManager from '@/components/admin/ToolsManager';
 import SchedulingSetup from '@/components/admin/SchedulingSetup';
+import OperationsSettings from '@/components/ops/OperationsSettings';
 import { useAuth } from '@/lib/AuthContext';
 import { getSettings, updateSettings } from '@/lib/api';
 
@@ -78,6 +79,9 @@ export default function SettingsPage() {
 
       {/* Meeting types and executives for the appointment tools: Tenant Admins edit, Managers view. */}
       {hasRole('tenant_admin', 'manager') && <SchedulingSetup canEdit={hasRole('tenant_admin')} />}
+
+      {/* Contact rules, appointment rules and the outer calling bound (OperationsSettings checks the role). */}
+      <OperationsSettings />
 
       {settings && (
         <Card className="card-base p-5 space-y-4">

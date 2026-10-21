@@ -7,20 +7,18 @@ import { Textarea } from '../components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { toast } from 'sonner';
-import { getProspects, getProperties, getAssistants, previewCampaignCsv, getCsvCallResults, initiateSmartsdrCall, createKnowledgeBase, getKnowledgeFiles, getDashboardStats, getSystemHealth, getVoiceCallStats } from '../lib/api';
+import { getProspects, getAssistants, previewCampaignCsv, getCsvCallResults, initiateSmartsdrCall, createKnowledgeBase, getKnowledgeFiles } from '../lib/api';
 import { toLeadRow } from '../lib/prospects';
 import CallLogsList from '../components/voice/CallLogsList';
 import LeadCampaignBuilder from '../components/voice/LeadCampaignBuilder';
 import CampaignLaunchDialog from '../components/voice/CampaignLaunchDialog';
 import AssistantBuilder from '../components/voice/AssistantBuilder';
-import KpiCard from '../components/shared/KpiCard';
-import PendingRequestsQueue from '../components/admin/PendingRequestsQueue';
-import WebhookLogViewer from '../components/admin/WebhookLogViewer';
 import VoiceDashboard from '../components/voice/VoiceDashboard';
 import { useAuth } from '@/lib/AuthContext';
-import { canViewAssistants } from '@/lib/rbac';
-import VoiceAgentAnalytics from '@/components/shared/VoiceAgentAnalytics';
-import { Loader2, PhoneCall, BookOpen, Mic, UploadCloud, Phone, AlertTriangle, CheckCircle2, RotateCw, Activity, Layers, Info, FileText, Database, Search, Copy, Check, LayoutDashboard } from 'lucide-react';
+import { canOperate, canViewAssistants } from '@/lib/rbac';
+import ReasonDialog from '@/components/ops/ReasonDialog';
+import SingleCallBlock from '@/components/ops/SingleCallBlock';
+import { Loader2, PhoneCall, BookOpen, Mic, UploadCloud, Phone, RotateCw, Layers, Info, FileText, Database, Search, Copy, Check, LayoutDashboard } from 'lucide-react';
 
 /* ─── Sidebar Tab Definitions (Voice Agent's own sub-views; nav itself now
    lives in the shared app Sidebar, components/layout/Sidebar.js) ─────────── */
@@ -30,7 +28,6 @@ const TABS = [
   { id: 'logs',       label: 'Call Logs',              icon: Phone },
   { id: 'create',     label: 'Create Agent',           icon: Mic },
   { id: 'kb',         label: 'Knowledge Base',         icon: BookOpen },
-  { id: 'analytics',  label: 'Analytics',              icon: Activity },
   { id: 'csv',        label: 'CSV Call Campaign',      icon: UploadCloud },
   { id: 'single',     label: 'Single Call',            icon: PhoneCall },
 ];
@@ -38,7 +35,6 @@ const TABS = [
 export default function VoiceAgentPage() {
   const [leads, setLeads] = useState([]);
   const [loadingLeads, setLoadingLeads] = useState(true);
-  const [properties, setProperties] = useState([]);
   const [assistants, setAssistants] = useState([]);
   const [selectedAssistantId, setSelectedAssistantId] = useState('');
   const [loadingCampaignData, setLoadingCampaignData] = useState(true);
@@ -63,12 +59,10 @@ export default function VoiceAgentPage() {
   const [kbSearchQuery, setKbSearchQuery] = useState('');
   const [copiedId, setCopiedId] = useState(null);
 
-  // Voice Agent KPI metrics
   const [logsAssistant, setLogsAssistant] = useState({ id: '', name: '' });
-  const [agentStats, setAgentStats] = useState(null);
-  const [agentHealth, setAgentHealth] = useState(null);
-  const [callStats, setCallStats] = useState(null);
-  const [activePanel, setActivePanel] = useState(null);
+  // A single call the contact rules held back: { code, allowed_at, message } from the 409.
+  const [callBlock, setCallBlock] = useState(null);
+  const [overrideOpen, setOverrideOpen] = useState(false);
 
   // Active sidebar tab
   const [searchParams, setSearchParams] = useSearchParams();
@@ -126,9 +120,8 @@ export default function VoiceAgentPage() {
     const fetchInitialData = async () => {
       setLoadingCampaignData(true);
       try {
-        const [leadsRes, propsRes, assistantsRes] = await Promise.allSettled([
+        const [leadsRes, assistantsRes] = await Promise.allSettled([
           getProspects({ leads_only: true, limit: 1000 }),
-          getProperties({}),
           getAssistants().catch(() => ({ data: [] }))
         ]);
 
@@ -138,10 +131,6 @@ export default function VoiceAgentPage() {
           setLeads([]);
         }
         setLoadingLeads(false);
-
-        if (propsRes.status === 'fulfilled') {
-          setProperties(propsRes.value.data?.properties || []);
-        }
 
         if (assistantsRes.status === 'fulfilled') {
           setAssistants(assistantsRes.value.data || []);
@@ -156,14 +145,6 @@ export default function VoiceAgentPage() {
     };
 
     fetchInitialData();
-    
-    // Fetch KPI data - restrictive to avoid slowness for non-admins
-    const currentUser = JSON.parse(localStorage.getItem('estateops_user') || '{}');
-    if (currentUser.role === 'admin') {
-      getDashboardStats().then((res) => setAgentStats(res.data)).catch(() => setAgentStats(null));
-      getSystemHealth().then((res) => setAgentHealth(res.data)).catch(() => setAgentHealth(null));
-      getVoiceCallStats().then((res) => setCallStats(res.data)).catch(() => setCallStats(null));
-    }
   }, []);
 
   const leadOptions = useMemo(() => leads.map((lead) => ({
@@ -216,24 +197,36 @@ export default function VoiceAgentPage() {
     setFetchingResults(false);
   };
 
-  const handleSingleCall = async () => {
-    if (!callName || !callPhone) { toast.error('Enter name and phone number'); return; }
+  // override: { reason } to call a number the contact rules hold back (Tenant Admin / Manager only).
+  const handleSingleCall = async (override = null) => {
+    if (!callName || !callPhone) { toast.error('Enter name and phone number'); return false; }
     setCalling(true);
+    setCallBlock(null);
     try {
       await initiateSmartsdrCall({
         phone_number: callPhone,
         user_name: callName,
-        assistant_id: selectedAssistantId || undefined
+        assistant_id: selectedAssistantId || undefined,
+        ...(override ? { allow_recent: true, reason: override.reason } : {}),
       });
       toast.success('Call initiated', {
         description: 'It is listed in Call Logs now and updates when the call ends.',
         action: { label: 'View call logs', onClick: () => setActiveTab('logs') },
       });
+      return true;
     } catch (e) {
       const detail = e.response?.data?.detail;
-      toast.error(typeof detail === 'string' ? detail : 'Failed to initiate call');
+      if (e.response?.status === 409 && detail && typeof detail === 'object' && detail.code) {
+        setCallBlock(detail);  // shown under the form, with the next allowed time
+      } else if (e.response?.status === 403) {
+        toast.error("You don't have permission");
+      } else {
+        toast.error(typeof detail === 'string' ? detail : (detail?.message || 'Failed to initiate call'));
+      }
+      return false;
+    } finally {
+      setCalling(false);
     }
-    setCalling(false);
   };
 
   const handleKnowledgeBase = async () => {
@@ -293,30 +286,6 @@ export default function VoiceAgentPage() {
 
 
 
-  const totalCalls = callStats?.total || 0;
-  const completedCalls = callStats?.connected || 0;
-  const failedCalls = callStats?.failed || 0;
-  const bookedCalls = callStats?.appointment_booked || 0;
-  const failedRuns = agentStats?.agent_runs?.failed || 0;
-  const successRuns = agentStats?.agent_runs?.success || 0;
-  const totalRuns = agentStats?.agent_runs?.total || 1;
-  const successRate = totalRuns > 0 ? Math.round((successRuns / totalRuns) * 100) : 0;
-  const pendingRetries = agentHealth?.leads_retry_pending || 0;
-  const webhookErrors = agentHealth?.webhook_errors_total || 0;
-  const manualFollowups = agentHealth?.leads_manual_followup || 0;
-
-  const voiceKpis = [
-    { id: 'total_calls', title: 'Total Calls', value: totalCalls, icon: Phone, color: '#F87217', panel: null },
-    { id: 'pending_retries', title: 'Pending Retries', value: pendingRetries, icon: RotateCw, color: pendingRetries > 0 ? '#d97706' : '#F87217', panel: 'queue' },
-    { id: 'webhook_errors', title: 'Webhook Errors', value: webhookErrors, icon: AlertTriangle, color: webhookErrors > 0 ? '#dc2626' : '#F87217', panel: 'logs' },
-    { id: 'manual_followups', title: 'Manual Follow-ups', value: manualFollowups, icon: CheckCircle2, color: manualFollowups > 0 ? '#d97706' : '#F87217', panel: 'queue' },
-  ];
-
-  const handleKpiClick = (kpi) => {
-    if (!kpi.panel) return;
-    setActivePanel(prev => prev === kpi.panel ? null : kpi.panel);
-  };
-
   /* ─── Content Renderers per Tab ────────────────────────────── */
 
   const renderSingleCall = () => (
@@ -328,41 +297,6 @@ export default function VoiceAgentPage() {
           <p className="text-sm text-muted-foreground">Initiate a direct call to a single lead or contact</p>
         </div>
       </div>
-
-      {/* KPI Cards */}
-      <div className="grid gap-4 grid-cols-2 xl:grid-cols-4">
-        {voiceKpis.map((kpi) => (
-          <KpiCard
-            key={kpi.title}
-            title={kpi.title}
-            value={kpi.value}
-            icon={kpi.icon}
-            color={kpi.color}
-            onClick={() => handleKpiClick(kpi)}
-            className={`${kpi.panel ? 'cursor-pointer' : ''} ${activePanel === kpi.panel ? 'ring-2 ring-primary/40 shadow-md' : ''}`}
-          />
-        ))}
-      </div>
-
-      {/* Action Required Queue */}
-      {activePanel === 'queue' && (
-        <div className="animate-in fade-in slide-in-from-top-2 duration-300">
-          <PendingRequestsQueue
-            pendingLeads={agentHealth?.retry_pending_leads || []}
-            manualFollowups={agentHealth?.manual_followup_leads || []}
-          />
-        </div>
-      )}
-
-      {/* System Logs */}
-      {activePanel === 'logs' && (
-        <div className="animate-in fade-in slide-in-from-top-2 duration-300">
-          <WebhookLogViewer
-            webhookErrors={agentHealth?.webhook_errors || []}
-            dlqItems={agentHealth?.dlq_items || []}
-          />
-        </div>
-      )}
 
       <Card className="bg-card border-border">
         <CardContent className="p-6 space-y-5">
@@ -429,8 +363,12 @@ export default function VoiceAgentPage() {
             </Select>
           </div>
 
+          {callBlock && (
+            <SingleCallBlock block={callBlock} canOverride={canOperate(user)} onOverride={() => setOverrideOpen(true)} />
+          )}
+
           <Button
-            onClick={handleSingleCall}
+            onClick={() => handleSingleCall()}
             disabled={calling}
             className="w-full ai-btn-glow bg-primary text-primary-foreground hover:bg-[#C2560E] h-11 text-sm font-medium"
           >
@@ -443,6 +381,12 @@ export default function VoiceAgentPage() {
         </CardContent>
       </Card>
     </div>
+  );
+
+  const renderOverride = () => (
+    <ReasonDialog open={overrideOpen} onOpenChange={setOverrideOpen} title={`Call ${callName || 'this number'} anyway?`}
+      changes={[callBlock?.message || 'The contact rules are skipped for this one call.', 'This is recorded with your reason.']}
+      confirmLabel="Call anyway" onConfirm={(reason) => handleSingleCall({ reason })} />
   );
 
   const renderCsvCampaign = () => (
@@ -534,7 +478,6 @@ export default function VoiceAgentPage() {
           onCampaignStarted={handleCampaignStarted} 
           onLeadCreated={refreshLeads}
           leads={leads}
-          properties={properties}
           assistants={assistants}
           loading={loadingCampaignData}
         />
@@ -746,8 +689,7 @@ export default function VoiceAgentPage() {
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard':  return canSeeDashboard ? <VoiceDashboard onNavigate={setActiveTab} /> : renderBuilder();
-      case 'analytics':  return <div className="va-tab-content"><VoiceAgentAnalytics /></div>;
-      case 'single':     return renderSingleCall();
+      case 'single':     return <>{renderSingleCall()}{renderOverride()}</>;
       case 'csv':        return renderCsvCampaign();
       case 'builder':    return renderBuilder();
       case 'logs':       return (

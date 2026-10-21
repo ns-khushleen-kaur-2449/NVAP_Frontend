@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Plus, RotateCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { getVoiceDashboardSummary, pauseAssistant, resumeAssistant } from '@/lib/api';
+import usePolling from '@/hooks/usePolling';
 import {
   RANGES, formatClock, formatCount, formatDelta, formatDuration, formatRate, userTimeZone, windowFor,
 } from '@/lib/voiceDashboard';
@@ -43,6 +44,21 @@ function ErrorState({ message, onRetry }) {
   );
 }
 
+/** Small notes for counts that sit outside the KPIs, shown only when non-zero. */
+export function KpiNotes({ kpis }) {
+  const notes = [
+    kpis.unclassified.value > 0 && `${formatCount(kpis.unclassified.value)} connected call${kpis.unclassified.value === 1 ? '' : 's'} not classified (no SDR extraction)`,
+    kpis.inbound.value > 0 && `${formatCount(kpis.inbound.value)} inbound call${kpis.inbound.value === 1 ? '' : 's'} (not counted as dials)`,
+    kpis.direction_unknown.value > 0 && `${formatCount(kpis.direction_unknown.value)} older call${kpis.direction_unknown.value === 1 ? '' : 's'} with no direction, counted as outbound`,
+  ].filter(Boolean);
+  if (!notes.length) return null;
+  return (
+    <ul aria-label="Notes on these numbers" className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+      {notes.map((n) => <li key={n}>{n}</li>)}
+    </ul>
+  );
+}
+
 export default function VoiceDashboard({ onNavigate }) {
   const [range, setRange] = useState('today');
   const [agentId, setAgentId] = useState('all');
@@ -75,19 +91,7 @@ export default function VoiceDashboard({ onNavigate }) {
   }, [range, agentId]);
 
   // Load on filter change, then every 30 s while the tab is visible.
-  useEffect(() => {
-    let timer = null;
-    const start = () => { if (!timer) timer = setInterval(() => load({ quiet: true }), REFRESH_MS); };
-    const stop = () => { clearInterval(timer); timer = null; };
-    const onVisibility = () => {
-      if (document.hidden) stop();
-      else { load({ quiet: true }); start(); }
-    };
-    load();
-    if (!document.hidden) start();
-    document.addEventListener('visibilitychange', onVisibility);
-    return () => { stop(); document.removeEventListener('visibilitychange', onVisibility); };
-  }, [load]);
+  usePolling(() => load({ quiet: true }), REFRESH_MS, [load]);
 
   const toggleAgent = async (agent, pausing) => {
     setBusyId(agent.id);
@@ -108,7 +112,7 @@ export default function VoiceDashboard({ onNavigate }) {
   const calling = data ? data.agents.filter((a) => a.status === 'calling').length : 0;
 
   return (
-    <div className="vd-root space-y-6 text-foreground">
+    <div className="vd-root ops space-y-6 text-foreground">
       {/* Header */}
       <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
         <div>
@@ -182,6 +186,8 @@ export default function VoiceDashboard({ onNavigate }) {
                      footnote={kpis.retry_queue.next_due_at ? `Next retry due ${formatClock(kpis.retry_queue.next_due_at)}` : 'No retries due'}
                      definition={`${formatCount(kpis.retry_queue.from_window)} from this period + ${formatCount(kpis.retry_queue.carried_over)} carried over.`} />
           </div>
+
+          <KpiNotes kpis={kpis} />
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <ConversionFunnel funnel={data.funnel} outcomes={data.outcomes} kpis={kpis} />

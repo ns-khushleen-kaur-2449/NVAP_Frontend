@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from "@/lib/AuthContext";
 import { TopBar } from "@/components/layout/TopBar";
 import { ExecSidebar } from "@/components/layout/ExecSidebar";
 import { Sidebar } from "@/components/layout/Sidebar";
+import SidebarTopBar from "@/components/layout/SidebarTopBar";
 import DashboardPage from "@/pages/Dashboard";
 import LeadsPage from "@/pages/Leads";
 import ResearchPage from "@/pages/Research";
@@ -43,10 +44,15 @@ import { PERMISSIONS } from "@/lib/rbac";
 import AuthGate from "@/components/auth/AuthGate";
 import InboxPage from "@/pages/Inbox";
 import MeetingsPage from "@/pages/Meetings";
+import AppointmentsPage from "@/pages/Appointments";
+import CallbacksPage from "@/pages/Callbacks";
+import DoNotCallPage from "@/pages/DoNotCall";
 
 // The backend's roles (lib/rbac.js).  Older routes said "admin", a role that never existed.
 const ADMINS = ['super_admin', 'tenant_admin'];
 const ADMINS_AND_MANAGERS = ['super_admin', 'tenant_admin', 'manager'];
+// Callbacks and do-not-call (lib/rbac.js canViewOperations; the backend enforces it).
+const OPERATIONS_VIEWERS = ['super_admin', 'tenant_admin', 'manager'];
 
 function ProtectedRoute({ children, roles }) {
   const { user, token, loading } = useAuth();
@@ -86,7 +92,8 @@ function SmartRoot() {
 
 // Pages that get the persistent left Sidebar instead of the TopBar. Everything
 // else in AppShell keeps the TopBar exactly as before.
-const SIDEBAR_SECTION_PATHS = ['/dashboard', '/prospecting', '/strategist', '/inbox', '/meetings', '/settings'];
+const SIDEBAR_SECTION_PATHS = ['/dashboard', '/prospecting', '/strategist', '/inbox', '/meetings', '/settings',
+  '/appointments', '/callbacks', '/do-not-call'];
 
 function AppShell() {
   const { user, token, loading } = useAuth();
@@ -129,6 +136,9 @@ function AppShell() {
       <Route path="/campaigns/*" element={<Navigate to="/voice-campaigns" replace />} />
       <Route path="/inbox" element={<InboxPage />} />
       <Route path="/meetings" element={<MeetingsPage />} />
+      <Route path="/appointments" element={<AppointmentsPage />} />
+      <Route path="/callbacks" element={<ProtectedRoute roles={OPERATIONS_VIEWERS}><CallbacksPage /></ProtectedRoute>} />
+      <Route path="/do-not-call" element={<ProtectedRoute roles={OPERATIONS_VIEWERS}><DoNotCallPage /></ProtectedRoute>} />
       <Route path="/403" element={<ForbiddenPage />} />
       <Route path="/settings/users" element={<RequirePermission perm={PERMISSIONS.USERS_VIEW}><UsersAdminPage /></RequirePermission>} />
       <Route path="/settings/teams" element={<RequirePermission perm={PERMISSIONS.TEAMS_MANAGE}><TeamsAdminPage /></RequirePermission>} />
@@ -145,6 +155,7 @@ function AppShell() {
       <div className="app-shell-row">
         <Sidebar />
         <div className="flex-1 min-w-0 overflow-y-auto">
+          <SidebarTopBar />
           <div className="page-content">{routes}</div>
         </div>
       </div>
@@ -213,6 +224,7 @@ function SidebarShell({ children }) {
     <div className="app-shell-row bg-background">
       <Sidebar />
       <div className="flex-1 min-w-0 overflow-y-auto">
+        <SidebarTopBar />
         <div className="page-content bg-background">
           {children}
         </div>

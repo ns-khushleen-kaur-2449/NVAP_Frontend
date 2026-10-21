@@ -10,13 +10,14 @@ import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { 
   PhoneCall, Users, Search, Play, CheckCircle2, Filter, ChevronDown, 
   X, Calendar, MapPin, Building, Briefcase, IndianRupee, Clock,
-  ArrowUpDown, UserPlus
+  ArrowUpDown, UserPlus, Sparkles
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatCurrency, timeAgo } from '../../lib/utils';
 import { StageBadge } from '../shared/StatusBadges';
 import CampaignLaunchDialog from './CampaignLaunchDialog';
 import AddLeadDialog from './AddLeadDialog';
+import AiFilterPickerDialog from './AiFilterPickerDialog';
 
 const LEAD_STATUS_OPTIONS = [
   { value: 'new', label: 'New' },
@@ -66,6 +67,10 @@ export default function LeadCampaignBuilder({ onCampaignStarted, onLeadCreated, 
   const [sortBy, setSortBy] = useState('newest');
   // Campaign name, purpose, assistant and timing are filled in the launch dialog.
   const [launchOpen, setLaunchOpen] = useState(false);
+  // Prospects picked in "Import from AI Filtering"; while set, the launch dialog uses them
+  // instead of the leads ticked in the table below.
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [importedIds, setImportedIds] = useState(null);
 
   const [filters, setFilters] = useState({
     stage: 'all',
@@ -259,8 +264,21 @@ export default function LeadCampaignBuilder({ onCampaignStarted, onLeadCreated, 
   };
 
   const handleCreated = (campaign) => {
-    setSelectedLeads(new Set());
+    if (importedIds) setImportedIds(null);
+    else setSelectedLeads(new Set());
     onCampaignStarted?.(campaign);
+  };
+
+  const launchImported = (ids) => {
+    setPickerOpen(false);
+    setImportedIds(ids);
+    setLaunchOpen(true);
+  };
+
+  const changeLaunchOpen = (open) => {
+    setLaunchOpen(open);
+    // Closing without launching drops the imported prospects; the table's ticks are kept.
+    if (!open) setImportedIds(null);
   };
 
   const resetFilters = () => {
@@ -586,6 +604,15 @@ export default function LeadCampaignBuilder({ onCampaignStarted, onLeadCreated, 
              </Select>
              <Button
                size="sm"
+               variant="outline"
+               onClick={() => setPickerOpen(true)}
+               className="h-9 gap-1.5"
+             >
+               <Sparkles className="w-3.5 h-3.5" />
+               Import from AI Filtering
+             </Button>
+             <Button
+               size="sm"
                onClick={() => setAddLeadOpen(true)}
                className="h-9 bg-[#F87217] hover:bg-[#F87217]/90 text-white gap-1.5"
              >
@@ -670,10 +697,16 @@ export default function LeadCampaignBuilder({ onCampaignStarted, onLeadCreated, 
       </CardFooter>
       <CampaignLaunchDialog
         open={launchOpen}
-        onOpenChange={setLaunchOpen}
-        source={{ type: 'leads', prospectIds: Array.from(selectedLeads) }}
+        onOpenChange={changeLaunchOpen}
+        source={{ type: 'leads', prospectIds: importedIds || Array.from(selectedLeads) }}
         assistants={assistants}
         onCreated={handleCreated}
+      />
+
+      <AiFilterPickerDialog
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        onConfirm={launchImported}
       />
 
       <AddLeadDialog

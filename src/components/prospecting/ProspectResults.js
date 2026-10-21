@@ -1,5 +1,6 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Pagination, PaginationContent, PaginationItem } from '@/components/ui/pagination';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -8,16 +9,20 @@ import ProspectResultRow from '@/components/prospecting/ProspectResultRow';
 import { MAX_PAGE_SIZE, SORT_OPTIONS } from '@/components/prospecting/filterUtils';
 
 const PAGE_SIZES = [10, 25, 50, MAX_PAGE_SIZE];
-const SORT_ID = 'ai-filter-sort';
-const PAGE_SIZE_ID = 'ai-filter-page-size';
 
 /**
  * The prospects a search returned, with sorting and paging.
  *
  * `results` is the /search response. Its total, page and total_pages drive
  * everything here; `sort` and `pageSize` are what the user last chose.
+ * `selection` (optional, see ProspectResultRow) adds checkboxes and a select-this-page control
+ * with `onTogglePage(items, checked)`. `idPrefix` keeps form ids unique when two lists are open.
  */
-export default function ProspectResults({ results, loading, sort, pageSize, onSortChange, onPageSizeChange, onPageChange }) {
+export default function ProspectResults({
+  results, loading, sort, pageSize, onSortChange, onPageSizeChange, onPageChange, selection = null, idPrefix = 'ai-filter',
+}) {
+  const SORT_ID = `${idPrefix}-sort`;
+  const PAGE_SIZE_ID = `${idPrefix}-page-size`;
   if (!results) {
     if (!loading) return null;
     return (
@@ -34,6 +39,9 @@ export default function ProspectResults({ results, loading, sort, pageSize, onSo
   const totalPages = Math.max(results.total_pages ?? 1, 1);
   const first = total === 0 ? 0 : (page - 1) * (results.page_size ?? pageSize) + 1;
   const last = first === 0 ? 0 : first + items.length - 1;
+  const selectableOnPage = selection ? items.filter((item) => !selection.disabledReason(item)) : [];
+  const pageSelected = selectableOnPage.length > 0 && selectableOnPage.every((item) => selection.isSelected(item.prospect_id));
+  const pageCheckboxId = `${idPrefix}-select-page`;
 
   return (
     <div className="space-y-3">
@@ -53,6 +61,20 @@ export default function ProspectResults({ results, loading, sort, pageSize, onSo
         </div>
       </div>
 
+      {selection && items.length > 0 && (
+        <div className="flex items-center gap-2">
+          <Checkbox
+            id={pageCheckboxId}
+            checked={pageSelected}
+            disabled={loading || selectableOnPage.length === 0}
+            onCheckedChange={(checked) => selection.onTogglePage(items, checked === true)}
+          />
+          <Label htmlFor={pageCheckboxId} className="text-xs font-normal">
+            Select everyone on this page who can be called ({selectableOnPage.length})
+          </Label>
+        </div>
+      )}
+
       {items.length === 0 ? (
         <div className="border border-dashed border-border rounded-lg p-12 text-center text-sm text-muted-foreground">
           {total === 0
@@ -61,7 +83,7 @@ export default function ProspectResults({ results, loading, sort, pageSize, onSo
         </div>
       ) : (
         <ul className={`space-y-2 transition-opacity ${loading ? 'opacity-50' : ''}`} aria-busy={loading}>
-          {items.map((prospect) => <ProspectResultRow key={prospect.prospect_id} prospect={prospect} />)}
+          {items.map((prospect) => <ProspectResultRow key={prospect.prospect_id} prospect={prospect} selection={selection} />)}
         </ul>
       )}
 

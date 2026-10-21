@@ -1,5 +1,6 @@
 import { Building2, Mail, MapPin, Phone } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 
 const present = (value) => value !== null && value !== undefined && String(value).trim() !== '';
 const joined = (parts) => parts.filter(present).join(' · ');
@@ -16,8 +17,10 @@ function Detail({ icon: Icon, children }) {
 /**
  * One prospect from POST /api/ai/filter/search. Shows only what the response
  * holds; anything missing is left out rather than guessed.
+ *
+ * `selection` (optional) adds a checkbox: { isSelected(id), disabledReason(prospect), onToggle(prospect) }.
  */
-export default function ProspectResultRow({ prospect }) {
+export default function ProspectResultRow({ prospect, selection = null }) {
   const company = prospect.company || {};
   const name = present(prospect.full_name)
     ? prospect.full_name
@@ -26,11 +29,26 @@ export default function ProspectResultRow({ prospect }) {
   const companyLine = joined([company.name, company.industry]);
   const location = [prospect.city, prospect.state, prospect.country].filter(present).join(', ');
   const hasScore = typeof prospect.score === 'number';
+  const checked = Boolean(selection?.isSelected(prospect.prospect_id));
+  const disabledReason = selection && !checked ? selection.disabledReason(prospect) : null;
+  const checkboxId = `select-prospect-${prospect.prospect_id}`;
 
   return (
-    <li className="border border-border rounded-lg p-3 bg-card space-y-2">
+    <li className={`border rounded-lg p-3 bg-card space-y-2 ${checked ? 'border-primary' : 'border-border'}`}>
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
+        {selection && (
+          <Checkbox
+            id={checkboxId}
+            className="mt-0.5"
+            checked={checked}
+            disabled={Boolean(disabledReason)}
+            onCheckedChange={() => selection.onToggle(prospect)}
+            aria-label={`Select ${name}`}
+            aria-describedby={disabledReason ? `${checkboxId}-reason` : undefined}
+          />
+        )}
+        <div className="min-w-0 flex-1">
+          {disabledReason && <p id={`${checkboxId}-reason`} className="text-[11px] text-muted-foreground">{disabledReason}</p>}
           <p className="text-sm font-medium break-words">{name}</p>
           {role && <p className="text-xs text-muted-foreground break-words">{role}</p>}
         </div>

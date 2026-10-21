@@ -279,7 +279,7 @@ export const updateVoiceCampaign = (id, data) => api.patch(`/api/campaigns/${id}
 // One immediate outbound call (Single Call tab).  A number the contact rules hold back is a 409
 // { code, allowed_at, message }; allow_recent + reason calls it anyway (Tenant Admin / Manager only).
 // code "opted_out" (do-not-call) can never be overridden.
-export const initiateSmartsdrCall = ({ phone_number, user_name, assistant_id, allow_recent, reason }) => {
+export const initiateSmartsdrCall = ({ phone_number, user_name, assistant_id, prospect_id, allow_recent, reason }) => {
   const body = new URLSearchParams();
   body.append('phone_number', phone_number || '');
   body.append('user_name', user_name || '');
@@ -289,6 +289,9 @@ export const initiateSmartsdrCall = ({ phone_number, user_name, assistant_id, al
   if (allow_recent) {
     body.append('allow_recent', 'true');
     body.append('reason', reason || '');
+  }
+  if (prospect_id) {
+    body.append('prospect_id', prospect_id);
   }
   return api.post('/api/smartsdr-calls', body, {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },

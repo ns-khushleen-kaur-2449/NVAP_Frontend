@@ -9,7 +9,7 @@ import {
   getVoiceCampaignEvents, pauseVoiceCampaign, resumeVoiceCampaign, startVoiceCampaign,
 } from '@/lib/api';
 import { useAuth } from '@/lib/AuthContext';
-import { canOperate } from '@/lib/rbac';
+import { canManageCampaigns, canOperate } from '@/lib/rbac';
 import { formatDateTime } from '@/lib/ops';
 import { formatDuration } from '@/lib/voiceDashboard';
 import { callStatusMeta } from '@/lib/callOutcome';
@@ -378,7 +378,9 @@ export default function VoiceCampaignDetail() {
   const zone = campaign?.timezone || 'Asia/Kolkata';
   const banner = campaignBanner(campaign, zone);
   const operator = canOperate(user);
-  const actions = (campaign?.allowed_actions || []).filter((a) => CAMPAIGN_ACTIONS[a] && (!CAMPAIGN_ACTIONS[a].operator || operator)
+  // A Super Admin reads campaigns but cannot run or edit them (the backend answers 403).
+  const manager = canManageCampaigns(user);
+  const actions = (campaign?.allowed_actions || []).filter((a) => manager && CAMPAIGN_ACTIONS[a] && (!CAMPAIGN_ACTIONS[a].operator || operator)
     && !(a === 'resume' && campaign.paused_by_kind === 'system' && !operator));
   const bannerActions = { missed: ['start', 'reschedule'], waiting: ['close'], credits: ['resume'], system_pause: ['resume'] }[banner?.kind] || [];
 
@@ -409,7 +411,7 @@ export default function VoiceCampaignDetail() {
                 <OpsButton key={a} size="sm" variant={a === 'start' || a === 'resume' ? 'primary' : CAMPAIGN_ACTIONS[a].danger ? 'quiet' : 'outline'}
                   onClick={() => setAction(a)}>{CAMPAIGN_ACTIONS[a].label}</OpsButton>
               ))}
-              <OpsButton size="sm" variant="outline" onClick={() => setEditOpen(true)}>Edit</OpsButton>
+              {manager && <OpsButton size="sm" variant="outline" onClick={() => setEditOpen(true)}>Edit</OpsButton>}
               <OpsButton size="sm" variant="quiet" onClick={refresh} aria-label="Refresh the campaign"><RotateCw className="h-4 w-4" aria-hidden="true" /></OpsButton>
             </div>
           </header>
@@ -433,7 +435,7 @@ export default function VoiceCampaignDetail() {
           </div>
 
           {tab === 'overview' && <Overview campaign={campaign} contacts={contacts} onEditRules={() => setEditOpen(true)}
-            canEditRules={!FINAL.includes(campaign.status) && ['processing', 'paused'].includes(campaign.status)} />}
+            canEditRules={manager && !FINAL.includes(campaign.status) && ['processing', 'paused'].includes(campaign.status)} />}
           {tab === 'contacts' && <ContactsTab campaign={campaign} contacts={contacts} user={user} onChanged={load} onOpenCall={setCallId} />}
           {tab === 'activity' && <div className="ops-card p-4"><EventTimeline items={campaignEventItems(events)} /></div>}
 

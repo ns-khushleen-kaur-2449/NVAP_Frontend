@@ -45,6 +45,14 @@ it('launches a campaign with the prospects imported from AI Filtering', async ()
   await waitFor(() => expect(onCampaignStarted).toHaveBeenCalledWith(expect.objectContaining({ id: 'c-1' })));
 });
 
+it('disables importing and launching for a role that may not create campaigns', () => {
+  render(<LeadCampaignBuilder leads={LEADS} assistants={ASSISTANTS} canCreateCampaigns={false} />);
+  expect(screen.getByRole('button', { name: /import from ai filtering/i })).toBeDisabled();
+  fireEvent.click(screen.getAllByRole('checkbox')[1]);
+  expect(screen.getByRole('button', { name: /launch campaign for 1 lead/i })).toBeDisabled();
+  expect(screen.getByText('Campaigns are created by Tenant Admins, Managers and Sales Reps.')).toBeInTheDocument();
+});
+
 it('still launches the leads ticked in the table when nothing is imported', async () => {
   render(<LeadCampaignBuilder leads={LEADS} assistants={ASSISTANTS} />);
   fireEvent.click(screen.getAllByRole('checkbox')[1]); // the table row (index 0 is "select all")

@@ -134,3 +134,37 @@ describe('Sidebar', () => {
     }
   });
 });
+
+describe('Do-not-call: lifting a block is for Tenant Admins (it applies to every team)', () => {
+  const manual = { id: 5, phone_masked: '+91 98•••• 4321', source: 'user', source_label: 'Added by a person', reason: 'Asked by email',
+    created_at: '2026-10-21T05:00:00Z', reviewed: false };
+  const optOut = { id: 6, phone_masked: '+91 98•••• 1111', source: 'call', source_label: 'Asked on a call',
+    created_at: '2026-10-21T05:00:00Z', reviewed: false, evidence: {} };
+
+  it('a Manager adds and confirms, but cannot remove or revert', async () => {
+    api.getDoNotCallEntries.mockResolvedValue({ data: { entries: [manual] } });
+    renderAt('/operations/do-not-call?tab=all');
+    expect(await screen.findByText('Tenant Admin only')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Remove' })).not.toBeInTheDocument();
+  });
+
+  it('a Manager reviewing an opt-out can confirm it but not revert it', async () => {
+    api.getDoNotCallEntries.mockResolvedValue({ data: { entries: [optOut] } });
+    renderAt('/operations/do-not-call?tab=review');
+    expect(await screen.findByRole('button', { name: 'Confirm opt-out' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Not an opt-out' })).not.toBeInTheDocument();
+    expect(screen.getByText(/only a tenant admin can take a number off the list/i)).toBeInTheDocument();
+  });
+
+  it('a Tenant Admin can remove and revert', async () => {
+    api.getDoNotCallEntries.mockResolvedValue({ data: { entries: [manual] } });
+    renderAt('/operations/do-not-call?tab=all', USERS.tenant_admin);
+    expect(await screen.findByRole('button', { name: 'Remove' })).toBeInTheDocument();
+  });
+
+  it('a Tenant Admin reviewing an opt-out can revert it', async () => {
+    api.getDoNotCallEntries.mockResolvedValue({ data: { entries: [optOut] } });
+    renderAt('/operations/do-not-call?tab=review', USERS.tenant_admin);
+    expect(await screen.findByRole('button', { name: 'Not an opt-out' })).toBeInTheDocument();
+  });
+});

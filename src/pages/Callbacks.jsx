@@ -83,7 +83,7 @@ function CallbackActionDialog({ action, call, assistants, zone, onClose, onDone 
         <label className="flex flex-col gap-1 text-sm font-medium">Assistant
           <select value={assistantId} onChange={(e) => setAssistantId(e.target.value)} className="h-9 rounded-lg border border-border bg-background px-2">
             <option value="">Choose an assistant</option>
-            {(assistants || []).filter((a) => a.is_live).map((a) => <option key={a.id} value={a.vapi_assistant_id}>{a.name}</option>)}
+            {(assistants || []).filter((a) => a.is_live && a.vapi_assistant_id).map((a) => <option key={a.id} value={a.vapi_assistant_id}>{a.name}</option>)}
           </select>
         </label>
       )}

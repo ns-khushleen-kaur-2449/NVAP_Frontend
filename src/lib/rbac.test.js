@@ -1,9 +1,14 @@
 import {
   ASSISTANT_VIEWER_ROLES,
+  CAMPAIGN_CREATOR_ROLES,
   CAN_CREATE,
   PERMISSIONS,
   ROLE_PERMISSIONS,
   canCreate,
+  canCreateCampaigns,
+  canDeleteCampaigns,
+  canLiftDoNotCall,
+  canManageCampaigns,
   canManageUser,
   canViewAssistants,
   creatableRoles,
@@ -109,5 +114,34 @@ describe('canViewAssistants (backend AssistantAction.VIEW: Manager and up)', () 
   it('refuses no user', () => {
     expect(canViewAssistants(null)).toBe(false);
     expect(ASSISTANT_VIEWER_ROLES).not.toContain('rep');
+  });
+});
+
+describe('canCreateCampaigns (backend CAMPAIGN_CREATOR_ROLES: Tenant Admin, Manager, Sales Rep)', () => {
+  it.each([['super_admin', false], ['tenant_admin', true], ['manager', true], ['rep', true], ['unknown', false]])('%s -> %s', (role, expected) => {
+    expect(canCreateCampaigns({ role })).toBe(expected);
+  });
+  it('refuses no user', () => {
+    expect(canCreateCampaigns(null)).toBe(false);
+    expect(CAMPAIGN_CREATOR_ROLES).toEqual(['tenant_admin', 'manager', 'rep']);
+  });
+  it('manages campaigns with the same roles', () => {
+    for (const role of ['super_admin', 'tenant_admin', 'manager', 'rep']) {
+      expect(canManageCampaigns({ role })).toBe(canCreateCampaigns({ role }));
+    }
+  });
+});
+
+describe('canDeleteCampaigns (backend: Tenant Admin, Manager; never Sales Rep or Super Admin)', () => {
+  it.each([['super_admin', false], ['tenant_admin', true], ['manager', true], ['rep', false]])('%s -> %s', (role, expected) => {
+    expect(canDeleteCampaigns({ role })).toBe(expected);
+  });
+});
+
+describe('canLiftDoNotCall', () => {
+  it('is a Tenant Admin only: an entry blocks the number for every team', () => {
+    expect(['super_admin', 'tenant_admin', 'manager', 'rep'].map((role) => canLiftDoNotCall({ role })))
+      .toEqual([false, true, false, false]);
+    expect(canLiftDoNotCall(null)).toBe(false);
   });
 });

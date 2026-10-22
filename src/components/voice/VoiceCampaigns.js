@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { Copy, Check, Trash2 } from 'lucide-react';
 import { deleteVoiceCampaign, getVoiceCampaigns } from '@/lib/api';
 import { useAuth } from '@/lib/AuthContext';
+import { canCreateCampaigns, canDeleteCampaigns } from '@/lib/rbac';
 import usePolling from '@/hooks/usePolling';
 import useApiAction, { errorMessage } from '@/hooks/useApiAction';
 import StatusBadge, { CAMPAIGN_TONES } from '@/components/ops/StatusBadge';
@@ -103,8 +104,9 @@ export default function VoiceCampaigns() {
   });
   const filters = useMemo(() => statusFilters(campaigns), [campaigns]);
   const shown = useMemo(() => (campaigns || []).filter((c) => status === 'all' || chipOf(c) === status), [campaigns, status]);
-  // Sales Reps delete nothing; the backend decides for everyone else (a Manager: own or team's).
-  const canDelete = user?.role && user.role !== 'rep';
+  // Sales Reps and Super Admins delete nothing; the backend decides the rest (a Manager: own or team's).
+  const canDelete = canDeleteCampaigns(user);
+  const canCreate = canCreateCampaigns(user);
 
   return (
     <div className="ops mx-auto max-w-7xl space-y-5 p-4 sm:p-6">
@@ -113,7 +115,7 @@ export default function VoiceCampaigns() {
           <h1 className="text-2xl font-semibold tracking-tight">Voice campaigns</h1>
           <p className="text-sm text-muted-foreground">Every campaign, its state and its progress.</p>
         </div>
-        <OpsButton variant="primary" onClick={() => navigate('/voice_agent?tab=builder')}>New campaign</OpsButton>
+        {canCreate && <OpsButton variant="primary" onClick={() => navigate('/voice_agent?tab=builder')}>New campaign</OpsButton>}
       </header>
 
       {campaigns && filters.length > 0 && (
@@ -135,7 +137,7 @@ export default function VoiceCampaigns() {
       {!error && campaigns === null && <SkeletonRows rows={5} label="Loading campaigns" />}
       {!error && campaigns?.length === 0 && (
         <EmptyState title="No campaigns yet." body="Pick leads in the Lead-to-Campaign Builder or upload a file to start one."
-          action={<OpsButton variant="primary" onClick={() => navigate('/voice_agent?tab=builder')}>New campaign</OpsButton>} />
+          action={canCreate ? <OpsButton variant="primary" onClick={() => navigate('/voice_agent?tab=builder')}>New campaign</OpsButton> : null} />
       )}
       {!error && campaigns?.length > 0 && shown.length === 0 && <EmptyState title="No campaigns with this status." />}
       {!error && shown.length > 0 && (

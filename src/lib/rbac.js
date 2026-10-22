@@ -80,6 +80,39 @@ export function canViewAssistants(actor) {
   return Boolean(actor) && ASSISTANT_VIEWER_ROLES.includes(actor.role);
 }
 
+// Assistant change requests (backend: features/assistants/change_requests.py). A Sales Rep reads
+// published assistants and proposes changes; the Rep's Manager or a Tenant Admin reviews them.
+// Approving applies the change under the reviewer's own edit permission.
+export function canProposeAssistantChanges(actor) {
+  return actor?.role === ROLES.REP;
+}
+
+export function canReviewAssistantChanges(actor) {
+  return Boolean(actor) && ['tenant_admin', 'manager'].includes(actor.role);
+}
+
+/** The Assistant Requests screen: proposers and reviewers (not a Super Admin). */
+export function canUseAssistantRequests(actor) {
+  return canProposeAssistantChanges(actor) || canReviewAssistantChanges(actor);
+}
+
+// Who may create, run and manage campaigns and place single or scheduled calls: the backend's
+// CAMPAIGN_CREATOR_ROLES (voice_campaigns/access.py). Which campaigns is the backend's call
+// (Tenant Admin: tenant; Manager: own and team; Sales Rep: own). A Super Admin only reads.
+export const CAMPAIGN_CREATOR_ROLES = Object.freeze(['tenant_admin', 'manager', 'rep']);
+
+export function canCreateCampaigns(actor) {
+  return Boolean(actor) && CAMPAIGN_CREATOR_ROLES.includes(actor.role);
+}
+
+/** Starting, pausing, resuming, cancelling and editing follow the same roles as creating. */
+export const canManageCampaigns = canCreateCampaigns;
+
+/** Deleting: Tenant Admins and Managers (the backend limits a Manager to their team's campaigns). */
+export function canDeleteCampaigns(actor) {
+  return Boolean(actor) && ['tenant_admin', 'manager'].includes(actor.role);
+}
+
 /** The roles `actor` may create, highest first. */
 export function creatableRoles(actor) {
   if (!actor) return [];
@@ -114,6 +147,15 @@ export const OPERATOR_ROLES = Object.freeze(['tenant_admin', 'manager']);
 /** May override automatic decisions and manage callbacks, do-not-call and appointments. */
 export function canOperate(actor) {
   return Boolean(actor) && OPERATOR_ROLES.includes(actor.role);
+}
+
+/**
+ * May take a number off the do-not-call list (revert an opt-out, remove an entry). Every entry
+ * blocks the number for the whole tenant, so only a Tenant Admin may (backend UNBLOCKERS).
+ * Managers still add numbers and confirm their team's opt-outs.
+ */
+export function canLiftDoNotCall(actor) {
+  return actor?.role === ROLES.TENANT_ADMIN;
 }
 
 /** May read the operations screens (callbacks, do-not-call, contact rules). */

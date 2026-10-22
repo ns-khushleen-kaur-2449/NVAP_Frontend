@@ -38,7 +38,7 @@ export default function CampaignDetailPage() {
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
     getAssistants().then((r) => {
-      const live = (r.data || []).filter((a) => a.is_live);
+      const live = (r.data || []).filter((a) => a.is_live && a.vapi_assistant_id);
       setAssistants(live);
       setSelectedAssistant((prev) => prev || live[0]?.vapi_assistant_id || '');
     }).catch(() => {});

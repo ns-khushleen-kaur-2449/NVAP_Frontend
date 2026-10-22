@@ -333,6 +333,20 @@ export const saveAssistantDraft = (data) => api.post('/api/v1/assistants/draft',
 export const importAssistants = (vapiAssistantIds) =>
   api.post('/api/v1/assistants/import', { vapi_assistant_ids: vapiAssistantIds });
 export const deleteAssistant = (id) => api.delete(`/api/v1/assistants/${id}`);
+export const getAssistant = (id) => api.get(`/api/v1/assistants/${id}`);
+
+// ── Assistant change requests (a Sales Rep proposes; their Manager or a Tenant Admin reviews) ──
+// changes: assistant fields by API name, as in PATCH /api/v1/assistants/{id}; reason required.
+export const submitAssistantChangeRequest = (assistantId, changes, reason) =>
+  api.post(`/api/v1/assistants/${assistantId}/change-requests`, { changes, reason });
+// params: { status: pending | applied | rejected | withdrawn, assistant_id }
+export const listAssistantChangeRequests = (params = {}) => api.get('/api/v1/assistant-change-requests', { params });
+export const getAssistantChangeRequest = (id) => api.get(`/api/v1/assistant-change-requests/${id}`);
+export const approveAssistantChangeRequest = (id, feedback) =>
+  api.post(`/api/v1/assistant-change-requests/${id}/approve`, { feedback: feedback || null });
+export const rejectAssistantChangeRequest = (id, feedback) =>
+  api.post(`/api/v1/assistant-change-requests/${id}/reject`, { feedback });
+export const withdrawAssistantChangeRequest = (id) => api.post(`/api/v1/assistant-change-requests/${id}/withdraw`);
 export const uploadKnowledgeFile = (assistantId, file) => {
   const fd = new FormData();
   fd.append('file', file);

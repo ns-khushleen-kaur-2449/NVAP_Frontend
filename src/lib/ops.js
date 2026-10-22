@@ -73,6 +73,7 @@ export function notificationLink(notification) {
     case 'do_not_call': return '/operations/do-not-call';
     case 'calendar_connection': return '/settings/calendar';
     case 'call_log': return '/voice_agent?tab=logs';
+    case 'assistant_change_request': return `/voice_agent?tab=requests&open=${id}`;
     default: return null;
   }
 }

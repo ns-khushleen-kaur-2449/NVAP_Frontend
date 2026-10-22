@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -29,7 +29,10 @@ function Section({ title, children }) {
  *       | { type: 'csv', contacts: object[], filename: string, skipped?: number }
  * Calls POST /api/campaigns with start "now" or "scheduled", then onCreated(campaign).
  */
-export default function CampaignLaunchDialog({ open, onOpenChange, source, assistants = [], defaultAssistantId = '', onCreated }) {
+export default function CampaignLaunchDialog({ open, onOpenChange, source, assistants: offered = [], defaultAssistantId = '', onCreated }) {
+  // A local-only assistant (no Vapi id, e.g. the demo seed) cannot place calls, and an option
+  // needs a value: leave it out.
+  const assistants = useMemo(() => offered.filter((a) => a.vapi_assistant_id), [offered]);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [notes, setNotes] = useState('');

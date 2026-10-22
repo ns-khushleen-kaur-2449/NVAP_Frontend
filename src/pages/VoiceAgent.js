@@ -14,11 +14,12 @@ import LeadCampaignBuilder from '../components/voice/LeadCampaignBuilder';
 import CampaignLaunchDialog from '../components/voice/CampaignLaunchDialog';
 import AssistantBuilder from '../components/voice/AssistantBuilder';
 import VoiceDashboard from '../components/voice/VoiceDashboard';
+import AssistantChangeRequests from '../components/voice/AssistantChangeRequests';
 import { useAuth } from '@/lib/AuthContext';
-import { canOperate, canViewAssistants } from '@/lib/rbac';
+import { canCreateCampaigns, canOperate, canUseAssistantRequests, canViewAssistants } from '@/lib/rbac';
 import ReasonDialog from '@/components/ops/ReasonDialog';
 import SingleCallBlock from '@/components/ops/SingleCallBlock';
-import { Loader2, PhoneCall, BookOpen, Mic, UploadCloud, Phone, RotateCw, Layers, Info, FileText, Database, Search, Copy, Check, LayoutDashboard } from 'lucide-react';
+import { Loader2, PhoneCall, BookOpen, Mic, UploadCloud, Phone, RotateCw, Layers, Info, FileText, Database, Search, Copy, Check, LayoutDashboard, ClipboardCheck } from 'lucide-react';
 
 /* ─── Sidebar Tab Definitions (Voice Agent's own sub-views; nav itself now
    lives in the shared app Sidebar, components/layout/Sidebar.js) ─────────── */
@@ -30,6 +31,7 @@ const TABS = [
   { id: 'kb',         label: 'Knowledge Base',         icon: BookOpen },
   { id: 'csv',        label: 'CSV Call Campaign',      icon: UploadCloud },
   { id: 'single',     label: 'Single Call',            icon: PhoneCall },
+  { id: 'requests',   label: 'Assistant Requests',     icon: ClipboardCheck },
 ];
 
 export default function VoiceAgentPage() {
@@ -71,6 +73,8 @@ export default function VoiceAgentPage() {
   // (Sales Reps) land on the campaign builder instead.
   const { user } = useAuth();
   const canSeeDashboard = canViewAssistants(user);
+  // Hides launch controls only; POST /api/campaigns enforces the same rule.
+  const canLaunchCampaigns = canCreateCampaigns(user);
   const homeTab = canSeeDashboard ? 'dashboard' : 'builder';
   const [activeTab, setActiveTab] = useState(() => {
     const view = searchParams.get('view');
@@ -153,7 +157,7 @@ export default function VoiceAgentPage() {
   })), [leads]);
 
   const liveAssistants = useMemo(() => {
-    return assistants.filter((ast) => ast.is_live);
+    return assistants.filter((ast) => ast.is_live && ast.vapi_assistant_id);
   }, [assistants]);
 
   useEffect(() => {
@@ -368,9 +372,12 @@ export default function VoiceAgentPage() {
             <SingleCallBlock block={callBlock} canOverride={canOperate(user)} onOverride={() => setOverrideOpen(true)} />
           )}
 
+          {!canLaunchCampaigns && (
+            <p className="text-xs text-muted-foreground">Calls are placed by Tenant Admins, Managers and Sales Reps.</p>
+          )}
           <Button
             onClick={() => handleSingleCall()}
-            disabled={calling}
+            disabled={calling || !canLaunchCampaigns}
             className="w-full ai-btn-glow bg-primary text-primary-foreground hover:bg-[#C2560E] h-11 text-sm font-medium"
           >
             {calling ? (
@@ -420,12 +427,15 @@ export default function VoiceAgentPage() {
               />
               <Button
                 onClick={handleCsvUpload}
-                disabled={csvUploading}
+                disabled={csvUploading || !canLaunchCampaigns}
                 className="bg-primary text-primary-foreground hover:bg-[#C2560E] shrink-0"
               >
                 {csvUploading ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Reading file...</> : 'Launch Campaign'}
               </Button>
             </div>
+            {!canLaunchCampaigns && (
+              <p className="text-xs text-muted-foreground mt-1.5">Campaigns are created by Tenant Admins, Managers and Sales Reps.</p>
+            )}
           </div>
 
           <div className="border-t border-border pt-5">
@@ -481,6 +491,7 @@ export default function VoiceAgentPage() {
           leads={leads}
           assistants={assistants}
           loading={loadingCampaignData}
+          canCreateCampaigns={canLaunchCampaigns}
         />
       </div>
     </div>
@@ -703,6 +714,9 @@ export default function VoiceAgentPage() {
       );
       case 'create':     return renderCreateAgent();
       case 'kb':         return renderKnowledgeBase();
+      case 'requests':   return canUseAssistantRequests(user)
+        ? <AssistantChangeRequests user={user} openRequestId={searchParams.get('open')} />
+        : renderBuilder();
       default:           return renderSingleCall();
     }
   };

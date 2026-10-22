@@ -7,7 +7,7 @@ import {
   revertDoNotCall,
 } from '@/lib/api';
 import { useAuth } from '@/lib/AuthContext';
-import { canOperate, isSuperAdmin } from '@/lib/rbac';
+import { canLiftDoNotCall, canOperate, isSuperAdmin } from '@/lib/rbac';
 import { maskPhone, plural } from '@/lib/ops';
 import useApiAction, { errorMessage } from '@/hooks/useApiAction';
 import usePolling from '@/hooks/usePolling';
@@ -37,7 +37,7 @@ export function revertSummary(result) {
   return parts.join(' · ');
 }
 
-function ReviewCard({ entry, operator, onDone }) {
+function ReviewCard({ entry, operator, canLift, onDone }) {
   const [dialog, setDialog] = useState(null);
   const [outcome, setOutcome] = useState(null);
   const confirm = useApiAction((reason) => confirmDoNotCall(entry.id, reason), { success: 'Opt-out confirmed', onSuccess: onDone, onConflict: onDone });
@@ -79,7 +79,9 @@ function ReviewCard({ entry, operator, onDone }) {
       {operator && !outcome && (
         <div className="flex flex-wrap gap-2">
           <OpsButton size="sm" variant="outline" onClick={() => setDialog('confirm')}>Confirm opt-out</OpsButton>
-          <OpsButton size="sm" variant="quiet" onClick={() => setDialog('revert')}>Not an opt-out</OpsButton>
+          {canLift
+            ? <OpsButton size="sm" variant="quiet" onClick={() => setDialog('revert')}>Not an opt-out</OpsButton>
+            : <span className="self-center text-xs text-muted-foreground">Only a Tenant Admin can take a number off the list.</span>}
         </div>
       )}
       <ConfirmDialog open={dialog === 'confirm'} onOpenChange={(o) => !o && setDialog(null)} title="Confirm this opt-out?"
@@ -96,6 +98,8 @@ function ReviewCard({ entry, operator, onDone }) {
 export default function DoNotCallPage() {
   const { user } = useAuth();
   const operator = canOperate(user);
+  // Managers add and confirm; lifting a block applies to every team, so it is a Tenant Admin's.
+  const canLift = canLiftDoNotCall(user);
   const superAdmin = isSuperAdmin(user);
   const [params, setParams] = useSearchParams();
   const tab = DNC_TABS.find((t) => t.id === params.get('tab')) || DNC_TABS[0];
@@ -169,7 +173,7 @@ export default function DoNotCallPage() {
       )}
       {!error && tab.id === 'review' && rows?.length > 0 && (
         <div className="grid gap-3 md:grid-cols-2">
-          {rows.map((entry) => <ReviewCard key={entry.id} entry={entry} operator={operator} onDone={load} />)}
+          {rows.map((entry) => <ReviewCard key={entry.id} entry={entry} operator={operator} canLift={canLift} onDone={load} />)}
         </div>
       )}
       {!error && tab.id === 'all' && rows?.length > 0 && (
@@ -192,7 +196,9 @@ export default function DoNotCallPage() {
                   <td className="px-4 py-2.5 text-right">
                     {e.source === 'call'
                       ? <span className="text-xs text-muted-foreground" title="An opt-out from a call is taken back with Not an opt-out">Use review</span>
-                      : <OpsButton size="sm" variant="quiet" onClick={() => setRemoving(e)}>Remove</OpsButton>}
+                      : canLift
+                        ? <OpsButton size="sm" variant="quiet" onClick={() => setRemoving(e)}>Remove</OpsButton>
+                        : <span className="text-xs text-muted-foreground" title="The list applies to every team">Tenant Admin only</span>}
                   </td>
                 )}
               </tr>

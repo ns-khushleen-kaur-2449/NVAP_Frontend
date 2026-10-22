@@ -59,7 +59,8 @@ const DATE_ADDED_OPTIONS = [
   { value: 'month', label: 'Last 30 days' },
 ];
 
-export default function LeadCampaignBuilder({ onCampaignStarted, onLeadCreated, leads = [], assistants = [], loading = false }) {
+// `canCreateCampaigns` mirrors the backend's campaign-creation roles; it only hides controls.
+export default function LeadCampaignBuilder({ onCampaignStarted, onLeadCreated, leads = [], assistants = [], loading = false, canCreateCampaigns = true }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [addLeadOpen, setAddLeadOpen] = useState(false);
   const [selectedLeads, setSelectedLeads] = useState(new Set());
@@ -606,6 +607,7 @@ export default function LeadCampaignBuilder({ onCampaignStarted, onLeadCreated, 
                size="sm"
                variant="outline"
                onClick={() => setPickerOpen(true)}
+               disabled={!canCreateCampaigns}
                className="h-9 gap-1.5"
              >
                <Sparkles className="w-3.5 h-3.5" />
@@ -684,12 +686,15 @@ export default function LeadCampaignBuilder({ onCampaignStarted, onLeadCreated, 
         </div>
       </CardContent>
       
-      <CardFooter className="pt-1.5 pb-2.5">
+      <CardFooter className="pt-1.5 pb-2.5 flex-col gap-1">
+        {!canCreateCampaigns && (
+          <p className="text-xs text-muted-foreground">Campaigns are created by Tenant Admins, Managers and Sales Reps.</p>
+        )}
         <Button
           className="w-full h-10 gap-2 bg-[#F87217] hover:bg-[#C2560E] text-white rounded-xl text-xs font-semibold transition-all duration-200 shadow-lg shadow-blue-900/10 active:scale-[0.98]"
           size="sm"
           onClick={openLaunch}
-          disabled={selectedLeads.size === 0}
+          disabled={selectedLeads.size === 0 || !canCreateCampaigns}
         >
           <Play className="w-3.5 h-3.5 fill-white" />
           Launch Campaign for {selectedLeads.size} Lead{selectedLeads.size !== 1 && 's'}

@@ -2,6 +2,7 @@ import { Activity, Building2, CalendarCheck, Megaphone, Phone, Star, Users } fro
 import { Card } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import KpiCard from '@/components/shared/KpiCard';
+import ProspectSearchBox from '@/components/dashboard/ProspectSearchBox';
 import { PERMISSIONS, roleLabel } from '@/lib/rbac';
 
 /**
@@ -89,6 +90,12 @@ export const WIDGETS = [
         </Table>
       </Section>
     ),
+  },
+  {
+    // Spec: Rep Dashboard "Search Box".  Reads nothing from /api/v1/dashboard; it searches
+    // through AI Filtering, which applies the Rep's own ownership scope.
+    id: 'prospect-search', title: 'Find prospects', perm: PERMISSIONS.DASHBOARD_OWN, group: 'own',
+    render: () => <ProspectSearchBox />,
   },
   {
     id: 'my-calls', title: 'My calls', perm: PERMISSIONS.DASHBOARD_OWN, group: 'own',

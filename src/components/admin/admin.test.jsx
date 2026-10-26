@@ -257,7 +257,7 @@ describe('Dashboard widget registry', () => {
     ['super_admin', ['platform-stats']],
     ['tenant_admin', ['tenant-kpis', 'team-leaderboard']],
     ['manager', ['team-call-scores', 'rep-performance']],
-    ['rep', ['my-calls', 'my-scores', 'my-callbacks']],
+    ['rep', ['prospect-search', 'my-calls', 'my-scores', 'my-callbacks']],
   ])('%s gets %j', (role, expected) => {
     const can = (perm) => hasPermission(USERS[role], perm);
     expect(allowedWidgets(can, WIDGETS, data).map((w) => w.id)).toEqual(expected);

@@ -16,7 +16,7 @@ import {
   setBookingCalendar,
 } from '@/lib/api';
 
-// Every account type connects through Nylas; `provider` is the account behind the connection.
+// every account type connects through Nylas; `provider` is the account behind the connection.
 const ACCOUNT_LABELS = { google: 'Google', microsoft: 'Microsoft 365 / Outlook', icloud: 'iCloud' };
 const OAUTH_PARAMS = ['status', 'error', 'connection_id', 'provider', 'code', 'state'];
 

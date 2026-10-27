@@ -121,12 +121,6 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {/* Demo hint */}
-            <div className="rounded-xl px-4 py-3 text-xs space-y-0.5 bg-[var(--stone)] border border-[var(--line)] text-[var(--ink)]">
-              <p className="font-semibold mb-1 text-[var(--pine)]">Demo account</p>
-              <p>admin@testing.com / Testing@123</p>
-            </div>
-
             <button type="submit" disabled={loading}
               className="w-full h-12 rounded-xl text-white font-bold text-sm transition-all duration-200 disabled:opacity-60"
               style={{ background: 'var(--pine)', boxShadow: loading ? 'none' : '0 6px 20px rgba(248,114,23,0.35)', cursor: loading ? 'not-allowed' : 'pointer' }}

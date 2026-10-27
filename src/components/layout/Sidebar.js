@@ -35,8 +35,10 @@ const VOICE_TABS = [
   { id: 'dashboard', label: 'Dashboard',                icon: LayoutDashboard, requires: canViewAssistants },
   { id: 'builder',   label: 'Lead-to-Campaign Builder', icon: Layers },
   { id: 'logs',      label: 'Call Logs',                icon: Phone },
-  { id: 'create',    label: 'Create Agent',             icon: Mic },
-  { id: 'kb',        label: 'Knowledge Base',           icon: BookOpen },
+  // Creating assistants is Manager and up (the backend's AssistantAction.CREATE); the knowledge
+  // base is refused to Sales Reps, so neither is offered to them.
+  { id: 'create',    label: 'Create Agent',             icon: Mic, requires: canViewAssistants },
+  { id: 'kb',        label: 'Knowledge Base',           icon: BookOpen, requires: canViewAssistants },
   { id: 'csv',       label: 'CSV Call Campaign',        icon: UploadCloud },
   // Its own route rather than a ?tab= view, so it carries `path`. The render
   // below falls back to the ?tab= form for every entry without one.

@@ -203,6 +203,33 @@ describe('Voice Agent dashboard nav follows /api/v1/assistants', () => {
   });
 });
 
+describe('Voice Agent nav hides what a Sales Rep is refused', () => {
+  const VOICE_TABS = ['dashboard', 'builder', 'logs', 'create', 'kb', 'csv', 'single', 'requests'];
+  const visibleTabs = (role) => {
+    const { container } = renderWithAuth(<Sidebar />, { user: USERS[role], path: '/voice_agent' });
+    return VOICE_TABS.filter((tab) => container.querySelector(`a[href="/voice_agent?tab=${tab}"]`));
+  };
+
+  test('a Sales Rep sees neither Create Agent nor Knowledge Base', () => {
+    const shown = visibleTabs('rep');
+    expect(shown).not.toContain('create');
+    expect(shown).not.toContain('kb');
+  });
+
+  test('a Sales Rep keeps everything else, CSV Call Campaign included (the backend lets Reps create campaigns)', () => {
+    expect(visibleTabs('rep')).toEqual(['builder', 'logs', 'csv', 'single', 'requests']);
+  });
+
+  test.each(['super_admin', 'tenant_admin', 'manager'])('%s keeps Create Agent, Knowledge Base and CSV', (role) => {
+    expect(visibleTabs(role)).toEqual(expect.arrayContaining(['create', 'kb', 'csv', 'builder', 'logs', 'single']));
+  });
+
+  test('Voice Campaigns, a route of its own, is still there for a Sales Rep', () => {
+    const { container } = renderWithAuth(<Sidebar />, { user: USERS.rep, path: '/voice_agent' });
+    expect(container.querySelector('a[href="/voice-campaigns"]')).not.toBeNull();
+  });
+});
+
 describe('Forced password change', () => {
   test('a user with a temporary password sees only the change-password screen', () => {
     renderWithAuth(<AuthGate><p>App</p></AuthGate>, {
@@ -230,7 +257,7 @@ describe('Dashboard widget registry', () => {
     ['super_admin', ['platform-stats']],
     ['tenant_admin', ['tenant-kpis', 'team-leaderboard']],
     ['manager', ['team-call-scores', 'rep-performance']],
-    ['rep', ['my-calls', 'my-scores', 'my-callbacks']],
+    ['rep', ['prospect-search', 'my-calls', 'my-scores', 'my-callbacks']],
   ])('%s gets %j', (role, expected) => {
     const can = (perm) => hasPermission(USERS[role], perm);
     expect(allowedWidgets(can, WIDGETS, data).map((w) => w.id)).toEqual(expected);

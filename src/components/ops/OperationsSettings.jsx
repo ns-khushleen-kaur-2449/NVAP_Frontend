@@ -19,6 +19,12 @@ const CONTACT_GROUPS = [
   { title: 'Limits (layer C) and timing', match: (k) => !k.startsWith('retry_') && !k.startsWith('block_') },
 ];
 
+// The brochure sender is a person, picked in Settings → Products and brochures; it is left out here.
+const APPOINTMENT_GROUPS = [
+  { title: 'Appointments', match: (k) => !k.startsWith('brochure_') },
+  { title: 'Brochures leads ask for on calls', match: (k) => k.startsWith('brochure_') && k !== 'brochure_sender_user_id' },
+];
+
 function CallingBound({ scope, editable }) {
   const [bound, setBound] = useState(null);
   const [error, setError] = useState(null);
@@ -101,7 +107,7 @@ export default function OperationsSettings() {
             groups={CONTACT_GROUPS} scopeKey={scopeKey} />
           <RulesSettings title="Appointment rules" intro="What happens after meetings end or are cancelled."
             load={loadAppointment} save={saveAppointment} loadHistory={historyAppointment} editable={editable}
-            scopeKey={scopeKey} />
+            groups={APPOINTMENT_GROUPS} scopeKey={scopeKey} />
           <CallingBound scope={scope} editable={canEditCallingBound(user)} />
         </>
       )}

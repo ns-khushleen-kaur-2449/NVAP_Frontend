@@ -1,6 +1,6 @@
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import {
-  LayoutDashboard, Users, Sparkles,  PhoneCall, Inbox as InboxIcon, CalendarClock,
+  LayoutDashboard, Users, Sparkles,  PhoneCall, Inbox as InboxIcon, CalendarClock, Package,
   Layers, Phone, Mic, BookOpen, UploadCloud, Megaphone, ClipboardCheck,
   ChevronDown, ChevronLeft, ChevronRight, Settings, LogOut, GitCompareArrows,
 } from 'lucide-react';
@@ -10,7 +10,6 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useAuth } from '@/lib/AuthContext';
 import ThemeToggle from '@/components/shared/ThemeToggle';
-import { visibleNavItems } from '@/lib/adminNav';
 import { canUseAssistantRequests, canViewAssistants } from '@/lib/rbac';
 
 const APP_NAV = [
@@ -26,6 +25,7 @@ const PENDING_NAV = [
   { path: '/conversion',  label: 'Conversion',   icon: GitCompareArrows },
   { path: '/strategist',  label: 'AI Strategist', icon: Sparkles },
   { path: '/inbox',       label: 'Inbox',        icon: InboxIcon },
+  { path: '/catalog',     label: 'Catalog',      icon: Package },
   { path: '/meetings',    label: 'Meetings',     icon: CalendarClock },
 ];
 
@@ -236,18 +236,8 @@ export function Sidebar() {
             </Link>
           )}
           */}
-          {/* Administration: only the items this user's role may open (lib/adminNav.js). */}
-          {visibleNavItems(user).map((item) => {
-            const Icon = item.icon;
-            return (
-              <NavLink key={item.path} to={item.path} data-testid={`nav-${item.label.toLowerCase()}`}
-                className={({ isActive }) => itemClass(isActive, collapsed)} title={collapsed ? item.label : undefined}>
-                <Icon className="h-4 w-4 shrink-0 text-[var(--mist)] group-hover:text-[var(--pine)]" />
-                {!collapsed && <span>{item.label}</span>}
-              </NavLink>
-            );
-          })}
-          <NavLink to="/settings" end aria-label={collapsed ? 'Settings' : undefined} className={({ isActive }) => itemClass(isActive, collapsed)}>
+          {/* Users, Teams and Tenants open from Settings → General → Administration (lib/adminNav.js), not from here. */}
+          <NavLink to="/settings" aria-label={collapsed ? 'Settings' : undefined} className={({ isActive }) => itemClass(isActive, collapsed)}>
             <Settings className="h-4 w-4 shrink-0 text-[var(--mist)] group-hover:text-[var(--pine)]" />
             {!collapsed && <span>Settings</span>}
           </NavLink>

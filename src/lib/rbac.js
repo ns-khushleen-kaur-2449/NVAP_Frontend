@@ -145,6 +145,11 @@ export const roleLabel = (role) => ROLE_LABELS[role] || role;
 export const OPERATOR_ROLES = Object.freeze(['tenant_admin', 'manager']);
 
 /** May override automatic decisions and manage callbacks, do-not-call and appointments. */
+/** May edit the catalog (products, fields, imports); everyone in the tenant may view it. */
+export function canEditCatalog(actor) {
+  return Boolean(actor) && OPERATOR_ROLES.includes(actor.role);
+}
+
 export function canOperate(actor) {
   return Boolean(actor) && OPERATOR_ROLES.includes(actor.role);
 }

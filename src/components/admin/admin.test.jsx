@@ -181,16 +181,11 @@ describe('Route guard and <Can>', () => {
   });
 });
 
-describe('Sidebar shows only permitted admin items', () => {
-  test.each([
-    ['super_admin', ['tenants', 'users']],
-    ['tenant_admin', ['users', 'teams']],
-    ['manager', ['users']],
-    ['rep', []],
-  ])('%s sees %j', (role, expected) => {
+describe('Admin items live in Settings, not the sidebar', () => {
+  test.each(['super_admin', 'tenant_admin', 'manager', 'rep'])('%s has no Users/Teams/Tenants entry', (role) => {
     renderWithAuth(<Sidebar />, { user: USERS[role], path: '/dashboard' });
-    const shown = ['tenants', 'users', 'teams'].filter((item) => screen.queryByTestId(`nav-${item}`));
-    expect(shown).toEqual(expected);
+    expect(['tenants', 'users', 'teams'].filter((item) => screen.queryByTestId(`nav-${item}`))).toEqual([]);
+    expect(screen.getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '/settings');
   });
 });
 

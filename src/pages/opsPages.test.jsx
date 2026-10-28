@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { renderWithAuth, USERS } from '@/test/renderWithAuth';
 import CallbacksPage from './Callbacks';
 import AppointmentsPage from './Appointments';
@@ -66,5 +66,52 @@ describe('Appointments page', () => {
     expect(await screen.findByRole('button', { name: 'Restore' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument();
     await waitFor(() => expect(api.getAppointment).toHaveBeenCalledWith('a1'));
+  });
+
+  describe("the lead's emails", () => {
+    const booked = {
+      ...appointment, status: 'CONFIRMED', status_label: 'Confirmed', cancel_reason_display: null,
+      allowed_actions: ['cancel', 'reschedule'], attendee: { name: 'Aditi Attri', email: 'aditi@lead.example' },
+      can_resend_email: true,
+      emails: [
+        { id: 'e1', kind: 'confirmation', trigger: 'booking', status: 'sent', status_label: 'Sent', attempts: 1,
+          sent_at: '2026-10-22T09:30:00Z', send_at: '2026-10-22T09:30:00Z' },
+        { id: 'e2', kind: 'overview', trigger: 'booking', status: 'skipped', status_label: 'Not sent', attempts: 1,
+          skip_reason: 'no_brochure', skip_reason_label: 'No brochure is uploaded for this meeting type or the company.',
+          send_at: '2026-10-22T09:40:00Z' },
+      ],
+    };
+
+    beforeEach(() => {
+      api.getAppointments.mockResolvedValue({ data: { items: [booked], total: 1, page: 1, page_size: 25, counts: {}, calendar: {} } });
+    });
+
+    it('lists each email with its status and why one was not sent', async () => {
+      api.getAppointment.mockResolvedValue({ data: booked });
+      renderWithAuth(<AppointmentsPage />, { user: USERS.manager, path: '/appointments?open=a1' });
+      const section = within(await screen.findByRole('region', { name: 'Emails to the lead' }));
+      expect(section.getByText('Confirmation')).toBeInTheDocument();
+      expect(section.getByText('Sent')).toBeInTheDocument();
+      expect(section.getByText('Overview with brochure')).toBeInTheDocument();
+      expect(section.getByText('No brochure is uploaded for this meeting type or the company.')).toBeInTheDocument();
+    });
+
+    it('resends with a reason', async () => {
+      api.getAppointment.mockResolvedValue({ data: booked });
+      api.resendAppointmentEmail.mockResolvedValue({ data: booked });
+      renderWithAuth(<AppointmentsPage />, { user: USERS.manager, path: '/appointments?open=a1' });
+      fireEvent.click(await screen.findByRole('button', { name: 'Resend confirmation' }));
+      const dialog = within(await screen.findByRole('dialog', { name: 'Resend confirmation' }));
+      fireEvent.change(dialog.getByRole('textbox'), { target: { value: 'Lead lost it' } });
+      fireEvent.click(dialog.getByRole('button', { name: 'Send' }));
+      await waitFor(() => expect(api.resendAppointmentEmail).toHaveBeenCalledWith('a1', { kind: 'confirmation', reason: 'Lead lost it' }));
+    });
+
+    it('offers no resend when the backend says it is not allowed', async () => {
+      api.getAppointment.mockResolvedValue({ data: { ...booked, can_resend_email: false } });
+      renderWithAuth(<AppointmentsPage />, { user: USERS.rep, path: '/appointments?open=a1' });
+      expect(await screen.findByRole('region', { name: 'Emails to the lead' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Resend/ })).not.toBeInTheDocument();
+    });
   });
 });

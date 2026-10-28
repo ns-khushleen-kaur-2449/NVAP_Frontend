@@ -44,6 +44,7 @@ import RequirePermission from "@/components/auth/RequirePermission";
 import { PERMISSIONS } from "@/lib/rbac";
 import AuthGate from "@/components/auth/AuthGate";
 import InboxPage from "@/pages/Inbox";
+import CatalogPage from "@/pages/Catalog";
 import MeetingsPage from "@/pages/Meetings";
 import { operationsRoutes } from "@/pages/Operations";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
@@ -68,7 +69,7 @@ function SmartRoot() {
 
 // Pages that get the persistent left Sidebar instead of the TopBar. Everything
 // else in AppShell keeps the TopBar exactly as before.
-const SIDEBAR_SECTION_PATHS = ['/dashboard', '/prospecting', '/conversion', '/strategist', '/inbox', '/meetings', '/settings',
+const SIDEBAR_SECTION_PATHS = ['/dashboard', '/prospecting', '/conversion', '/strategist', '/inbox', '/catalog', '/meetings', '/settings',
   '/operations', '/leads'];
 
 function AppShell() {
@@ -112,6 +113,7 @@ function AppShell() {
       {/* The SDR Campaigns pages are hidden for now; Voice Campaigns is the campaign page. */}
       <Route path="/campaigns/*" element={<Navigate to="/voice-campaigns" replace />} />
       <Route path="/inbox" element={<InboxPage />} />
+      <Route path="/catalog" element={<CatalogPage />} />
       <Route path="/meetings" element={<MeetingsPage />} />
       {/* Appointments, callbacks, do-not-call and intent review (old /appointments, /callbacks and /do-not-call redirect). */}
       {operationsRoutes()}

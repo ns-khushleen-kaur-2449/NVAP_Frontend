@@ -9,6 +9,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { ScrollArea } from '../ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import AgentToolsPanel from './AgentToolsPanel';
+import { Field, FieldMessages, OptionSelect, Section, withCurrent } from './builder/BuilderFields';
+import LanguageField from './builder/LanguageField';
+import LeadFieldsSection from './builder/LeadFieldsSection';
+import OpenerSection from './builder/OpenerSection';
+import { OpenerPreview, PromptText } from './builder/PreviewParts';
 import {
   User, Building2, MessageSquare, ShieldCheck, Book, StickyNote, Cpu,
   Loader2, Plus, X, ListRestart, Save, Rocket, RotateCcw, AlertTriangle,
@@ -18,16 +23,24 @@ import { toast } from 'sonner';
 import {
   listBuilderConfigs, getBuilderConfig, createBuilderConfig, updateBuilderConfig,
   previewBuilderConfig, publishBuilderConfig, rollbackBuilderConfig, retryBuilderConfig,
-  getKnowledgeFiles, getCatalogItems,
+  getKnowledgeFiles, getCatalogItems, getLeadFieldRegistry,
 } from '../../lib/api';
+import { DEFAULT_LEAD_FIELDS, problemsFrom } from '../../lib/builderPersonalization';
 import { formatCurrency } from '../../lib/utils';
 
 // Option values mirror the backend contract in
 // app/schemas/requests/assistant_builder.py and the vocabularies in
-// app/features/assistant_builder/prompt_builder.py.
-const LANGUAGES = [
-  { value: 'en', label: 'English' },
-  { value: 'hi', label: 'Hindi' },
+// app/features/assistant_builder/ (sections/, i18n/).
+// Radix Select has no empty value: "unset" stands for no persona gender (neutral phrasing).
+const PERSONA_GENDERS = [
+  { value: 'unset', label: 'Not set (neutral)' },
+  { value: 'female', label: 'Female' },
+  { value: 'male', label: 'Male' },
+];
+const SALUTATIONS = [
+  { value: 'first_name', label: 'By first name ("Hi Rahul")' },
+  { value: 'formal', label: 'Formal ("Hello Mr. Sharma")' },
+  { value: 'none', label: 'No name ("Hi there")' },
 ];
 const PITCH_MODES = [
   { value: 'none', label: 'Nothing specific', hint: 'Just understand what they need' },
@@ -97,6 +110,9 @@ const defaultForm = () => ({
     sales_approach: 'consultative',
     conversation_length: 'balanced',
     first_message: '',
+    persona_gender: '',
+    salutation_style: 'first_name',
+    default_call_reason: '',
   },
   business: { company: '', vertical: 'automobile', locations: [], description: '' },
   target_customer: '',
@@ -115,16 +131,28 @@ const defaultForm = () => ({
   custom_instructions: '',
   // Hand-edited system prompt; empty means use the generated one.
   prompt_override: '',
+  // Customer details on calls (lead_fields). New agents start on; agents saved before this
+  // existed load with it off and keep their opener and call details until someone turns it on.
+  personalized: true,
+  lead_fields: DEFAULT_LEAD_FIELDS,
+  policy: { opener_mentions_reason: false },
 });
 
 // Merge a stored payload over the defaults so older versions missing a field still load.
-const formFromPayload = (payload) => {
+export const formFromPayload = (payload) => {
   const base = defaultForm();
   if (!payload) return base;
   return {
     ...base,
     ...payload,
-    assistant: { ...base.assistant, ...(payload.assistant || {}), first_message: payload.assistant?.first_message || '' },
+    assistant: {
+      ...base.assistant,
+      ...(payload.assistant || {}),
+      first_message: payload.assistant?.first_message || '',
+      persona_gender: payload.assistant?.persona_gender || '',
+      salutation_style: payload.assistant?.salutation_style || 'first_name',
+      default_call_reason: payload.assistant?.default_call_reason || '',
+    },
     business: { ...base.business, ...(payload.business || {}), description: payload.business?.description || '' },
     rules: { ...base.rules, ...(payload.rules || {}) },
     voice_stack: { ...base.voice_stack, ...(payload.voice_stack || {}) },
@@ -137,12 +165,21 @@ const formFromPayload = (payload) => {
     tools: payload.tools || [],
     custom_instructions: payload.custom_instructions || '',
     prompt_override: payload.prompt_override || '',
+    personalized: Array.isArray(payload.lead_fields),
+    lead_fields: (payload.lead_fields || []).map((f) => ({ key: f.key, usage: f.usage, mask: f.mask || 'none', label: f.label || '' })),
+    policy: { ...base.policy, ...(payload.policy || {}) },
   };
 };
 
 // The exact AssistantBuilderConfig shape (the backend forbids unknown top-level fields).
-const toPayload = (form) => ({
-  assistant: { ...form.assistant, name: form.assistant.name.trim(), first_message: form.assistant.first_message.trim() || null },
+export const toPayload = (form) => ({
+  assistant: {
+    ...form.assistant,
+    name: form.assistant.name.trim(),
+    first_message: form.assistant.first_message.trim() || null,
+    persona_gender: form.assistant.persona_gender || null,
+    default_call_reason: form.assistant.default_call_reason.trim() || null,
+  },
   business: { ...form.business, company: form.business.company.trim(), description: form.business.description.trim() || null },
   target_customer: form.target_customer.trim(),
   qualification: form.qualification,
@@ -160,6 +197,11 @@ const toPayload = (form) => ({
   voice_stack: form.voice_stack,
   custom_instructions: form.custom_instructions.trim() || null,
   prompt_override: form.prompt_override.trim() || null,
+  // null keeps the agent's pre-selection behaviour (see LeadFieldsSection).
+  lead_fields: form.personalized
+    ? form.lead_fields.map((f) => ({ key: f.key, usage: f.usage, mask: f.mask, label: f.label.trim() || null }))
+    : null,
+  policy: form.personalized ? form.policy : null,
 });
 
 // The generated text unchanged (or blank) is not an edit; the prompt stays auto-generated.
@@ -178,6 +220,8 @@ const missingFields = (form) => [
 const errorDetail = (e, fallback) => {
   const detail = e?.response?.data?.detail;
   if (typeof detail === 'string') return detail;
+  // The builder lists every problem with a selection or the first message as plain strings.
+  if (Array.isArray(detail) && detail.length && detail.every((d) => typeof d === 'string')) return detail.join('; ');
   if (Array.isArray(detail) && detail[0]?.msg) {
     const field = (detail[0].loc || []).filter((p) => p !== 'body').join('.');
     return field ? `${field}: ${detail[0].msg}` : detail[0].msg;
@@ -185,55 +229,9 @@ const errorDetail = (e, fallback) => {
   return fallback;
 };
 
-// Keep a value the backend accepted visible even if this UI doesn't list it.
-const withCurrent = (options, value) =>
-  !value || options.some((o) => o.value === value) ? options : [...options, { value, label: value }];
-
 function StatusBadge({ status }) {
   const style = STATUS_STYLES[status] || STATUS_STYLES.draft;
   return <Badge variant="outline" className={style.className}>{style.label}</Badge>;
-}
-
-function Section({ icon: Icon, title, description, children }) {
-  return (
-    <section className="space-y-5">
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center border border-primary/20">
-          <Icon className="w-5 h-5 text-primary" />
-        </div>
-        <div>
-          <h3 className="text-lg font-semibold">{title}</h3>
-          {description && <p className="text-sm text-muted-foreground">{description}</p>}
-        </div>
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function Field({ label, required, hint, children }) {
-  return (
-    <div className="space-y-2">
-      <label className="text-xs font-medium text-muted-foreground uppercase">
-        {label}{required && <span className="text-red-500 ml-0.5">*</span>}
-      </label>
-      {children}
-      {hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}
-    </div>
-  );
-}
-
-function OptionSelect({ value, onChange, options }) {
-  return (
-    <Select value={value} onValueChange={onChange}>
-      <SelectTrigger className="bg-muted border-border"><SelectValue /></SelectTrigger>
-      <SelectContent>
-        {withCurrent(options, value).map((o) => (
-          <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  );
 }
 
 function TagInput({ values, onChange, placeholder, suggestions = [] }) {
@@ -265,6 +263,7 @@ function TagInput({ values, onChange, placeholder, suggestions = [] }) {
           </Badge>
         ))}
         <input
+          dir="auto"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onKeyDown}
@@ -312,6 +311,10 @@ export default function AssistantBuilder() {
 
   const [knowledgeFiles, setKnowledgeFiles] = useState([]);
   const [catalogItems, setCatalogItems] = useState([]);
+  const [registry, setRegistry] = useState(null);
+  const [registryLoading, setRegistryLoading] = useState(false);
+  // Problems from the last preview or save (422), shown against their fields.
+  const [problems, setProblems] = useState(() => problemsFrom(null));
 
   const payload = useMemo(() => toPayload(form), [form]);
   const payloadKey = useMemo(() => JSON.stringify(payload), [payload]);
@@ -347,6 +350,11 @@ export default function AssistantBuilder() {
     getCatalogItems()
       .then((res) => setCatalogItems(res.data?.items || []))
       .catch(() => setCatalogItems([]));
+    setRegistryLoading(true);
+    getLeadFieldRegistry()
+      .then((res) => setRegistry(res.data))
+      .catch(() => setRegistry(null))
+      .finally(() => setRegistryLoading(false));
   }, [view]);
 
   // Live prompt preview, debounced. Stale responses are dropped by sequence number.
@@ -365,9 +373,13 @@ export default function AssistantBuilder() {
         if (seq === previewSeq.current) {
           setPreview(res.data);
           setPreviewError(null);
+          setProblems(problemsFrom(null));
         }
       } catch (e) {
-        if (seq === previewSeq.current) setPreviewError(errorDetail(e, 'Preview failed'));
+        if (seq === previewSeq.current) {
+          setPreviewError(errorDetail(e, 'Preview failed'));
+          setProblems(problemsFrom(e));
+        }
       } finally {
         if (seq === previewSeq.current) setPreviewLoading(false);
       }
@@ -454,6 +466,7 @@ export default function AssistantBuilder() {
       return res.data;
     } catch (e) {
       toast.error(errorDetail(e, 'Failed to save agent'));
+      setProblems(problemsFrom(e));
       return null;
     } finally {
       setSaving(false);
@@ -614,10 +627,33 @@ export default function AssistantBuilder() {
             <Section icon={User} title="Agent identity" description="Who the agent is and what it should achieve">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Field label="Agent name" required>
-                  <Input value={form.assistant.name} maxLength={255} onChange={(e) => update('assistant.name', e.target.value)} placeholder="e.g. Riya" className="bg-muted border-border" />
+                  <Input dir="auto" value={form.assistant.name} maxLength={255} onChange={(e) => update('assistant.name', e.target.value)} placeholder="e.g. Riya" className="bg-muted border-border" />
                 </Field>
                 <Field label="Language">
-                  <OptionSelect value={form.assistant.language} onChange={(v) => update('assistant.language', v)} options={LANGUAGES} />
+                  <LanguageField value={form.assistant.language} onChange={(v) => update('assistant.language', v)} />
+                </Field>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Field label="Agent's gender" hint="Match the voice. In Hindi the agent's verbs follow it (bol rahi / bol raha hoon).">
+                  <OptionSelect
+                    ariaLabel="Agent's gender"
+                    value={form.assistant.persona_gender || 'unset'}
+                    onChange={(v) => update('assistant.persona_gender', v === 'unset' ? '' : v)}
+                    options={PERSONA_GENDERS}
+                  />
+                </Field>
+                <Field
+                  label="Greeting style"
+                  hint={form.personalized ? 'Formal needs last name (Greet) and a title or gender custom field; otherwise it uses the first name.'
+                    : 'Turn on customer details to greet leads by name.'}
+                >
+                  <OptionSelect
+                    ariaLabel="Greeting style"
+                    value={form.assistant.salutation_style}
+                    onChange={(v) => update('assistant.salutation_style', v)}
+                    options={SALUTATIONS}
+                    disabled={!form.personalized}
+                  />
                 </Field>
               </div>
               <Field label="Call goal">
@@ -635,24 +671,36 @@ export default function AssistantBuilder() {
                   ))}
                 </div>
               </Field>
-              <Field label="Opening line" hint="What the agent says the moment the call connects. Leave empty for a warm greeting built from your business details.">
-                <Textarea
-                  value={form.assistant.first_message}
-                  maxLength={500}
-                  onChange={(e) => update('assistant.first_message', e.target.value)}
-                  placeholder={preview?.first_message || "e.g. Hi there! This is Riya from Apex Motors. Is this a good time to chat?"}
-                  className="bg-muted border-border min-h-[70px] resize-none"
-                />
-                {!form.assistant.first_message.trim() && preview?.first_message && (
-                  <p className="text-[11px] text-muted-foreground mt-1">Will say: “{preview.first_message}”</p>
-                )}
-              </Field>
             </Section>
+
+            <OpenerSection
+              personalized={form.personalized}
+              firstMessage={form.assistant.first_message}
+              onFirstMessage={(v) => update('assistant.first_message', v)}
+              leadFields={form.lead_fields}
+              mentionsReason={form.policy.opener_mentions_reason}
+              onMentionsReason={(v) => update('policy.opener_mentions_reason', v)}
+              defaultReason={form.assistant.default_call_reason}
+              onDefaultReason={(v) => update('assistant.default_call_reason', v)}
+              generated={preview?.first_message}
+              errors={problems}
+              warnings={preview?.first_message_warnings || []}
+            />
+
+            <LeadFieldsSection
+              enabled={form.personalized}
+              onToggle={(v) => update('personalized', v)}
+              leadFields={form.lead_fields}
+              onChange={(v) => update('lead_fields', v)}
+              registry={registry}
+              loading={registryLoading}
+              errors={problems.lead_fields}
+            />
 
             <Section icon={Building2} title="Business" description="Facts the agent can say about your business">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Field label="Company" required>
-                  <Input value={form.business.company} maxLength={255} onChange={(e) => update('business.company', e.target.value)} placeholder="e.g. Apex Motors" className="bg-muted border-border" />
+                  <Input dir="auto" value={form.business.company} maxLength={255} onChange={(e) => update('business.company', e.target.value)} placeholder="e.g. Apex Motors" className="bg-muted border-border" />
                 </Field>
                 <Field label="Industry">
                   <OptionSelect value={form.business.vertical} onChange={(v) => update('business.vertical', v)} options={VERTICALS} />
@@ -662,10 +710,10 @@ export default function AssistantBuilder() {
                 <TagInput values={form.business.locations} onChange={(v) => update('business.locations', v.slice(0, 50))} placeholder="e.g. Solan" />
               </Field>
               <Field label="About the company" hint="One line the agent says about you when it introduces itself.">
-                <Input value={form.business.description} maxLength={300} onChange={(e) => update('business.description', e.target.value)} placeholder="e.g. We've helped over ten thousand families in Himachal find their perfect car" className="bg-muted border-border" />
+                <Input dir="auto" value={form.business.description} maxLength={300} onChange={(e) => update('business.description', e.target.value)} placeholder="e.g. We've helped over ten thousand families in Himachal find their perfect car" className="bg-muted border-border" />
               </Field>
               <Field label="Target customer" required hint="Who you sell to, in a sentence.">
-                <Textarea value={form.target_customer} maxLength={2000} onChange={(e) => update('target_customer', e.target.value)} placeholder="e.g. Families and first-time car buyers in Himachal" className="bg-muted border-border min-h-[80px] resize-none" />
+                <Textarea dir="auto" value={form.target_customer} maxLength={2000} onChange={(e) => update('target_customer', e.target.value)} placeholder="e.g. Families and first-time car buyers in Himachal" className="bg-muted border-border min-h-[80px] resize-none" />
               </Field>
             </Section>
 
@@ -775,6 +823,7 @@ export default function AssistantBuilder() {
                   hint="Offers, launches, USPs. Brought up naturally where they fit. The agent still won't quote prices."
                 >
                   <Textarea
+                    dir="auto"
                     value={form.pitch.talking_points}
                     maxLength={TALKING_POINTS_MAX}
                     onChange={(e) => update('pitch.talking_points', e.target.value)}
@@ -824,6 +873,7 @@ export default function AssistantBuilder() {
 
             <Section icon={StickyNote} title="Business notes" description="Offers, policies and preferences. Lower priority than the guardrails.">
               <Textarea
+                dir="auto"
                 value={form.custom_instructions}
                 maxLength={CUSTOM_INSTRUCTIONS_MAX}
                 onChange={(e) => update('custom_instructions', e.target.value)}
@@ -866,15 +916,16 @@ export default function AssistantBuilder() {
                   {missing.length > 0 ? (
                     <p className="text-sm text-muted-foreground">Fill in {missing.join(', ')} to see the prompt.</p>
                   ) : previewError ? (
-                    <p className="text-sm text-red-600">{previewError}</p>
+                    <div className="space-y-1">
+                      <p className="text-sm text-red-600">Fix these to see the prompt:</p>
+                      <FieldMessages errors={[...problems.first_message, ...problems.default_call_reason,
+                        ...problems.lead_fields, ...problems.general].length
+                        ? [...problems.first_message, ...problems.default_call_reason, ...problems.lead_fields, ...problems.general]
+                        : [previewError]} />
+                    </div>
                   ) : preview ? (
                     <>
-                      {preview.first_message && (
-                        <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
-                          <p className="text-[11px] font-medium text-muted-foreground uppercase mb-1">Opening line</p>
-                          <p className="text-sm">“{preview.first_message}”</p>
-                        </div>
-                      )}
+                      <OpenerPreview preview={preview} />
                       <div>
                         <div className="flex items-center justify-between mb-1.5">
                           <p className="text-[11px] font-medium text-muted-foreground uppercase flex items-center gap-1.5">
@@ -900,6 +951,7 @@ export default function AssistantBuilder() {
                         {editingPrompt ? (
                           <div className="space-y-2">
                             <Textarea
+                              dir="auto"
                               value={promptDraft}
                               onChange={(e) => setPromptDraft(e.target.value)}
                               maxLength={PROMPT_OVERRIDE_MAX}
@@ -918,7 +970,7 @@ export default function AssistantBuilder() {
                           </div>
                         ) : (
                           <>
-                            <pre className="whitespace-pre-wrap text-xs leading-relaxed font-mono bg-muted rounded-lg p-3 border border-border">{preview.prompt}</pre>
+                            <PromptText prompt={preview.prompt} />
                             {preview.prompt_edited && (
                               <p className="text-[11px] text-amber-700 mt-1.5 flex items-start gap-1">
                                 <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" />

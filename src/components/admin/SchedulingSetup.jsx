@@ -10,9 +10,10 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
-  createExecutive, createMeetingType, deactivateExecutive, deactivateMeetingType, listExecutiveCandidates,
+  createExecutive, createMeetingType, deactivateExecutive, deactivateMeetingType, listBrochures, listExecutiveCandidates,
   listExecutives, listMeetingTypes, seedScheduling, updateExecutive, updateMeetingType,
 } from '@/lib/api';
+import { BrochureControl, errorList, isDefaultBrochure } from './brochureControls';
 
 // Mirrors the backend's meeting_types policy (docs/scheduling/README.md).
 const ASSIGNMENT_METHODS = [
@@ -30,23 +31,11 @@ const NO_FALLBACK = 'none';
 const NEW_MEETING_TYPE = {
   key: '', name: '', duration_minutes: 30, buffer_minutes: 15, min_notice_minutes: 120, booking_window_days: 14,
   slots_offered: 3, slot_interval_minutes: 30, assignment_method: 'round_robin', fallback_method: 'least_loaded',
-  cancellation_action: 'offer_rebook', reminder_offsets_minutes: [1440, 60], active: true,
+  cancellation_action: 'offer_rebook', reminder_offsets_minutes: [1440, 60], meeting_link: '', location: '', active: true,
 };
 const WEEKDAY_HOURS = [0, 1, 2, 3, 4].map((weekday) => ({ weekday, start_time: '09:00', end_time: '18:00' }));
 
 const fieldClass = 'mt-1 bg-[hsl(var(--surface-2))] border-border';
-
-const errorList = (e, fallback) => {
-  const detail = e?.response?.data?.detail;
-  if (typeof detail === 'string') return [detail];
-  if (Array.isArray(detail)) {
-    return detail.map((d) => {
-      const field = (d.loc || []).filter((p) => p !== 'body').join('.');
-      return field ? `${field}: ${d.msg}` : d.msg;
-    });
-  }
-  return [fallback];
-};
 
 const methodLabel = (value) => ASSIGNMENT_METHODS.find((m) => m.value === value)?.label || value;
 
@@ -97,7 +86,8 @@ function MeetingTypeDialog({ open, onOpenChange, meetingType, onSaved }) {
   useEffect(() => {
     if (!open) return;
     const start = meetingType || NEW_MEETING_TYPE;
-    setForm({ ...start, fallback_method: start.fallback_method || NO_FALLBACK });
+    setForm({ ...start, fallback_method: start.fallback_method || NO_FALLBACK, meeting_link: start.meeting_link || '',
+      location: start.location || '' });
     setReminders((start.reminder_offsets_minutes || []).join(', '));
     setErrors([]);
   }, [open, meetingType]);
@@ -122,6 +112,8 @@ function MeetingTypeDialog({ open, onOpenChange, meetingType, onSaved }) {
       fallback_method: form.fallback_method === NO_FALLBACK ? null : form.fallback_method,
       cancellation_action: form.cancellation_action,
       reminder_offsets_minutes: offsets,
+      meeting_link: form.meeting_link.trim() || null,
+      location: form.location.trim() || null,
       active: form.active,
     };
     setSaving(true);
@@ -182,6 +174,16 @@ function MeetingTypeDialog({ open, onOpenChange, meetingType, onSaved }) {
                 <SelectTrigger className={fieldClass}><SelectValue /></SelectTrigger>
                 <SelectContent>{CANCELLATION_ACTIONS.map((a) => <SelectItem key={a.value} value={a.value}>{a.label}</SelectItem>)}</SelectContent>
               </Select>
+            </Field>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Field label="Meeting link" hint="Shown as Join Meeting in the lead's confirmation email. https:// only.">
+              <Input value={form.meeting_link} maxLength={500} placeholder="https://meet.google.com/…"
+                onChange={(e) => set({ meeting_link: e.target.value })} className={fieldClass} />
+            </Field>
+            <Field label="Location" hint="Shown in the confirmation email and on the calendar invite.">
+              <Input value={form.location} maxLength={255} placeholder="Online, or the showroom address"
+                onChange={(e) => set({ location: e.target.value })} className={fieldClass} />
             </Field>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -364,6 +366,7 @@ export default function SchedulingSetup({ canEdit }) {
   const [meetingTypes, setMeetingTypes] = useState([]);
   const [executives, setExecutives] = useState([]);
   const [candidates, setCandidates] = useState([]);
+  const [brochures, setBrochures] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(null);
   const [typeDialog, setTypeDialog] = useState({ open: false, item: null });
@@ -371,10 +374,13 @@ export default function SchedulingSetup({ canEdit }) {
 
   const load = useCallback(async () => {
     try {
-      const [types, execs, people] = await Promise.all([listMeetingTypes(true), listExecutives(), listExecutiveCandidates()]);
+      const [types, execs, people, files] = await Promise.all([
+        listMeetingTypes(true), listExecutives(), listExecutiveCandidates(), listBrochures(),
+      ]);
       setMeetingTypes(types.data);
       setExecutives(execs.data);
       setCandidates(people.data);
+      setBrochures(files.data);
     } catch (e) {
       toast.error(errorList(e, 'Failed to load scheduling setup')[0]);
     } finally {
@@ -383,6 +389,14 @@ export default function SchedulingSetup({ canEdit }) {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  const loadBrochures = useCallback(async () => {
+    const res = await listBrochures();
+    setBrochures(res.data);
+  }, []);
+  const brochureOf = (meetingTypeId) => brochures.find((b) => (b.meeting_type_id || null) === meetingTypeId
+    && !isDefaultBrochure(b)) || null;
+  const companyBrochure = brochures.find(isDefaultBrochure) || null;
 
   const typeNames = (ids) => meetingTypes.filter((m) => ids.includes(m.id)).map((m) => m.name).join(', ') || 'No meeting types';
 
@@ -444,6 +458,11 @@ export default function SchedulingSetup({ canEdit }) {
             </p>
           )}
 
+          <p className="text-xs text-muted-foreground">
+            The company brochure and product brochures are on the <a href="/catalog" className="text-primary underline">Catalog</a> page.
+            A meeting type's own brochure is set below.
+          </p>
+
           <section className="space-y-2">
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Meeting types</h3>
@@ -469,6 +488,15 @@ export default function SchedulingSetup({ canEdit }) {
                         {m.duration_minutes} min · {m.buffer_minutes} min buffer · {m.slots_offered} times offered · up to {m.booking_window_days} days ahead
                         · {methodLabel(m.assignment_method)}{m.fallback_method ? `, then ${methodLabel(m.fallback_method).toLowerCase()}` : ''}
                       </p>
+                      {(m.location || m.meeting_link) && (
+                        <p className="text-xs text-muted-foreground truncate">
+                          {[m.location, m.meeting_link].filter(Boolean).join(' · ')}
+                        </p>
+                      )}
+                      <div className="mt-1.5">
+                        <BrochureControl meetingTypeId={m.id} brochure={brochureOf(m.id)} canEdit={canEdit} onChanged={loadBrochures}
+                          fallbackNote={companyBrochure ? `Uses the company brochure (${companyBrochure.filename})` : null} />
+                      </div>
                     </div>
                     {canEdit && (
                       <div className="flex items-center gap-1 shrink-0">
@@ -539,6 +567,7 @@ export default function SchedulingSetup({ canEdit }) {
               </div>
             )}
           </section>
+
         </>
       )}
 

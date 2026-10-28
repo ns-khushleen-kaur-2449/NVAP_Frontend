@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -87,7 +88,17 @@ export default function CallLogsList({ assistantId = '', assistantName = '', onC
   const [searchInput, setSearchInput] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [sourceFilter, setSourceFilter] = useState('');
-  const [selectedCallId, setSelectedCallId] = useState(null);
+  // ?call=<id> (database or Vapi id) opens that call, e.g. from the Inbox.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [selectedCallId, setSelectedCallId] = useState(() => searchParams.get('call'));
+  const closeCall = () => {
+    setSelectedCallId(null);
+    if (searchParams.has('call')) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('call');
+      setSearchParams(next, { replace: true });
+    }
+  };
 
   const { logs, total, totalPages, loading, error, refresh } = useCallLogs({
     page,
@@ -111,7 +122,7 @@ export default function CallLogsList({ assistantId = '', assistantName = '', onC
 
   // If a call is selected, show detail view
   if (selectedCallId) {
-    return <CallLogDetail callId={selectedCallId} onBack={() => setSelectedCallId(null)} />;
+    return <CallLogDetail callId={selectedCallId} onBack={closeCall} />;
   }
 
   return (

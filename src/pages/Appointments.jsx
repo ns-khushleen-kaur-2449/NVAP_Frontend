@@ -4,6 +4,7 @@ import { AlertTriangle, RotateCw } from 'lucide-react';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import {
   appointmentAction, getAppointment, getAppointments, getAssistants, getProspects, getVoiceCampaigns, relinkAppointment,
+  resendAppointmentEmail,
 } from '@/lib/api';
 import { useAuth } from '@/lib/AuthContext';
 import { canViewAssistants } from '@/lib/rbac';
@@ -187,6 +188,68 @@ function ActionDialog({ action, appointment, zone, onClose, onDone }) {
   );
 }
 
+// The lead's booking emails (sent from the executive's mailbox; backend appointments/email_outbox.py).
+const EMAIL_KINDS = {
+  confirmation: { label: 'Confirmation', resend: 'Resend confirmation' },
+  overview: { label: 'Overview with brochure', resend: 'Resend overview' },
+};
+const EMAIL_TONES = { pending: 'info', sending: 'info', sent: 'good', skipped: 'neutral', failed: 'bad' };
+
+function emailNote(email, zone) {
+  if (email.status === 'sent') return `Sent ${formatDateTime(email.sent_at, zone)}`;
+  if (email.status === 'skipped') return email.skip_reason_label || email.skip_reason;
+  if (email.status === 'failed') return `Gave up after ${email.attempts} tries${email.last_error ? ` (${email.last_error})` : ''}`;
+  if (email.attempts) return `Retrying ${formatDateTime(email.send_at, zone)}${email.last_error ? ` (${email.last_error})` : ''}`;
+  return `Due ${formatDateTime(email.send_at, zone)}`;
+}
+
+function ResendDialog({ kind, appointment, onClose, onDone }) {
+  const request = useCallback((reason) => resendAppointmentEmail(appointment.id, { kind, reason }), [appointment, kind]);
+  const { run } = useApiAction(request, { success: 'Email sent again', onSuccess: onDone });
+  return (
+    <ReasonDialog open onOpenChange={(open) => { if (!open) onClose(); }} title={EMAIL_KINDS[kind].resend}
+      changes={[`The ${EMAIL_KINDS[kind].label.toLowerCase()} email goes to ${appointment.attendee?.email} again, from ${appointment.executive?.name || "the executive"}'s mailbox.`]}
+      confirmLabel="Send" onConfirm={async (reason) => Boolean(await run(reason))} />
+  );
+}
+
+function LeadEmails({ detail, zone, onDone }) {
+  const [resending, setResending] = useState(null);
+  const emails = detail.emails || [];
+  if (!emails.length && !detail.can_resend_email) return null;
+  return (
+    <section aria-labelledby="appointment-emails">
+      <h3 id="appointment-emails" className="mb-2 text-sm font-semibold">Emails to the lead</h3>
+      {emails.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No emails were sent for this meeting.</p>
+      ) : (
+        <ul className="divide-y divide-border rounded-lg border border-border">
+          {emails.map((e) => (
+            <li key={e.id} className="flex items-start justify-between gap-3 px-3 py-2 text-sm">
+              <div className="min-w-0">
+                <p className="font-medium">{EMAIL_KINDS[e.kind]?.label || e.kind}{e.trigger === 'manual' ? ' (resent)' : ''}</p>
+                <p className="text-xs text-muted-foreground">{emailNote(e, zone)}</p>
+              </div>
+              <StatusBadge label={e.status_label} tone={EMAIL_TONES[e.status]} />
+            </li>
+          ))}
+        </ul>
+      )}
+      {detail.can_resend_email && (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {Object.keys(EMAIL_KINDS).map((kind) => (
+            <OpsButton key={kind} size="sm" variant="outline" onClick={() => setResending(kind)}>{EMAIL_KINDS[kind].resend}</OpsButton>
+          ))}
+        </div>
+      )}
+      {resending && (
+        <ResendDialog kind={resending} appointment={detail} onClose={() => setResending(null)}
+          onDone={async () => { setResending(null); await onDone(); }} />
+      )}
+    </section>
+  );
+}
+
 function AppointmentDrawer({ id, onClose, onChanged, zone }) {
   const [detail, setDetail] = useState(null);
   const [error, setError] = useState(null);
@@ -243,6 +306,7 @@ function AppointmentDrawer({ id, onClose, onChanged, zone }) {
                 ))}
               </div>
             )}
+            <LeadEmails detail={detail} zone={zone} onDone={done} />
             <section aria-labelledby="appointment-history">
               <h3 id="appointment-history" className="mb-2 text-sm font-semibold">History</h3>
               <EventTimeline items={appointmentEventItems(detail.events, zone)} />

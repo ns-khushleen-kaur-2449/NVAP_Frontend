@@ -25,6 +25,7 @@ import OpsButton from '@/components/ops/OpsButton';
 import { EmptyState, ErrorState, ScrollTable, Skeleton, SkeletonRows } from '@/components/ops/States';
 import { describeConfig, describeRetryDelays, describeWindow, isoToZoned, zonedToIso } from './CampaignSettingsFields';
 import CampaignEditDialog from './CampaignEditDialog';
+import CampaignPitchCard from './CampaignPitchCard';
 import CallLogDetail from './CallLogDetail';
 import { IdChip } from './VoiceCampaigns';
 
@@ -304,7 +305,7 @@ function ContactsTab({ campaign, contacts, user, onChanged, onOpenCall }) {
   );
 }
 
-function Overview({ campaign, contacts, onEditRules, canEditRules }) {
+function Overview({ campaign, contacts, onEditRules, canEditRules, user, onChanged }) {
   const stats = useMemo(() => [...contacts.reduce((m, c) => m.set(c.status_label, (m.get(c.status_label) || 0) + 1), new Map())],
     [contacts]);
   return (
@@ -340,6 +341,7 @@ function Overview({ campaign, contacts, onEditRules, canEditRules }) {
           </dl>
         )}
       </section>
+      <CampaignPitchCard campaign={campaign} user={user} onSaved={onChanged} />
     </div>
   );
 }
@@ -435,6 +437,7 @@ export default function VoiceCampaignDetail() {
           </div>
 
           {tab === 'overview' && <Overview campaign={campaign} contacts={contacts} onEditRules={() => setEditOpen(true)}
+            user={user} onChanged={load}
             canEditRules={manager && !FINAL.includes(campaign.status) && ['processing', 'paused'].includes(campaign.status)} />}
           {tab === 'contacts' && <ContactsTab campaign={campaign} contacts={contacts} user={user} onChanged={load} onOpenCall={setCallId} />}
           {tab === 'activity' && <div className="ops-card p-4"><EventTimeline items={campaignEventItems(events)} /></div>}

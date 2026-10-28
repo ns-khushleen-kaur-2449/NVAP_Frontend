@@ -222,7 +222,8 @@ export const sendApprovedCampaignMessages = (id) => api.post(`/api/campaigns/${i
 export const launchCampaignCalls = (id, assistantId) => api.post(`/api/campaigns/${id}/launch-calls`, { assistant_id: assistantId });
 
 // ── Inbox ──
-export const getInbox = () => api.get('/api/inbox');
+// Every email sent to a lead (brochures, meeting emails), with why it went and the call it came from.
+export const listLeadEmails = (params) => api.get('/api/v1/lead-emails', { params });
 
 // ── AI Agent Actions ──
 export const qualifyLead = (id) => api.post(`/api/agents/lead-qualify/${id}`);
@@ -359,6 +360,21 @@ export const getKnowledgeFiles = () => api.get('/api/v1/assistants/knowledge-bas
 
 // ── Assistant Builder (guided, versioned configs published to Vapi) ──
 export const getCatalogItems = () => api.get('/api/v1/catalog/items');
+// The Catalog page: columns (fixed, matching, the tenant's own fields) and every product; Tenant Admins
+// and Managers edit. A CSV's extra columns become fields; products added here survive a re-import.
+export const getCatalogTable = (params) => api.get('/api/v1/catalog/table', { params });
+export const importCatalog = (file) => {
+  const form = new FormData();
+  form.append('file', file);
+  return api.post('/api/v1/catalog/import', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+};
+export const addCatalogItem = (data) => api.post('/api/v1/catalog/items', data);
+export const updateCatalogItem = (id, data) => api.patch(`/api/v1/catalog/items/${id}`, data);
+export const addCatalogField = (data) => api.post('/api/v1/catalog/fields', data);
+export const renameCatalogField = (key, label) => api.patch(`/api/v1/catalog/fields/${key}`, { label });
+export const deleteCatalogField = (key) => api.delete(`/api/v1/catalog/fields/${key}`);
+// key: a custom field's key, 'price' or 'stock'.
+export const setCatalogVisibility = (key, agentVisible) => api.patch('/api/v1/catalog/visibility', { key, agent_visible: agentVisible });
 export const previewBuilderConfig = (data) => api.post('/api/v1/assistant-builder/preview', data);
 export const listBuilderConfigs = () => api.get('/api/v1/assistant-builder/configs');
 export const getBuilderConfig = (id) => api.get(`/api/v1/assistant-builder/configs/${id}`);
@@ -387,6 +403,8 @@ export const setToolTenants = (id, tenantIds) => api.put(`/api/v1/tools/${id}/te
 export const listAssistantTools = (assistantId) => api.get(`/api/v1/assistants/${assistantId}/tools`);
 // Tools an Assistant Builder agent can be given (granted to the tenant), each with the tool types it needs.
 export const listBuilderTools = () => api.get('/api/v1/assistant-builder/tools');
+// The lead fields an agent may know: standard Prospect fields plus this tenant's custom.<key> fields.
+export const getLeadFieldRegistry = () => api.get('/api/v1/assistant-builder/lead-fields');
 export const attachAssistantTool = (assistantId, toolId) => api.post(`/api/v1/assistants/${assistantId}/tools/${toolId}`);
 export const detachAssistantTool = (assistantId, toolId) => api.delete(`/api/v1/assistants/${assistantId}/tools/${toolId}`);
 
@@ -402,6 +420,41 @@ export const createExecutive = (data) => api.post('/api/v1/scheduling/executives
 export const updateExecutive = (id, data) => api.patch(`/api/v1/scheduling/executives/${id}`, data);
 export const deactivateExecutive = (id) => api.delete(`/api/v1/scheduling/executives/${id}`);
 export const seedScheduling = () => api.post('/api/v1/scheduling/seed');
+// Brochures for the lead's overview email: one per meeting type, plus the company default (meetingTypeId null). PDF only.
+const brochurePath = (meetingTypeId) => (meetingTypeId
+  ? `/api/v1/scheduling/meeting-types/${meetingTypeId}/brochure` : '/api/v1/scheduling/brochures/default');
+export const listBrochures = () => api.get('/api/v1/scheduling/brochures');
+export const uploadBrochure = (meetingTypeId, file) => {
+  const form = new FormData();
+  form.append('file', file);
+  return api.put(brochurePath(meetingTypeId), form, { headers: { 'Content-Type': 'multipart/form-data' } });
+};
+export const deleteBrochure = (meetingTypeId) => api.delete(brochurePath(meetingTypeId));
+export const downloadBrochure = (id) => api.get(`/api/v1/scheduling/brochures/${id}/file`, { responseType: 'blob' });
+// A brochure's description, shown in the brochure email a lead asks for ("ABOUT IT").
+export const describeBrochure = (id, description) => api.patch(`/api/v1/scheduling/brochures/${id}`, { description });
+
+// Products a lead can ask for a brochure about (Settings; Tenant Admin edits). Saving one re-publishes
+// the agents that use send_brochure with the new product list.
+export const listProducts = () => api.get('/api/v1/scheduling/products');
+export const createProduct = (data) => api.post('/api/v1/scheduling/products', data);
+export const updateProduct = (id, data) => api.patch(`/api/v1/scheduling/products/${id}`, data);
+export const uploadProductBrochure = (productId, file) => {
+  const form = new FormData();
+  form.append('file', file);
+  return api.put(`/api/v1/scheduling/products/${productId}/brochure`, form, { headers: { 'Content-Type': 'multipart/form-data' } });
+};
+// A catalog row's brochure: stored on the brochure product with the row's name (created when missing).
+export const uploadCatalogItemBrochure = (itemId, file) => {
+  const form = new FormData();
+  form.append('file', file);
+  return api.put(`/api/v1/catalog/items/${itemId}/brochure`, form, { headers: { 'Content-Type': 'multipart/form-data' } });
+};
+export const deleteProductBrochure = (productId) => api.delete(`/api/v1/scheduling/products/${productId}/brochure`);
+
+// Brochures leads asked for on calls, and the manual overrides (approve | reject | cancel | resend, with a reason).
+export const listBrochureRequests = (params) => api.get('/api/v1/brochure-requests', { params });
+export const decideBrochureRequest = (id, action, reason, extra = {}) => api.post(`/api/v1/brochure-requests/${id}/${action}`, { reason, ...extra });
 
 // Events on one connected calendar (see src/lib/calendar.js for the "my primary calendar" helpers).
 export const listCalendarEvents = (connectionId, params) =>
@@ -488,6 +541,8 @@ export const getAppointments = (params) => api.get('/api/v1/appointments', { par
 export const getAppointment = (id) => api.get(`/api/v1/appointments/${id}`);
 // action: cancel | reschedule {start_at, end_at?} | restore | complete | no-show; body carries reason (+ expected_version)
 export const appointmentAction = (id, action, body) => api.post(`/api/v1/appointments/${id}/${action}`, body);
+// Send the lead's confirmation or overview email again ({ kind, reason }).
+export const resendAppointmentEmail = (id, body) => api.post(`/api/v1/appointments/${id}/resend-email`, body);
 export const relinkAppointment = (id, body) => api.patch(`/api/v1/appointments/${id}/link`, body);
 export const getProspectTimeline = (id) => api.get(`/api/v1/prospects/${id}/timeline`);
 

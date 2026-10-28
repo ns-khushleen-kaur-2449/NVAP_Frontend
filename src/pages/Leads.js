@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import ProspectTimeline from '@/components/ops/ProspectTimeline';
+import EditLeadDialog from '@/components/leads/EditLeadDialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,7 +12,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
-import { Plus, Search, Sparkles, X, ChevronRight, ChevronLeft, Users, Download, UserCog, ArrowRight, HelpCircle } from 'lucide-react';
+import { Plus, Pencil, Search, Sparkles, X, ChevronRight, ChevronLeft, Users, Download, UserCog, ArrowRight, HelpCircle } from 'lucide-react';
 import {
   getProspect, getProspects, createProspect,
   bulkQualifyLeads, bulkAssignLeads, bulkUpdateStage,
@@ -59,6 +60,7 @@ export default function LeadsPage() {
   const [stageFilter, setStageFilter] = useState('all');
   const [selectedLead, setSelectedLead] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [bulkAction, setBulkAction] = useState('');
   const [bulkAssignTo, setBulkAssignTo] = useState('');
@@ -96,6 +98,12 @@ export default function LeadsPage() {
   }, [linkedProspect]);
 
   const selectLead = (lead) => setSelectedLead(lead);
+  // After an edit: the panel and the list row show the saved prospect.
+  const leadSaved = (prospect) => {
+    const row = toLeadRow(prospect);
+    setSelectedLead(row);
+    setLeads((rows) => rows.map((r) => (r.id === row.id ? { ...r, ...row } : r)));
+  };
 
   const handleCreate = async () => {
     try {
@@ -359,9 +367,14 @@ export default function LeadsPage() {
                       {selectedLead.ai_priority && <PriorityBadge priority={selectedLead.ai_priority} />}
                     </div>
                   </div>
-                  <Button variant="ghost" size="icon" aria-label="Close the lead" onClick={() => setSelectedLead(null)}>
-                    <X className="w-4 h-4" />
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button variant="outline" size="sm" onClick={() => setEditing(true)} className="border-border">
+                      <Pencil className="w-3.5 h-3.5 mr-1" /> Edit
+                    </Button>
+                    <Button variant="ghost" size="icon" aria-label="Close the lead" onClick={() => setSelectedLead(null)}>
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
                 </div>
 
                 {/* Score + Quick Info */}
@@ -435,6 +448,8 @@ export default function LeadsPage() {
           </Card>
         )}
       </div>
+
+      {selectedLead && <EditLeadDialog open={editing} onOpenChange={setEditing} lead={selectedLead} onSaved={leadSaved} />}
 
       {/* Bulk Action Dialog */}
       <Dialog open={showBulkDialog} onOpenChange={setShowBulkDialog}>

@@ -33,6 +33,7 @@ import WeightConfigPage from "@/pages/WeightConfig";
 import KnowledgeBasePage from "@/pages/KnowledgeBase";
 // import ChatWidget from "@/components/shared/ChatWidget";
 import ProspectingPage from "@/pages/Prospecting";
+import ConversionWorkspace from "@/pages/ConversionWorkspace";
 import StrategistPage from "@/pages/Strategist";
 import ForbiddenPage from "@/pages/Forbidden";
 import RoleDashboard from "@/pages/RoleDashboard";
@@ -67,7 +68,7 @@ function SmartRoot() {
 
 // Pages that get the persistent left Sidebar instead of the TopBar. Everything
 // else in AppShell keeps the TopBar exactly as before.
-const SIDEBAR_SECTION_PATHS = ['/dashboard', '/prospecting', '/strategist', '/inbox', '/meetings', '/settings',
+const SIDEBAR_SECTION_PATHS = ['/dashboard', '/prospecting', '/conversion', '/strategist', '/inbox', '/meetings', '/settings',
   '/operations', '/leads'];
 
 function AppShell() {
@@ -106,6 +107,7 @@ function AppShell() {
         <ProtectedRoute roles={ADMINS_AND_MANAGERS}><AgentRunsPage /></ProtectedRoute>
       } />
       <Route path="/prospecting" element={<ProspectingPage />} />
+      <Route path="/conversion" element={<ConversionWorkspace />} />
       <Route path="/strategist" element={<StrategistPage />} />
       {/* The SDR Campaigns pages are hidden for now; Voice Campaigns is the campaign page. */}
       <Route path="/campaigns/*" element={<Navigate to="/voice-campaigns" replace />} />

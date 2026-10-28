@@ -2,7 +2,7 @@ import { Link, NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Users, Sparkles,  PhoneCall, Inbox as InboxIcon, CalendarClock,
   Layers, Phone, Mic, BookOpen, UploadCloud, Megaphone, ClipboardCheck,
-  ChevronDown, ChevronLeft, ChevronRight, Settings, LogOut,
+  ChevronDown, ChevronLeft, ChevronRight, Settings, LogOut, GitCompareArrows,
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
@@ -23,6 +23,7 @@ const PENDING_NAV = [
   // Tenant Admins, Managers and (view only) Super Admins (pages/Operations.jsx gates each tab).
   { path: '/operations',  label: 'Operations',   icon: ClipboardCheck },
   { path: '/prospecting', label: 'Prospecting',  icon: Users },
+  { path: '/conversion',  label: 'Conversion',   icon: GitCompareArrows },
   { path: '/strategist',  label: 'AI Strategist', icon: Sparkles },
   { path: '/inbox',       label: 'Inbox',        icon: InboxIcon },
   { path: '/meetings',    label: 'Meetings',     icon: CalendarClock },

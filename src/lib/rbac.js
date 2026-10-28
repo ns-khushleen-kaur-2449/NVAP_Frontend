@@ -163,6 +163,17 @@ export function canViewOperations(actor) {
   return Boolean(actor) && [...OPERATOR_ROLES, 'super_admin'].includes(actor.role);
 }
 
+/** Conversion evidence and stage transitions are approved only by Tenant Admins.
+ * A Super Admin may do the same after selecting an explicit tenant scope. */
+export function canReviewConversions(actor) {
+  return Boolean(actor) && ['tenant_admin', 'super_admin'].includes(actor.role);
+}
+
+/** Managers and Sales Reps can inspect only the prospects the backend exposes to them. */
+export function canViewConversions(actor) {
+  return Boolean(actor) && ['super_admin', 'tenant_admin', 'manager', 'rep'].includes(actor.role);
+}
+
 export function isSuperAdmin(actor) {
   return actor?.role === ROLES.SUPER_ADMIN;
 }

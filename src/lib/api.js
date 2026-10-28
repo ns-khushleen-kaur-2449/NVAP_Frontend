@@ -456,6 +456,21 @@ export const getCallIntentAssessment = (callId) => api.get(`/api/intent-assessme
 export const reviewIntentAssessment = (id, decision, reason, params) =>
   api.post(`/api/intent-assessment/${id}/review`, { decision, reason }, { params });
 
+// Conversion Workspace (tenant scoped; a Super Admin passes tenant_id).
+export const getConversionWorkspace = (params) => api.get('/api/ai/conversion/workspace', { params });
+export const getConversionTimeline = (prospectId, params) =>
+  api.get(`/api/ai/conversion/prospects/${prospectId}/timeline`, { params });
+export const getConversionHistory = (prospectId, params) =>
+  api.get(`/api/ai/conversion/prospects/${prospectId}/history`, { params });
+export const getConversionEvidenceCandidates = (prospectId, params) =>
+  api.get(`/api/ai/conversion/prospects/${prospectId}/evidence-candidates`, { params });
+export const verifyConversionEvidence = (prospectId, data) =>
+  api.post(`/api/ai/conversion/prospects/${prospectId}/verifications`, data);
+export const approveConversionDecision = (decisionId, data) =>
+  api.post(`/api/ai/conversion/decisions/${decisionId}/approve`, data);
+export const rejectConversionDecision = (decisionId, data) =>
+  api.post(`/api/ai/conversion/decisions/${decisionId}/reject`, data);
+
 // ── Tenant rules (Tenant Admin edits with a reason; Manager views; Super Admin passes tenant_id) ──
 export const getContactRules = (params) => api.get('/api/v1/contact-rules', { params });
 export const updateContactRules = (data, params) => api.put('/api/v1/contact-rules', data, { params });

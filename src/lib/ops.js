@@ -74,6 +74,7 @@ export function notificationLink(notification) {
     case 'calendar_connection': return '/settings/calendar';
     case 'call_log': return '/voice_agent?tab=logs';
     case 'assistant_change_request': return `/voice_agent?tab=requests&open=${id}`;
+    case 'conversion': return `/conversion?prospect=${encodeURIComponent(id)}`;
     default: return null;
   }
 }

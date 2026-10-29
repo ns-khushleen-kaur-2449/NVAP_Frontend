@@ -93,6 +93,20 @@ export const createTenantWithAdmin = (data) => api.post('/api/tenants/with-admin
 export const suspendTenant = (id) => api.post(`/api/tenants/${id}/suspend`);
 export const activateTenant = (id) => api.post(`/api/tenants/${id}/activate`);
 export const getRoleDashboard = () => api.get('/api/v1/dashboard');
+
+// ── Agents (the platform catalog; backend app/api/v1/endpoints/agents.py) ──
+// Everyone: the agents their organisation may use. Never includes Vapi details.
+export const listAvailableAgents = () => api.get('/api/v1/agents/available');
+// Super Admin only: author agents, decide who may use them, and register their shared assistants.
+export const listAgents = () => api.get('/api/v1/agents');
+export const createAgent = (data) => api.post('/api/v1/agents', data);
+export const updateAgent = (id, data) => api.patch(`/api/v1/agents/${id}`, data);
+export const getAgentAccess = (id) => api.get(`/api/v1/agents/${id}/access`);
+export const setAgentAccess = (id, accessScope, tenantIds = []) =>
+  api.put(`/api/v1/agents/${id}/access`, { access_scope: accessScope, tenant_ids: tenantIds });
+export const listAgentAssistants = (id) => api.get(`/api/v1/agents/${id}/assistants`);
+export const registerAgentAssistant = (id, data) => api.post(`/api/v1/agents/${id}/assistants`, data);
+export const removeAgentAssistant = (id, rowId) => api.delete(`/api/v1/agents/${id}/assistants/${rowId}`);
 // Users the caller may see (was /api/auth/users, which never existed).
 export const listUsers = () => authApi.get('/api/users', { params: { page_size: 100 } });
 

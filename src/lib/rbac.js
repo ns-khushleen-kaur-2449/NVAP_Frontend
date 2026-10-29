@@ -40,6 +40,8 @@ export const PERMISSIONS = Object.freeze({
   DASHBOARD_TENANT: 'dashboard.tenant',
   DASHBOARD_TEAM: 'dashboard.team',
   DASHBOARD_OWN: 'dashboard.own',
+  AGENTS_VIEW: 'agents.view',
+  AGENTS_MANAGE: 'agents.manage',
 });
 
 /** Who may create whom. Managing (edit, deactivate, reactivate) follows the same map, narrowed by scope. */
@@ -52,10 +54,12 @@ export const CAN_CREATE = Object.freeze({
 
 const P = PERMISSIONS;
 export const ROLE_PERMISSIONS = Object.freeze({
-  super_admin: Object.freeze([P.TENANTS_MANAGE, P.USERS_VIEW, P.USERS_CREATE, P.USERS_MANAGE, P.DASHBOARD_PLATFORM]),
-  tenant_admin: Object.freeze([P.USERS_VIEW, P.USERS_CREATE, P.USERS_MANAGE, P.TEAMS_VIEW, P.TEAMS_MANAGE, P.DASHBOARD_TENANT]),
-  manager: Object.freeze([P.USERS_VIEW, P.USERS_CREATE, P.USERS_MANAGE, P.TEAMS_VIEW, P.DASHBOARD_TEAM]),
-  rep: Object.freeze([P.DASHBOARD_OWN]),
+  super_admin: Object.freeze([P.TENANTS_MANAGE, P.USERS_VIEW, P.USERS_CREATE, P.USERS_MANAGE, P.DASHBOARD_PLATFORM,
+    P.AGENTS_VIEW, P.AGENTS_MANAGE]),
+  tenant_admin: Object.freeze([P.USERS_VIEW, P.USERS_CREATE, P.USERS_MANAGE, P.TEAMS_VIEW, P.TEAMS_MANAGE, P.DASHBOARD_TENANT,
+    P.AGENTS_VIEW]),
+  manager: Object.freeze([P.USERS_VIEW, P.USERS_CREATE, P.USERS_MANAGE, P.TEAMS_VIEW, P.DASHBOARD_TEAM, P.AGENTS_VIEW]),
+  rep: Object.freeze([P.DASHBOARD_OWN, P.AGENTS_VIEW]),
 });
 
 const sameId = (a, b) => a != null && b != null && String(a) === String(b);

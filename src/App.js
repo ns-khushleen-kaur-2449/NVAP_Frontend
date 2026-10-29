@@ -40,6 +40,8 @@ import RoleDashboard from "@/pages/RoleDashboard";
 import UsersAdminPage from "@/pages/admin/Users";
 import TeamsAdminPage from "@/pages/admin/Teams";
 import TenantsAdminPage from "@/pages/admin/Tenants";
+import AgentsAdminPage from "@/pages/admin/AgentsAdmin";
+import AgentsPage from "@/pages/Agents";
 import RequirePermission from "@/components/auth/RequirePermission";
 import { PERMISSIONS } from "@/lib/rbac";
 import AuthGate from "@/components/auth/AuthGate";
@@ -69,7 +71,7 @@ function SmartRoot() {
 // Pages that get the persistent left Sidebar instead of the TopBar. Everything
 // else in AppShell keeps the TopBar exactly as before.
 const SIDEBAR_SECTION_PATHS = ['/dashboard', '/prospecting', '/conversion', '/strategist', '/inbox', '/meetings', '/settings',
-  '/operations', '/leads'];
+  '/operations', '/leads', '/agents'];
 
 function AppShell() {
   const { user, token, loading } = useAuth();
@@ -119,6 +121,8 @@ function AppShell() {
       <Route path="/settings/users" element={<RequirePermission perm={PERMISSIONS.USERS_VIEW}><UsersAdminPage /></RequirePermission>} />
       <Route path="/settings/teams" element={<RequirePermission perm={PERMISSIONS.TEAMS_MANAGE}><TeamsAdminPage /></RequirePermission>} />
       <Route path="/settings/tenants" element={<RequirePermission perm={PERMISSIONS.TENANTS_MANAGE}><TenantsAdminPage /></RequirePermission>} />
+      <Route path="/settings/agents" element={<RequirePermission perm={PERMISSIONS.AGENTS_MANAGE}><AgentsAdminPage /></RequirePermission>} />
+      <Route path="/agents" element={<RequirePermission perm={PERMISSIONS.AGENTS_VIEW}><AgentsPage /></RequirePermission>} />
       <Route path="/settings" element={<SettingsPage />} />
       <Route path="/settings/calendar" element={<SettingsPage />} />
       <Route path="/" element={<Navigate to="/dashboard" replace />} />

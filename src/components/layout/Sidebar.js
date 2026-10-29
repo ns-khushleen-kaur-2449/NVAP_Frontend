@@ -1,7 +1,7 @@
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Users, Sparkles,  PhoneCall, Inbox as InboxIcon, CalendarClock,
-  Layers, Phone, Mic, BookOpen, UploadCloud, Megaphone, ClipboardCheck,
+  Layers, Phone, Mic, BookOpen, UploadCloud, Megaphone, ClipboardCheck, Bot,
   ChevronDown, ChevronLeft, ChevronRight, Settings, LogOut, GitCompareArrows,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -15,6 +15,8 @@ import { canUseAssistantRequests, canViewAssistants } from '@/lib/rbac';
 
 const APP_NAV = [
   { path: '/dashboard',   label: 'Dashboard',    icon: LayoutDashboard },
+  // The agents this organisation may use (the backend filters the list; every role may view it).
+  { path: '/agents',      label: 'Agents',       icon: Bot },
 ];
 
 // Secondary surfaces, listed below Voice Agent.

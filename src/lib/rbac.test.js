@@ -100,6 +100,11 @@ describe('permissions', () => {
     expect(hasPermission(actorOf('rep'), PERMISSIONS.USERS_VIEW)).toBe(false);
   });
 
+  test('every role views agents, only a super admin manages the catalog', () => {
+    expect(ROLES.filter((r) => hasPermission(actorOf(r), PERMISSIONS.AGENTS_VIEW))).toEqual(ROLES);
+    expect(ROLES.filter((r) => hasPermission(actorOf(r), PERMISSIONS.AGENTS_MANAGE))).toEqual(['super_admin']);
+  });
+
   test('server-provided permissions win', () => {
     expect(hasPermission({ role: 'rep', permissions: ['users.view'] }, 'users.view')).toBe(true);
     expect(hasPermission(null, 'users.view')).toBe(false);

@@ -1,4 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { X } from 'lucide-react';
+import { Badge } from '../../ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../ui/select';
 
 // Form primitives shared by the Agent Builder's sections (moved from AssistantBuilder.js).
@@ -59,5 +61,64 @@ export function FieldMessages({ errors = [], warnings = [] }) {
       {errors.map((m) => <li key={`e-${m}`} role="alert" className="text-[11px] text-red-600">{m}</li>)}
       {warnings.map((m) => <li key={`w-${m}`} className="text-[11px] text-amber-700">{m}</li>)}
     </ul>
+  );
+}
+
+/** Chips with a text box: Enter or a comma adds, Backspace on an empty box removes the last. */
+export function TagInput({ values, onChange, placeholder, suggestions = [], ariaLabel, disabled = false }) {
+  const [draft, setDraft] = useState('');
+  const add = (raw) => {
+    const value = raw.trim();
+    if (!value || values.some((v) => v.toLowerCase() === value.toLowerCase())) return;
+    onChange([...values, value]);
+  };
+  const onKeyDown = (e) => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      add(draft);
+      setDraft('');
+    } else if (e.key === 'Backspace' && !draft && values.length) {
+      onChange(values.slice(0, -1));
+    }
+  };
+  const unused = suggestions.filter((s) => !values.some((v) => v.toLowerCase() === s.toLowerCase()));
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-border bg-muted px-2 py-1.5 min-h-[40px]">
+        {values.map((v) => (
+          <Badge key={v} variant="secondary" className="gap-1 pr-1">
+            {v}
+            <button type="button" aria-label={`Remove ${v}`} disabled={disabled} onClick={() => onChange(values.filter((x) => x !== v))}>
+              <X className="w-3 h-3" />
+            </button>
+          </Badge>
+        ))}
+        <input
+          dir="auto"
+          aria-label={ariaLabel}
+          disabled={disabled}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={onKeyDown}
+          onBlur={() => { add(draft); setDraft(''); }}
+          placeholder={values.length ? '' : placeholder}
+          className="flex-1 min-w-[120px] bg-transparent text-sm outline-none py-1"
+        />
+      </div>
+      {unused.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {unused.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => add(s)}
+              className="text-[11px] px-2 py-0.5 rounded-full border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-primary/50"
+            >
+              + {s}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

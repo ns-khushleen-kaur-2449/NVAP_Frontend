@@ -1,18 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { Download, Eye, EyeOff, Loader2, Package, Pencil, Plus, Search, Trash2, Upload } from 'lucide-react';
+import { Download, Eye, EyeOff, LayoutTemplate, ListOrdered, Loader2, Package, Plus, Search, Settings2, Upload } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useAuth } from '@/lib/AuthContext';
 import { canEditCatalog } from '@/lib/rbac';
 import CatalogBrochures, { CompanyBrochure } from '@/components/catalog/CatalogBrochures';
 import { BrochureControl } from '@/components/admin/brochureControls';
+import ChangeNotice from '@/components/catalog/ChangeNotice';
+import ImportReport from '@/components/catalog/ImportReport';
+import FieldMenu from '@/components/catalog/FieldMenu';
+import FieldSettingsDialog from '@/components/catalog/FieldSettingsDialog';
+import MatchingOrderSheet from '@/components/catalog/MatchingOrderSheet';
+import PresetPicker from '@/components/catalog/PresetPicker';
+import CatalogSettingsSheet from '@/components/catalog/CatalogSettingsSheet';
+import { matchingNote } from '@/lib/catalogFields';
 import {
   addCatalogField, addCatalogItem, deleteCatalogField, getCatalogTable, importCatalog, renameCatalogField,
-  setCatalogVisibility, updateCatalogItem, uploadCatalogItemBrochure,
+  setCatalogVisibility, updateCatalogField, updateCatalogItem, uploadCatalogItemBrochure,
 } from '@/lib/api';
 
 // GET /api/v1/catalog/table. Column kinds: fixed (name, category, price), matching (the agent filters on
@@ -107,7 +114,8 @@ function AddProductDialog({ open, onOpenChange, onAdded }) {
   const save = async () => {
     setBusy(true);
     try {
-      await addCatalogItem({ name: form.name.trim(), price: form.price.trim(), category: form.category.trim() || null });
+      // Price is optional: a tenant may not share prices (the agent then never quotes one).
+      await addCatalogItem({ name: form.name.trim(), price: form.price.trim() || null, category: form.category.trim() || null });
       toast.success('Product added');
       onOpenChange(false);
       await onAdded();
@@ -133,13 +141,13 @@ function AddProductDialog({ open, onOpenChange, onAdded }) {
         </DialogHeader>
         <div className="space-y-3">
           {field('name', 'Name', 'e.g. Tata Punch EV')}
-          {field('price', 'Price (₹)', 'e.g. 1100000 or 11 lakh')}
+          {field('price', 'Price (₹, optional)', 'e.g. 1100000 or 11 lakh; leave empty to not share it')}
           {field('category', 'Category', 'e.g. suv')}
           {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>Cancel</Button>
-          <Button onClick={save} disabled={busy || !form.name.trim() || !form.price.trim()}>Add</Button>
+          <Button onClick={save} disabled={busy || !form.name.trim()}>Add</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -156,11 +164,10 @@ function FieldDialog({ open, onOpenChange, field, onSaved }) {
   const save = async () => {
     setBusy(true);
     try {
-      if (field) await renameCatalogField(field.key, label.trim());
-      else await addCatalogField({ label: label.trim(), type });
+      const res = field ? await renameCatalogField(field.key, label.trim()) : await addCatalogField({ label: label.trim(), type });
       toast.success(field ? 'Field renamed' : 'Field added');
       onOpenChange(false);
-      await onSaved();
+      await onSaved(res?.data);
     } catch (e) {
       setError(errorText(e, 'Failed to save the field'));
     } finally {
@@ -230,6 +237,9 @@ export function templateCsv(columns) {
 export default function CatalogPage() {
   const { user } = useAuth();
   const editable = canEditCatalog(user);
+  // A Super Admin has no tenant: the table needs one, the settings let them pick it.
+  const superAdmin = user?.role === 'super_admin';
+  const settingsViewer = superAdmin || editable;
   // Brochures follow the /api/v1/scheduling rules: Tenant Admins upload, Managers view, Sales Reps don't see them.
   const showBrochures = editable;
   const brochureAdmin = user?.role === 'tenant_admin';
@@ -238,13 +248,23 @@ export default function CatalogPage() {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [inactive, setInactive] = useState(false);
+  // Matching columns and stock that none of the tenant's products uses (car columns for a textile shop).
+  const [showUnused, setShowUnused] = useState(false);
   const [report, setReport] = useState(null);
   const [importing, setImporting] = useState(false);
   const [adding, setAdding] = useState(false);
   const [fieldDialog, setFieldDialog] = useState({ open: false, field: null });
+  // What the last field or settings change did (notes, and `agents` from the response).
+  const [change, setChange] = useState(null);
+  const [settingsKey, setSettingsKey] = useState(null);
+  const settingsColumn = data.columns.find((c) => c.key === settingsKey) || null;
+  const [ordering, setOrdering] = useState(false);
+  const [presetsOpen, setPresetsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const fileInput = useRef(null);
 
   const load = useCallback(async () => {
+    if (superAdmin) { setLoading(false); return; }
     try {
       const res = await getCatalogTable(inactive ? { include_inactive: true } : {});
       setData(res?.data || { columns: [], rows: [] });
@@ -253,8 +273,14 @@ export default function CatalogPage() {
     } finally {
       setLoading(false);
     }
-  }, [inactive]);
+  }, [inactive, superAdmin]);
   useEffect(() => { load(); }, [load]);
+
+  const columns = useMemo(() => (showUnused ? data.columns
+    : data.columns.filter((c) => !(c.matching && c.in_use === false))), [data.columns, showUnused]);
+  const unusedCount = data.columns.filter((c) => c.matching && c.in_use === false).length
+    + (data.stock?.in_use === false ? 1 : 0);
+  const showStock = showUnused || data.stock?.in_use !== false;
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -292,12 +318,29 @@ export default function CatalogPage() {
     }
   };
 
+  /** After a change: show its notes and what it means for the agents, then reload the table. */
+  const changed = async (data, notes = []) => {
+    setChange(data?.agents || notes.some(Boolean) ? { notes, agents: data?.agents } : null);
+    await load();
+  };
+
+  const toggleMatching = async (column) => {
+    const on = !column.matchable;
+    try {
+      const res = await updateCatalogField(column.key, { matchable: on });
+      toast.success(on ? `The agent can now filter by ${column.label}` : `The agent no longer filters by ${column.label}`);
+      await changed(res?.data, [on ? matchingNote(column, res?.data || {}) : null]);
+    } catch (e) {
+      toast.error(errorText(e, 'Failed to change matching'));
+    }
+  };
+
   const removeField = async (column) => {
     if (!window.confirm(`Remove the field "${column.label}"? Its values are deleted from every product.`)) return;
     try {
-      await deleteCatalogField(column.key);
+      const res = await deleteCatalogField(column.key);
       toast.success('Field removed');
-      await load();
+      await changed(res?.data);
     } catch (e) {
       toast.error(errorText(e, 'Failed to remove the field'));
     }
@@ -320,7 +363,7 @@ export default function CatalogPage() {
   };
 
   const downloadTemplate = () => {
-    const url = URL.createObjectURL(new Blob([templateCsv(data.columns)], { type: 'text/csv' }));
+    const url = URL.createObjectURL(new Blob([templateCsv(columns)], { type: 'text/csv' }));
     const link = Object.assign(document.createElement('a'), { href: url, download: 'catalog-template.csv' });
     link.click();
     URL.revokeObjectURL(url);
@@ -337,8 +380,23 @@ export default function CatalogPage() {
             The products your voice agents can suggest. Prices, stock and details come only from here.
           </p>
         </div>
+        <div className="flex flex-wrap gap-2">
+          {settingsViewer && (
+            <Button variant="outline" size="sm" onClick={() => setSettingsOpen(true)}>
+              <Settings2 className="w-4 h-4 mr-1" /> Catalog settings
+            </Button>
+          )}
+          {!superAdmin && (
+            <Button variant="outline" size="sm" onClick={() => setOrdering(true)} disabled={!data.columns.length}>
+              <ListOrdered className="w-4 h-4 mr-1" /> Matching order
+            </Button>
+          )}
         {editable && (
-          <div className="flex flex-wrap gap-2">
+          <>
+            {/* Tenant Admins apply a preset; Managers see what one holds. */}
+            <Button variant="outline" size="sm" onClick={() => setPresetsOpen(true)}>
+              <LayoutTemplate className="w-4 h-4 mr-1" /> Presets
+            </Button>
             <input ref={fileInput} type="file" accept=".csv,text/csv" className="hidden" aria-label="Catalog CSV file"
               onChange={(e) => upload(e.target.files?.[0])} />
             <Button variant="outline" size="sm" onClick={downloadTemplate} disabled={!data.columns.length}>
@@ -351,22 +409,14 @@ export default function CatalogPage() {
               <Plus className="w-4 h-4 mr-1" /> Add field
             </Button>
             <Button size="sm" onClick={() => setAdding(true)}><Plus className="w-4 h-4 mr-1" /> Add product</Button>
-          </div>
+          </>
         )}
+        </div>
       </div>
 
-      {report && (
-        <Card className="card-base p-4 text-sm space-y-1" role="status" aria-label="Import result">
-          <p className="font-medium">
-            Import: {report.imported} added, {report.updated} updated, {report.deactivated} no longer in the file
-            (deactivated), {report.rejected} rejected.
-          </p>
-          {(report.errors || []).slice(0, 10).map((e) => (
-            <p key={`${e.row}-${e.reason}`} className="text-xs text-red-600">Row {e.row}: {e.reason}</p>
-          ))}
-          <p className="text-xs text-muted-foreground">Products you added on this page are never deactivated by an import.</p>
-        </Card>
-      )}
+      {report && <ImportReport report={report} onFieldSettings={setSettingsKey} />}
+
+      {change && <ChangeNotice notes={change.notes} agents={change.agents} onDismiss={() => setChange(null)} />}
 
       {showBrochures && <CompanyBrochure canEdit={brochureAdmin} />}
 
@@ -379,10 +429,21 @@ export default function CatalogPage() {
         <label className="flex items-center gap-2 text-sm text-muted-foreground">
           <input type="checkbox" checked={inactive} onChange={(e) => setInactive(e.target.checked)} /> Show inactive
         </label>
+        {unusedCount > 0 && (
+          <label className="flex items-center gap-2 text-sm text-muted-foreground"
+            title="Columns none of your products has a value in, such as the agent's car matching columns">
+            <input type="checkbox" checked={showUnused} onChange={(e) => setShowUnused(e.target.checked)} />
+            Show unused columns ({unusedCount})
+          </label>
+        )}
         <span className="text-xs text-muted-foreground">{rows.length} product{rows.length === 1 ? '' : 's'}</span>
       </div>
 
-      {loading ? (
+      {superAdmin ? (
+        <div className="border border-dashed border-border rounded-lg p-12 text-center text-sm text-muted-foreground">
+          Products belong to a tenant. Open Catalog settings to pick a tenant and view or change its settings.
+        </div>
+      ) : loading ? (
         <div className="flex justify-center py-10"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div>
       ) : data.rows.length === 0 ? (
         <div className="border border-dashed border-border rounded-lg p-12 text-center text-sm text-muted-foreground">
@@ -395,32 +456,28 @@ export default function CatalogPage() {
           {editable ? ' Click the eye on a column to change it.' : ''}
         </p>
       )}
-      {!loading && data.rows.length > 0 && (
+      {!superAdmin && !loading && data.rows.length > 0 && (
         <div className="overflow-x-auto rounded-lg border border-border">
           <table className="min-w-full text-sm" aria-label="Catalog">
             <thead className="bg-muted/60 text-xs text-muted-foreground">
               <tr>
-                {data.columns.map((c) => (
+                {columns.map((c) => (
                   <th key={c.key} scope="col" className="px-3 py-2 text-left font-medium whitespace-nowrap">
                     <span className="inline-flex items-center gap-1">
                       <span className={c.agent_visible ? '' : 'line-through decoration-muted-foreground/60'}>{c.label}</span>
                       <AgentToggle label={c.label} column={c} editable={editable}
                         onToggle={(visible) => setVisibility(c.key, c.label, visible)} />
-                      {c.matching && <Badge variant="outline" className="text-[10px] px-1 py-0" title="The agent matches on this">match</Badge>}
-                      {c.custom && editable && (
-                        <>
-                          <button type="button" aria-label={`Rename ${c.label}`} onClick={() => setFieldDialog({ open: true, field: c })}>
-                            <Pencil className="w-3 h-3" />
-                          </button>
-                          <button type="button" aria-label={`Remove ${c.label}`} onClick={() => removeField(c)}>
-                            <Trash2 className="w-3 h-3 text-red-600" />
-                          </button>
-                        </>
+                      {c.matching && <Badge variant="outline" className="text-[10px] px-1 py-0" title="The agent can filter by this">match</Badge>}
+                      {/* Every field has the menu, matched on or not; name, category and price are fixed. */}
+                      {!CORE_KEYS.includes(c.key) && editable && (
+                        <FieldMenu column={c} onToggleMatching={toggleMatching} onRemove={removeField}
+                          onSettings={(field) => setSettingsKey(field.key)}
+                          onRename={(field) => setFieldDialog({ open: true, field })} />
                       )}
                     </span>
                   </th>
                 ))}
-                <th scope="col" className="px-3 py-2 text-left font-medium">
+                {showStock && <th scope="col" className="px-3 py-2 text-left font-medium">
                   <span className="inline-flex items-center gap-1">
                     <span className={data.stock?.agent_visible === false ? 'line-through decoration-muted-foreground/60' : ''}>Stock</span>
                     {data.stock && (
@@ -428,7 +485,7 @@ export default function CatalogPage() {
                         onToggle={(visible) => setVisibility('stock', 'Stock', visible)} />
                     )}
                   </span>
-                </th>
+                </th>}
                 {showBrochures && <th scope="col" className="px-3 py-2 text-left font-medium">Brochure</th>}
                 <th scope="col" className="px-3 py-2 text-left font-medium">Status</th>
               </tr>
@@ -436,10 +493,12 @@ export default function CatalogPage() {
             <tbody className="divide-y divide-border">
               {rows.map((row) => (
                 <tr key={row.id} data-testid={`catalog-row-${row.id}`} className={row.active ? '' : 'opacity-60'}>
-                  {data.columns.map((c) => <Cell key={c.key} row={row} column={c} editable={editable} onSave={save} />)}
-                  <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">
-                    {row.stock?.length ? row.stock.map((s) => `${s.location}: ${s.units}`).join(', ') : '—'}
-                  </td>
+                  {columns.map((c) => <Cell key={c.key} row={row} column={c} editable={editable} onSave={save} />)}
+                  {showStock && (
+                    <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">
+                      {row.stock?.length ? row.stock.map((s) => `${s.location}: ${s.units}`).join(', ') : '—'}
+                    </td>
+                  )}
                   {showBrochures && (
                     <td className="px-3 py-2 whitespace-nowrap">
                       <BrochureControl productId={row.brochure_product_id} brochure={row.brochure} canEdit={brochureAdmin}
@@ -467,8 +526,17 @@ export default function CatalogPage() {
 
       {showBrochures && <CatalogBrochures key={brochureVersion} canEdit={brochureAdmin} />}
 
+      <FieldSettingsDialog open={Boolean(settingsColumn)} column={settingsColumn} onSaved={changed}
+        onOpenChange={(open) => { if (!open) setSettingsKey(null); }} />
+      <MatchingOrderSheet open={ordering} onOpenChange={setOrdering} columns={data.columns} editable={editable}
+        onSaved={changed} />
+      <PresetPicker open={presetsOpen} onOpenChange={setPresetsOpen} columns={data.columns} canApply={user?.role === 'tenant_admin'}
+        onApplied={changed} />
+      {settingsViewer && (
+        <CatalogSettingsSheet open={settingsOpen} onOpenChange={setSettingsOpen} user={user} onSaved={(res) => changed(res)} />
+      )}
       <AddProductDialog open={adding} onOpenChange={setAdding} onAdded={load} />
-      <FieldDialog open={fieldDialog.open} field={fieldDialog.field} onSaved={load}
+      <FieldDialog open={fieldDialog.open} field={fieldDialog.field} onSaved={(data) => changed(data)}
         onOpenChange={(open) => setFieldDialog((s) => ({ ...s, open }))} />
     </div>
   );

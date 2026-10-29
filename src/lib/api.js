@@ -366,6 +366,16 @@ export const getCatalogItems = () => api.get('/api/v1/catalog/items');
 // The Catalog page: columns (fixed, matching, the tenant's own fields) and every product; Tenant Admins
 // and Managers edit. A CSV's extra columns become fields; products added here survive a re-import.
 export const getCatalogTable = (params) => api.get('/api/v1/catalog/table', { params });
+// The tenant's catalog settings as they apply (currency, words, preset, ...); Tenant Admins and Managers.
+// A Super Admin passes { tenant_id }. Changes need a reason; every mutating catalog response carries
+// `agents` ({ republish_scheduled, delay_seconds, drafts }).
+export const getCatalogSettings = (params) => api.get('/api/v1/catalog/settings', { params });
+export const updateCatalogSettings = (data, params) => api.patch('/api/v1/catalog/settings', data, { params });
+export const getCatalogSettingsHistory = (params) => api.get('/api/v1/catalog/settings/history', { params });
+// How the agent would say an amount ({ amount, currency?, price_format?, tenant_id? }).
+export const getCatalogPricePreview = (params) => api.get('/api/v1/catalog/settings/price-preview', { params });
+export const getCatalogPresets = () => api.get('/api/v1/catalog/presets');
+export const applyCatalogPreset = (name) => api.post(`/api/v1/catalog/presets/${name}/apply`);
 export const importCatalog = (file) => {
   const form = new FormData();
   form.append('file', file);
@@ -375,6 +385,10 @@ export const addCatalogItem = (data) => api.post('/api/v1/catalog/items', data);
 export const updateCatalogItem = (id, data) => api.patch(`/api/v1/catalog/items/${id}`, data);
 export const addCatalogField = (data) => api.post('/api/v1/catalog/fields', data);
 export const renameCatalogField = (key, label) => api.patch(`/api/v1/catalog/fields/${key}`, { label });
+// Any field property (label, labels, type, matchable, match_mode, allowed_values, synonyms, aliases, weight, ask_lead).
+export const updateCatalogField = (key, data) => api.patch(`/api/v1/catalog/fields/${key}`, data);
+// { ask_order: [keys], relax_order: [keys], never_relax: [keys] }, saved together.
+export const orderCatalogFields = (data) => api.put('/api/v1/catalog/fields/order', data);
 export const deleteCatalogField = (key) => api.delete(`/api/v1/catalog/fields/${key}`);
 // key: a custom field's key, 'price' or 'stock'.
 export const setCatalogVisibility = (key, agentVisible) => api.patch('/api/v1/catalog/visibility', { key, agent_visible: agentVisible });

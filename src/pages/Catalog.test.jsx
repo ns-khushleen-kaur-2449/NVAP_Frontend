@@ -9,12 +9,18 @@ jest.mock('sonner', () => ({ toast: { success: jest.fn(), error: jest.fn() } }))
 const columns = [
   { key: 'name', label: 'Name', type: 'text', required: true, agent_visible: true, locked: true },
   { key: 'category', label: 'Category', type: 'text', agent_visible: false, locked: true },
-  { key: 'price', label: 'Price (₹)', type: 'price', required: true, agent_visible: true, locked: false },
+  { key: 'price', label: 'Price (₹)', type: 'price', agent_visible: true, locked: false },
   { key: 'fuel_type', label: 'Fuel type', type: 'enum', matching: true, options: ['petrol', 'diesel', 'electric', 'hybrid'],
     agent_visible: true, locked: true },
   { key: 'mileage', label: 'Mileage', type: 'text', custom: true, agent_visible: false, locked: false },
 ];
 const stock = { agent_visible: true, locked: false };
+
+/** Opens a column's ⋯ field menu (Radix opens it on Enter in jsdom). */
+const openFieldMenu = async (label) => {
+  fireEvent.keyDown(screen.getByRole('button', { name: `Field actions for ${label}` }), { key: 'Enter' });
+  return within(await screen.findByRole('menu'));
+};
 const nexon = { id: 'i-1', name: 'Nexon EV', category: 'suv', price: 1450000, attrs: { fuel_type: 'electric' },
   extra: { mileage: '312 km range' }, active: true, source: 'import', stock: [{ location: 'Solan', units: 3 }] };
 
@@ -77,14 +83,14 @@ it('adds a field with a type', async () => {
 
 it('imports a CSV and shows what happened', async () => {
   api.importCatalog.mockResolvedValue({ data: { imported: 2, updated: 1, deactivated: 0, rejected: 1,
-    errors: [{ row: 4, reason: 'price is required' }] } });
+    errors: [{ row: 4, reason: 'name is required' }] } });
   renderWithAuth(<CatalogPage />, { user: USERS.tenant_admin });
   await screen.findByTestId('catalog-row-i-1');
   const file = new File(['name,price\n'], 'cars.csv', { type: 'text/csv' });
   fireEvent.change(screen.getByLabelText('Catalog CSV file'), { target: { files: [file] } });
   const result = await screen.findByRole('status', { name: 'Import result' });
   expect(result).toHaveTextContent('2 added, 1 updated, 0 no longer in the file (deactivated), 1 rejected.');
-  expect(result).toHaveTextContent('Row 4: price is required');
+  expect(result).toHaveTextContent('Row 4: name is required');
   expect(api.importCatalog).toHaveBeenCalledWith(file);
 });
 
@@ -154,4 +160,77 @@ it('shows a product brochure in its row', async () => {
   const row = within(await screen.findByTestId('catalog-row-i-1'));
   expect(row.getByText('Nexon.pdf')).toBeInTheDocument();
   expect(row.getByRole('button', { name: /Replace/ })).toBeInTheDocument();
+});
+
+it('adds a product without a price and shows a dash for it', async () => {
+  api.addCatalogItem.mockResolvedValue({ data: {} });
+  api.getCatalogTable.mockResolvedValue({ data: { columns, stock, rows: [{ ...nexon, price: null }] } });
+  renderWithAuth(<CatalogPage />, { user: USERS.tenant_admin });
+  const row = within(await screen.findByTestId('catalog-row-i-1'));
+  expect(row.getAllByText('—').length).toBeGreaterThan(0);
+  // The first "Add product" is the catalog's (the brochure section below has its own).
+  fireEvent.click(screen.getAllByRole('button', { name: /Add product/ })[0]);
+  const dialog = within(await screen.findByRole('dialog'));
+  fireEvent.change(dialog.getByLabelText(/^Name/), { target: { value: 'Punch EV' } });
+  fireEvent.click(dialog.getByRole('button', { name: 'Add' }));
+  await waitFor(() => expect(api.addCatalogItem).toHaveBeenCalledWith({ name: 'Punch EV', price: null, category: null }));
+});
+
+it('shows which cells were left empty and how each column was read', async () => {
+  api.importCatalog.mockResolvedValue({ data: { imported: 2, updated: 0, deactivated: 0, rejected: 0, errors: [],
+    warnings: [{ row: 3, column: 'Price', reason: "'on request' is not a price; left empty" }],
+    columns: [{ column: 'Name', used_as: 'name', note: null },
+      { column: 'Units', used_as: 'field', note: 'Not stock (stock needs location and a whole number of units), so it is kept as a field.' }] } });
+  renderWithAuth(<CatalogPage />, { user: USERS.tenant_admin });
+  await screen.findByTestId('catalog-row-i-1');
+  const file = new File(['Name,Units\n'], 'fabric.csv', { type: 'text/csv' });
+  fireEvent.change(screen.getByLabelText('Catalog CSV file'), { target: { files: [file] } });
+  const result = await screen.findByRole('status', { name: 'Import result' });
+  expect(result).toHaveTextContent("Row 3, Price: 'on request' is not a price; left empty");
+  expect(result).toHaveTextContent('How your 2 columns were read');
+  expect(result).toHaveTextContent('Units: Your field · Not stock');
+});
+
+it('hides matching and stock columns no product uses, behind a switch', async () => {
+  const unused = [...columns, { key: 'seats', label: 'Seats', type: 'int', matching: true, in_use: false,
+    agent_visible: true, locked: true }];
+  api.getCatalogTable.mockResolvedValue({ data: { columns: unused, stock: { ...stock, in_use: false }, rows: [nexon] } });
+  renderWithAuth(<CatalogPage />, { user: USERS.tenant_admin });
+  await screen.findByTestId('catalog-row-i-1');
+  expect(screen.queryByRole('columnheader', { name: /Seats/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole('columnheader', { name: /Stock/ })).not.toBeInTheDocument();
+  expect(screen.getByRole('columnheader', { name: /Fuel type/ })).toBeInTheDocument(); // no in_use flag: shown
+  fireEvent.click(screen.getByLabelText(/Show unused columns \(2\)/));
+  expect(screen.getByRole('columnheader', { name: /Seats/ })).toBeInTheDocument();
+  expect(screen.getByRole('columnheader', { name: /Stock/ })).toBeInTheDocument();
+});
+
+it('offers rename and remove on every field, matched on or not, but never on name, category or price', async () => {
+  api.deleteCatalogField.mockResolvedValue({});
+  const confirm = jest.spyOn(window, 'confirm').mockReturnValue(true);
+  renderWithAuth(<CatalogPage />, { user: USERS.tenant_admin });
+  await screen.findByTestId('catalog-row-i-1');
+  for (const label of ['Fuel type', 'Mileage']) {
+    const menu = await openFieldMenu(label);
+    expect(menu.getByRole('menuitem', { name: 'Rename' })).toBeInTheDocument();
+    expect(menu.getByRole('menuitem', { name: 'Remove' })).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument());
+  }
+  for (const label of ['Name', 'Category', 'Price (₹)']) {
+    expect(screen.queryByRole('button', { name: `Field actions for ${label}` })).not.toBeInTheDocument();
+  }
+  fireEvent.click((await openFieldMenu('Fuel type')).getByRole('menuitem', { name: 'Remove' }));
+  await waitFor(() => expect(api.deleteCatalogField).toHaveBeenCalledWith('fuel_type'));
+  confirm.mockRestore();
+});
+
+it('gives a Manager the same field actions and a Sales Rep none', async () => {
+  const { unmount } = renderWithAuth(<CatalogPage />, { user: USERS.manager });
+  await screen.findByTestId('catalog-row-i-1');
+  expect((await openFieldMenu('Fuel type')).getByRole('menuitem', { name: 'Rename' })).toBeInTheDocument();
+  unmount();
+  renderWithAuth(<CatalogPage />, { user: USERS.rep });
+  await screen.findByTestId('catalog-row-i-1');
+  expect(screen.queryByRole('button', { name: /Field actions|Rename|Remove/ })).not.toBeInTheDocument();
 });

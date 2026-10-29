@@ -59,7 +59,12 @@ export function KpiNotes({ kpis }) {
   );
 }
 
-export default function VoiceDashboard({ onNavigate }) {
+/**
+ * `embedded` renders it as a section of the main dashboard page (a sub-heading
+ * instead of the page title); `onNavigate(tabId)` opens another Voice Agent view.
+ */
+export default function VoiceDashboard({ onNavigate, embedded = false }) {
+  const Heading = embedded ? 'h2' : 'h1';
   const [range, setRange] = useState('today');
   const [agentId, setAgentId] = useState('all');
   const [data, setData] = useState(null);
@@ -117,7 +122,7 @@ export default function VoiceDashboard({ onNavigate }) {
       <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--vd-accent-ink)]">Voice agent</p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight">Dashboard</h1>
+          <Heading className="mt-1 text-2xl font-semibold tracking-tight">{embedded ? 'Call activity' : 'Dashboard'}</Heading>
           <p className="mt-1 text-sm text-muted-foreground">
             {new Date().toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
             {data && <> · {calling} of {data.agents.length} agents calling now</>}

@@ -1,16 +1,18 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Loader2, PhoneCall } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { allowedWidgets } from '@/components/dashboard/widgetRegistry';
 import { errorText } from '@/components/admin/userBits';
 import { getRoleDashboard } from '@/lib/api';
 import { useAuth } from '@/lib/AuthContext';
-import { roleLabel } from '@/lib/rbac';
+import VoiceDashboard from '@/components/voice/VoiceDashboard';
+import { canViewAssistants, roleLabel } from '@/lib/rbac';
 
 /** The dashboard for the current role: only the widgets its permissions allow. */
 export default function RoleDashboard() {
   const { user, can } = useAuth();
+  const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
 
@@ -32,6 +34,12 @@ export default function RoleDashboard() {
       {error && <p className="text-sm text-red-600">{error}</p>}
       {!data && !error && <div className="flex justify-center py-10"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div>}
       {data && widgets.map((widget) => <div key={widget.id} data-testid={`widget-${widget.id}`}>{widget.render(data[widget.group])}</div>)}
+      {/* Voice call stats: only for roles that may view assistants (the endpoint answers 403 otherwise). */}
+      {canViewAssistants(user) && (
+        <section aria-label="Voice agent activity" data-testid="voice-dashboard-section">
+          <VoiceDashboard embedded onNavigate={(tab) => navigate(`/voice_agent?tab=${tab}`)} />
+        </section>
+      )}
     </div>
   );
 }

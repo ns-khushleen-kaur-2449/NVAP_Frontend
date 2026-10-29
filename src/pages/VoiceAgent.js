@@ -13,18 +13,16 @@ import CallLogsList from '../components/voice/CallLogsList';
 import LeadCampaignBuilder from '../components/voice/LeadCampaignBuilder';
 import CampaignLaunchDialog from '../components/voice/CampaignLaunchDialog';
 import AssistantBuilder from '../components/voice/AssistantBuilder';
-import VoiceDashboard from '../components/voice/VoiceDashboard';
 import AssistantChangeRequests from '../components/voice/AssistantChangeRequests';
 import { useAuth } from '@/lib/AuthContext';
-import { canCreateCampaigns, canOperate, canUseAssistantRequests, canViewAssistants } from '@/lib/rbac';
+import { canCreateCampaigns, canOperate, canUseAssistantRequests } from '@/lib/rbac';
 import ReasonDialog from '@/components/ops/ReasonDialog';
 import SingleCallBlock from '@/components/ops/SingleCallBlock';
-import { Loader2, PhoneCall, BookOpen, Mic, UploadCloud, Phone, RotateCw, Layers, Info, FileText, Database, Search, Copy, Check, LayoutDashboard, ClipboardCheck } from 'lucide-react';
+import { Loader2, PhoneCall, BookOpen, Mic, UploadCloud, Phone, RotateCw, Layers, Info, FileText, Database, Search, Copy, Check, ClipboardCheck } from 'lucide-react';
 
 /* ─── Sidebar Tab Definitions (Voice Agent's own sub-views; nav itself now
    lives in the shared app Sidebar, components/layout/Sidebar.js) ─────────── */
 const TABS = [
-  { id: 'dashboard',  label: 'Dashboard',              icon: LayoutDashboard },
   { id: 'builder',    label: 'Lead-to-Campaign Builder', icon: Layers },
   { id: 'logs',       label: 'Call Logs',              icon: Phone },
   { id: 'create',     label: 'Create Agent',           icon: Mic },
@@ -69,29 +67,30 @@ export default function VoiceAgentPage() {
   // Active sidebar tab
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
-  // The dashboard follows /api/v1/assistants: roles that cannot view assistants
-  // (Sales Reps) land on the campaign builder instead.
   const { user } = useAuth();
-  const canSeeDashboard = canViewAssistants(user);
   // Hides launch controls only; POST /api/campaigns enforces the same rule.
   const canLaunchCampaigns = canCreateCampaigns(user);
-  const homeTab = canSeeDashboard ? 'dashboard' : 'builder';
+  // The voice dashboard now lives on the main /dashboard page.
+  const homeTab = 'builder';
   const [activeTab, setActiveTab] = useState(() => {
     const view = searchParams.get('view');
     const tab = searchParams.get('tab');
     if (view === 'logs' || tab === 'logs') return 'logs';
-    if (tab && TABS.some(t => t.id === tab) && (tab !== 'dashboard' || canSeeDashboard)) return tab;
+    if (tab && TABS.some(t => t.id === tab)) return tab;
     return homeTab;
   });
   useEffect(() => {
     const view = searchParams.get('view');
     const tab = searchParams.get('tab');
-    if (view === 'logs' || tab === 'logs') {
+    if (tab === 'dashboard') {
+      // Old bookmarks of the retired Voice Agent dashboard tab.
+      navigate('/dashboard', { replace: true });
+    } else if (view === 'logs' || tab === 'logs') {
       setActiveTab('logs');
     } else if (tab && TABS.some(t => t.id === tab)) {
       setActiveTab(tab);
     }
-  }, [searchParams]);
+  }, [searchParams, navigate]);
 
   const fetchKbFiles = useCallback(async () => {
     setLoadingKbFiles(true);
@@ -700,7 +699,6 @@ export default function VoiceAgentPage() {
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'dashboard':  return canSeeDashboard ? <VoiceDashboard onNavigate={setActiveTab} /> : renderBuilder();
       case 'single':     return <>{renderSingleCall()}{renderOverride()}</>;
       case 'csv':        return renderCsvCampaign();
       case 'builder':    return renderBuilder();

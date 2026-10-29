@@ -11,7 +11,7 @@ const NEUTRAL = 'bg-[hsl(var(--surface-3))] text-foreground';
 /** The latest calls in the window, each at its own start time and with its own agent. */
 export default function RecentCalls({ calls, onOpenCallLog }) {
   return (
-    <section className="rounded-xl border border-border bg-card p-5" aria-labelledby="vd-recent-title">
+    <section className="h-full flex flex-col rounded-xl border border-border bg-card p-5" aria-labelledby="vd-recent-title">
       <div className="flex items-center justify-between gap-3 mb-3">
         <h2 id="vd-recent-title" className="text-sm font-semibold text-foreground">Recent calls</h2>
         <button type="button" onClick={onOpenCallLog}
@@ -20,7 +20,7 @@ export default function RecentCalls({ calls, onOpenCallLog }) {
         </button>
       </div>
       {calls.length === 0 ? (
-        <p className="py-8 text-center text-sm text-muted-foreground">No calls in this period yet.</p>
+        <p className="flex-1 flex items-center justify-center py-8 text-center text-sm text-muted-foreground">No calls in this period yet.</p>
       ) : (
         <div className="overflow-x-auto -mx-5 px-5">
           <table className="w-full min-w-[560px] text-sm">

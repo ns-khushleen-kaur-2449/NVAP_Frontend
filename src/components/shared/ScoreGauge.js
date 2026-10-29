@@ -1,7 +1,7 @@
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import { getScoreColor, getScoreLabel } from '@/lib/utils';
 
-export const ScoreGauge = ({ score, size = 120 }) => {
+export const ScoreGauge = ({ score, size = 120, color: colorOverride, label: labelOverride }) => {
   if (score === null || score === undefined) {
     return (
       <div className="flex items-center justify-center" style={{ width: size, height: size }}>
@@ -14,8 +14,8 @@ export const ScoreGauge = ({ score, size = 120 }) => {
     { value: score },
     { value: 100 - score },
   ];
-  const color = getScoreColor(score);
-  const label = getScoreLabel(score);
+  const color = colorOverride || getScoreColor(score);
+  const label = labelOverride || getScoreLabel(score);
 
   return (
     <div className="score-gauge" style={{ width: size, height: size }}>

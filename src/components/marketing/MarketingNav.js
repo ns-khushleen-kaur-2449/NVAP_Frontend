@@ -3,8 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useTheme } from 'next-themes';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  Menu, X, Sun, Moon, ChevronDown, PhoneCall, TrendingUp, LayoutGrid,
-  Search, BookOpen, Calendar, Table2, Sparkles,
+  Menu, X, Sun, Moon, ChevronDown, PhoneCall, LayoutGrid, Calendar, Sparkles,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -12,11 +11,7 @@ const PLATFORM = [
   { icon: LayoutGrid, label: 'What is SmartSDR?', desc: 'The complete platform overview', to: '/#what' },
   { icon: Sparkles, label: 'Features', desc: 'Every tool for AI real-estate sales', to: '/#platform' },
   { icon: PhoneCall, label: 'Voice Agent', desc: 'Autonomous AI that calls & qualifies leads', to: '/#voice-agent' },
-  { icon: TrendingUp, label: 'Executive Analytics', desc: 'Call-quality scoring & executive reporting', to: '/#executive-report' },
-  { icon: Search, label: 'Prospecting', desc: 'Find and engage the right buyers', to: '/#platform' },
-  { icon: BookOpen, label: 'Knowledge base', desc: 'Ground every call in your listings', to: '/#platform' },
   { icon: Calendar, label: 'Scheduling', desc: 'Auto-book site visits & callbacks', to: '/#how' },
-  { icon: Table2, label: 'Sheets sync', desc: 'Push results straight to Google Sheets', to: '/#platform' },
 ];
 
 export default function MarketingNav({ overHero = false }) {

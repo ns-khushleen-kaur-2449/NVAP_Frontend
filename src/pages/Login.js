@@ -9,21 +9,6 @@ import { VoiceCard } from '@/components/marketing/ProductVisuals';
 import HelperCharacter from '@/components/shared/HelperCharacter';
 import ThemeToggle from '@/components/shared/ThemeToggle';
 
-const SSO_PROVIDERS = [
-  {
-    id: 'google', label: 'Google',
-    icon: (
-      <svg className="h-4 w-4" viewBox="0 0 24 24"><path fill="#4285F4" d="M23.52 12.27c0-.85-.08-1.67-.22-2.45H12v4.64h6.47a5.54 5.54 0 0 1-2.4 3.63v3h3.88c2.27-2.09 3.57-5.17 3.57-8.82Z"/><path fill="#34A853" d="M12 24c3.24 0 5.95-1.07 7.94-2.9l-3.88-3.02c-1.08.72-2.46 1.15-4.06 1.15-3.13 0-5.78-2.11-6.72-4.95H1.27v3.11A12 12 0 0 0 12 24Z"/><path fill="#FBBC05" d="M5.28 14.28A7.2 7.2 0 0 1 4.9 12c0-.79.14-1.56.38-2.28V6.61H1.27A12 12 0 0 0 0 12c0 1.94.46 3.77 1.27 5.39l4.01-3.11Z"/><path fill="#EA4335" d="M12 4.77c1.76 0 3.34.6 4.58 1.79l3.44-3.44C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.27 6.61l4.01 3.11C6.22 6.88 8.87 4.77 12 4.77Z"/></svg>
-    ),
-  },
-  {
-    id: 'microsoft', label: 'Microsoft',
-    icon: (
-      <svg className="h-4 w-4" viewBox="0 0 23 23"><path fill="#f35325" d="M1 1h10v10H1z"/><path fill="#81bc06" d="M12 1h10v10H12z"/><path fill="#05a6f0" d="M1 12h10v10H1z"/><path fill="#ffba08" d="M12 12h10v10H12z"/></svg>
-    ),
-  },
-];
-
 export default function LoginPage() {
   const { login, user, token } = useAuth();
   const navigate = useNavigate();
@@ -53,10 +38,6 @@ export default function LoginPage() {
 
   const inputClass = 'w-full h-12 px-4 rounded-xl text-sm outline-none transition-all duration-200 bg-white dark:bg-[var(--stone)] border-[1.5px] border-[var(--line)] text-[var(--ink)] placeholder:text-[var(--mist)]/70 focus:border-[var(--pine)] focus:ring-4 focus:ring-[var(--pine)]/15';
 
-  const handleSSO = (provider) => {
-    toast.info(`${provider} sign-in is coming soon — use email for now.`);
-  };
-
   return (
     <div className="mk min-h-screen flex bg-[var(--paper)]">
       {/* Left Form Panel */}
@@ -82,23 +63,7 @@ export default function LoginPage() {
           </div>
 
           <h1 className="mk-display text-3xl font-semibold mb-2 text-[var(--ink)]">Welcome back</h1>
-          <p className="mb-7 text-sm text-[var(--mist)]">Sign in to your Report Agent and Voice Agent workspace.</p>
-
-          <div className="grid grid-cols-2 gap-3">
-            {SSO_PROVIDERS.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => handleSSO(p.label)}
-                className="flex h-11 items-center justify-center gap-2 rounded-xl border-[1.5px] border-[var(--line)] bg-white text-sm font-semibold text-[var(--ink)] transition-colors hover:border-[var(--pine)]/50 dark:bg-[var(--stone)]"
-              >
-                {p.icon} {p.label}
-              </button>
-            ))}
-          </div>
-          <div className="my-6 flex items-center gap-3 text-xs font-medium uppercase tracking-wider text-[var(--mist)]">
-            <span className="h-px flex-1 bg-[var(--line)]" /> or with email <span className="h-px flex-1 bg-[var(--line)]" />
-          </div>
+          <p className="mb-7 text-sm text-[var(--mist)]">Sign in to your Voice Agent workspace.</p>
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-1.5">

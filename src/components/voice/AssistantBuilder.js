@@ -9,21 +9,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { ScrollArea } from '../ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import AgentToolsPanel from './AgentToolsPanel';
-import { Field, FieldMessages, OptionSelect, Section, withCurrent } from './builder/BuilderFields';
+import { Field, FieldMessages, OptionSelect, Section, TagInput, withCurrent } from './builder/BuilderFields';
 import LanguageField from './builder/LanguageField';
 import LeadFieldsSection from './builder/LeadFieldsSection';
 import OpenerSection from './builder/OpenerSection';
 import { OpenerPreview, PromptText } from './builder/PreviewParts';
 import {
   User, Building2, MessageSquare, ShieldCheck, Book, StickyNote, Cpu,
-  Loader2, Plus, X, ListRestart, Save, Rocket, RotateCcw, AlertTriangle,
+  Loader2, Plus, ListRestart, Save, Rocket, RotateCcw, AlertTriangle,
   CheckCircle2, FileEdit, History, Wrench, Sparkles, Pencil,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   listBuilderConfigs, getBuilderConfig, createBuilderConfig, updateBuilderConfig,
   previewBuilderConfig, publishBuilderConfig, rollbackBuilderConfig, retryBuilderConfig,
-  getKnowledgeFiles, getCatalogItems, getLeadFieldRegistry,
+  getKnowledgeFiles, getCatalogItems, getLeadFieldRegistry, getCatalogTable, getCatalogSettings,
 } from '../../lib/api';
 import { DEFAULT_LEAD_FIELDS, problemsFrom } from '../../lib/builderPersonalization';
 import { formatCurrency } from '../../lib/utils';
@@ -44,8 +44,8 @@ const SALUTATIONS = [
 ];
 const PITCH_MODES = [
   { value: 'none', label: 'Nothing specific', hint: 'Just understand what they need' },
-  { value: 'selected', label: 'Pick from catalog', hint: 'Choose the cars to feature' },
-  { value: 'latest', label: 'Newest arrivals', hint: 'The latest cars in your catalog' },
+  { value: 'selected', label: 'Pick from catalog', hint: 'Choose the products to feature' },
+  { value: 'latest', label: 'Newest arrivals', hint: 'The latest products in your catalog' },
   { value: 'custom', label: 'Write my own', hint: 'Offers or points to talk about' },
 ];
 const PITCH_MAX_ITEMS = 10;
@@ -72,14 +72,43 @@ const LENGTHS = [
   { value: 'balanced', label: 'Balanced' },
   { value: 'detailed', label: 'Detailed' },
 ];
-const VERTICALS = [
-  { value: 'automobile', label: 'Automobile dealership' },
-  { value: 'real_estate', label: 'Real estate' },
-];
-const QUALIFICATION_SUGGESTIONS = {
-  automobile: ['budget', 'type of car', 'fuel type', 'transmission', 'purchase timeline', 'trade-in'],
-  real_estate: ['budget', 'preferred location', 'property type', 'size', 'possession timeline'],
+// The industry is a label: what the agent says and asks comes from the tenant's Catalog (its fields and words,
+// or a preset applied there), never from this value.  Any industry may be typed; these are suggestions.
+export const INDUSTRY_SUGGESTIONS = ['Automobile dealership', 'Real estate', 'Textile', 'Insurance', 'Education',
+  'Healthcare', 'Retail', 'Travel', 'Financial services', 'Software'];
+// LEGACY_INDUSTRY_KEYS: the two industries stored as keys before free-text industries (older versions and the
+// presets use them).  The only place frontend code names them (app/tests/test_no_vertical_branches.py allows it).
+const LEGACY_INDUSTRY_KEYS = { automobile: 'Automobile dealership', real_estate: 'Real estate' };
+export const industryName = (value) => LEGACY_INDUSTRY_KEYS[value] || value || '';
+// What a typed industry is stored as: a case-insensitive match on a legacy key or its name is that key (as
+// picking the suggestion would be); anything else as typed.  Trimmed on save and when the field is left.
+export const industryValue = (text) => {
+  const clean = (text || '').replace(/\s+/g, ' ').trimStart().slice(0, 50);
+  const typed = clean.trim().toLowerCase();
+  const known = Object.entries(LEGACY_INDUSTRY_KEYS).find(([key, name]) => [key, name.toLowerCase()].includes(typed));
+  return known ? known[0] : clean;
 };
+// Always offered after the catalog's own questions.
+export const GENERIC_QUALIFICATION = ['budget', 'timeline', 'decision maker'];
+
+/**
+ * "What to qualify" suggestions: the labels of the tenant's catalog fields the agent asks about (ask_lead, in
+ * ask_order, in the assistant's language else English), then the generic ones, without repeats.
+ */
+export function qualificationSuggestions(columns, language) {
+  const asked = (columns || []).filter((c) => c.ask_lead)
+    .sort((a, b) => (a.ask_order ?? Infinity) - (b.ask_order ?? Infinity) || (a.position ?? 0) - (b.position ?? 0))
+    .map((c) => ((c.labels && c.labels[language]) || c.label || '').trim().toLowerCase())
+    .filter(Boolean);
+  const seen = new Set();
+  return [...asked, ...GENERIC_QUALIFICATION].filter((s) => !seen.has(s) && seen.add(s));
+}
+
+/** The note shown when the typed industry is not the preset the tenant's catalog was set up with. */
+export function presetMismatch(preset, vertical) {
+  if (!preset || !(vertical || '').trim() || industryValue(vertical) === preset) return null;
+  return `Your catalog uses the ${industryName(preset)} setup; the agent's questions and words come from there.`;
+}
 const RULES = [
   { key: 'one_question_at_a_time', label: 'One question at a time', hint: 'Ask a single question per turn and wait.' },
   { key: 'no_unlisted_pricing', label: 'No unlisted pricing', hint: 'Never guess a price or range that no tool returned.' },
@@ -114,7 +143,7 @@ const defaultForm = () => ({
     salutation_style: 'first_name',
     default_call_reason: '',
   },
-  business: { company: '', vertical: 'automobile', locations: [], description: '' },
+  business: { company: '', vertical: '', locations: [], description: '' },
   target_customer: '',
   qualification: [],
   rules: {
@@ -180,7 +209,8 @@ export const toPayload = (form) => ({
     persona_gender: form.assistant.persona_gender || null,
     default_call_reason: form.assistant.default_call_reason.trim() || null,
   },
-  business: { ...form.business, company: form.business.company.trim(), description: form.business.description.trim() || null },
+  business: { ...form.business, company: form.business.company.trim(), vertical: form.business.vertical.trim(),
+    description: form.business.description.trim() || null },
   target_customer: form.target_customer.trim(),
   qualification: form.qualification,
   rules: form.rules,
@@ -214,7 +244,8 @@ const missingFields = (form) => [
   !form.assistant.name.trim() && 'Agent name',
   !form.business.company.trim() && 'Company',
   !form.target_customer.trim() && 'Target customer',
-  form.pitch.mode === 'selected' && !form.pitch.item_ids.length && 'Cars to feature',
+  !form.business.vertical.trim() && 'Industry',
+  form.pitch.mode === 'selected' && !form.pitch.item_ids.length && 'Products to feature',
 ].filter(Boolean);
 
 const errorDetail = (e, fallback) => {
@@ -232,62 +263,6 @@ const errorDetail = (e, fallback) => {
 function StatusBadge({ status }) {
   const style = STATUS_STYLES[status] || STATUS_STYLES.draft;
   return <Badge variant="outline" className={style.className}>{style.label}</Badge>;
-}
-
-function TagInput({ values, onChange, placeholder, suggestions = [] }) {
-  const [draft, setDraft] = useState('');
-  const add = (raw) => {
-    const value = raw.trim();
-    if (!value || values.some((v) => v.toLowerCase() === value.toLowerCase())) return;
-    onChange([...values, value]);
-  };
-  const onKeyDown = (e) => {
-    if (e.key === 'Enter' || e.key === ',') {
-      e.preventDefault();
-      add(draft);
-      setDraft('');
-    } else if (e.key === 'Backspace' && !draft && values.length) {
-      onChange(values.slice(0, -1));
-    }
-  };
-  const unused = suggestions.filter((s) => !values.some((v) => v.toLowerCase() === s.toLowerCase()));
-  return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-border bg-muted px-2 py-1.5 min-h-[40px]">
-        {values.map((v) => (
-          <Badge key={v} variant="secondary" className="gap-1 pr-1">
-            {v}
-            <button type="button" aria-label={`Remove ${v}`} onClick={() => onChange(values.filter((x) => x !== v))}>
-              <X className="w-3 h-3" />
-            </button>
-          </Badge>
-        ))}
-        <input
-          dir="auto"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={onKeyDown}
-          onBlur={() => { add(draft); setDraft(''); }}
-          placeholder={values.length ? '' : placeholder}
-          className="flex-1 min-w-[120px] bg-transparent text-sm outline-none py-1"
-        />
-      </div>
-      {unused.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {unused.map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => add(s)}
-              className="text-[11px] px-2 py-0.5 rounded-full border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-primary/50"
-            >
-              + {s}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
 }
 
 export default function AssistantBuilder() {
@@ -311,6 +286,8 @@ export default function AssistantBuilder() {
 
   const [knowledgeFiles, setKnowledgeFiles] = useState([]);
   const [catalogItems, setCatalogItems] = useState([]);
+  const [catalogColumns, setCatalogColumns] = useState([]);  // the tenant's catalog fields (What to qualify)
+  const [catalogPreset, setCatalogPreset] = useState(null);
   const [registry, setRegistry] = useState(null);
   const [registryLoading, setRegistryLoading] = useState(false);
   // Problems from the last preview or save (422), shown against their fields.
@@ -350,6 +327,12 @@ export default function AssistantBuilder() {
     getCatalogItems()
       .then((res) => setCatalogItems(res.data?.items || []))
       .catch(() => setCatalogItems([]));
+    getCatalogTable({ rows: false })  // the fields only, no products
+      .then((res) => setCatalogColumns(res.data?.columns || []))
+      .catch(() => setCatalogColumns([]));
+    getCatalogSettings()
+      .then((res) => setCatalogPreset(res.data?.preset || null))
+      .catch(() => setCatalogPreset(null));  // Sales Reps may not read settings: no note
     setRegistryLoading(true);
     getLeadFieldRegistry()
       .then((res) => setRegistry(res.data))
@@ -702,8 +685,17 @@ export default function AssistantBuilder() {
                 <Field label="Company" required>
                   <Input dir="auto" value={form.business.company} maxLength={255} onChange={(e) => update('business.company', e.target.value)} placeholder="e.g. Apex Motors" className="bg-muted border-border" />
                 </Field>
-                <Field label="Industry">
-                  <OptionSelect value={form.business.vertical} onChange={(v) => update('business.vertical', v)} options={VERTICALS} />
+                <Field label="Industry" required hint="Any industry. What the agent asks and says comes from your Catalog.">
+                  <Input dir="auto" list="industry-suggestions" value={industryName(form.business.vertical)} maxLength={50}
+                    onChange={(e) => update('business.vertical', industryValue(e.target.value))}
+                    onBlur={(e) => update('business.vertical', industryValue(e.target.value.trim()))}
+                    placeholder="e.g. Textile, Insurance, Real estate" aria-label="Industry" className="bg-muted border-border" />
+                  <datalist id="industry-suggestions">
+                    {INDUSTRY_SUGGESTIONS.map((name) => <option key={name} value={name} />)}
+                  </datalist>
+                  {presetMismatch(catalogPreset, form.business.vertical) && (
+                    <p className="text-xs text-muted-foreground" role="note">{presetMismatch(catalogPreset, form.business.vertical)}</p>
+                  )}
                 </Field>
               </div>
               <Field label="Locations" hint="Press Enter after each branch. The agent offers these when booking a visit.">
@@ -713,7 +705,7 @@ export default function AssistantBuilder() {
                 <Input dir="auto" value={form.business.description} maxLength={300} onChange={(e) => update('business.description', e.target.value)} placeholder="e.g. We've helped over ten thousand families in Himachal find their perfect car" className="bg-muted border-border" />
               </Field>
               <Field label="Target customer" required hint="Who you sell to, in a sentence.">
-                <Textarea dir="auto" value={form.target_customer} maxLength={2000} onChange={(e) => update('target_customer', e.target.value)} placeholder="e.g. Families and first-time car buyers in Himachal" className="bg-muted border-border min-h-[80px] resize-none" />
+                <Textarea dir="auto" value={form.target_customer} maxLength={2000} onChange={(e) => update('target_customer', e.target.value)} placeholder="e.g. Families and first-time buyers in Himachal" className="bg-muted border-border min-h-[80px] resize-none" />
               </Field>
             </Section>
 
@@ -745,7 +737,7 @@ export default function AssistantBuilder() {
                   values={form.qualification}
                   onChange={(v) => update('qualification', v.slice(0, 50))}
                   placeholder="e.g. budget"
-                  suggestions={QUALIFICATION_SUGGESTIONS[form.business.vertical] || []}
+                  suggestions={qualificationSuggestions(catalogColumns, form.assistant.language)}
                 />
               </Field>
             </Section>
@@ -765,10 +757,10 @@ export default function AssistantBuilder() {
                 ))}
               </div>
               {(form.pitch.mode === 'selected' || form.pitch.mode === 'latest') && catalogItems.length === 0 && (
-                <p className="text-sm text-muted-foreground">Your catalog is empty. Import a catalog first to pitch specific cars.</p>
+                <p className="text-sm text-muted-foreground">Your catalog is empty. Import a catalog first to pitch specific products.</p>
               )}
               {form.pitch.mode === 'selected' && catalogItems.length > 0 && (
-                <Field label={`Cars to feature (${form.pitch.item_ids.length}/${PITCH_MAX_ITEMS})`} hint="The agent brings up whichever one fits what the customer needs.">
+                <Field label={`Products to feature (${form.pitch.item_ids.length}/${PITCH_MAX_ITEMS})`} hint="The agent brings up whichever one fits what the customer needs.">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-72 overflow-y-auto pr-1">
                     {catalogItems.map((item) => {
                       const selected = form.pitch.item_ids.includes(item.id);
@@ -795,7 +787,7 @@ export default function AssistantBuilder() {
                 </Field>
               )}
               {form.pitch.mode === 'latest' && catalogItems.length > 0 && (
-                <Field label="How many" hint="Newest first, as of when you save. Save again after adding cars to refresh the list.">
+                <Field label="How many" hint="Newest first, as of when you save. Save again after adding products to refresh the list.">
                   <div className="flex items-center gap-3 flex-wrap">
                     <div className="inline-flex rounded-lg border border-border p-0.5 bg-muted">
                       {[1, 2, 3, 4, 5].map((n) => (
@@ -827,7 +819,7 @@ export default function AssistantBuilder() {
                     value={form.pitch.talking_points}
                     maxLength={TALKING_POINTS_MAX}
                     onChange={(e) => update('pitch.talking_points', e.target.value)}
-                    placeholder="e.g. Free first service this month. Zero processing fee on car loans. New EV charging point at the Mohali showroom."
+                    placeholder="e.g. Free first service this month. Zero processing fee this week. New branch open in Mohali."
                     className="bg-muted border-border min-h-[90px]"
                   />
                 </Field>

@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -663,7 +664,11 @@ export default function LeadCampaignBuilder({ onCampaignStarted, onLeadCreated, 
                     />
                     <div className="grid grid-cols-12 w-full items-center text-sm">
                       <div className="col-span-4 pl-1">
-                        <div className="font-semibold text-foreground truncate">{lead.name || 'Unnamed'}</div>
+                        {/* Opens the lead (details, edit, timeline); Back on /leads returns here. */}
+                        <Link to={`/leads?prospect=${encodeURIComponent(lead.id)}`} title="Open this lead"
+                          className="block font-semibold text-foreground truncate hover:text-primary hover:underline">
+                          {lead.name || 'Unnamed'}
+                        </Link>
                         <div className="text-[10px] text-muted-foreground mt-0.5">Added {timeAgo(lead.created_at)}</div>
                       </div>
                       <div className="col-span-3 text-muted-foreground truncate">

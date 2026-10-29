@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render as rtlRender, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { checkCampaignSchedule, createVoiceCampaign } from '@/lib/api';
 import LeadCampaignBuilder from './LeadCampaignBuilder';
 
@@ -13,6 +14,9 @@ jest.mock('./AiFilterPickerDialog', () => ({
   __esModule: true,
   default: ({ open, onConfirm }) => (open ? <button type="button" onClick={() => onConfirm(['p-1', 'p-2'])}>Pick two</button> : null),
 }));
+
+// Lead names link to /leads, so the builder renders inside a router.
+const render = (ui) => rtlRender(<MemoryRouter>{ui}</MemoryRouter>);
 
 const ASSISTANTS = [{ vapi_assistant_id: 'asst-1', name: 'Riya' }];
 const LEADS = [{ id: 'table-lead', name: 'Table Lead', phone: '+919800000009', created_at: '2026-10-01T00:00:00Z' }];
@@ -59,4 +63,9 @@ it('still launches the leads ticked in the table when nothing is imported', asyn
   fireEvent.click(screen.getByRole('button', { name: /launch campaign for 1 lead/i }));
   const body = await fillAndStart();
   expect(body.prospect_ids).toEqual(['table-lead']);
+});
+
+it('links each lead name to its page on /leads', () => {
+  render(<LeadCampaignBuilder leads={LEADS} assistants={ASSISTANTS} onCampaignStarted={jest.fn()} />);
+  expect(screen.getByRole('link', { name: 'Table Lead' })).toHaveAttribute('href', '/leads?prospect=table-lead');
 });

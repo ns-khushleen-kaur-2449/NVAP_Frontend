@@ -4,7 +4,7 @@ import { PhoneCall, BarChart2, TrendingUp } from 'lucide-react';
 export function VoiceCard({ className = '', style }) {
   return (
     <div
-      className={`w-72 rounded-2xl bg-[var(--deep)] p-5 text-white ring-1 ring-white/10 shadow-2xl ${className}`}
+      className={`w-72 rounded-2xl mk-dark-card bg-[var(--deep)] p-5 text-white ring-1 ring-white/10 shadow-2xl ${className}`}
       style={style}
     >
       <div className="flex items-center justify-between">
@@ -47,7 +47,7 @@ export function AnalyticsCard({ className = '', style }) {
   ];
   return (
     <div
-      className={`w-72 rounded-2xl bg-[var(--deep)] p-5 text-white ring-1 ring-white/10 shadow-2xl ${className}`}
+      className={`w-72 rounded-2xl mk-dark-card bg-[var(--deep)] p-5 text-white ring-1 ring-white/10 shadow-2xl ${className}`}
       style={style}
     >
       <div className="flex items-center justify-between">

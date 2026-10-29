@@ -124,7 +124,7 @@ export default function LoginPage() {
               Every call, qualified and{' '}
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-[var(--pine)] to-[var(--brass)]">scored.</span>
             </h2>
-            <p className="mt-4 text-sm text-white/60">Two agents for real-estate teams, one login.</p>
+            <p className="mt-4 text-sm text-white/60">An AI Voice Agent for real-estate teams.</p>
           </motion.div>
 
           {/* Live product card */}

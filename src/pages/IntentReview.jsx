@@ -4,7 +4,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 import { getIntentAssessment, getIntentReviewQueue, reviewIntentAssessment } from '@/lib/api';
 import { useAuth } from '@/lib/AuthContext';
 import { canOperate, isSuperAdmin } from '@/lib/rbac';
-import { ALREADY_REVIEWED_NOTICE, REVIEW_TONES, humanize } from '@/lib/intent';
+import { ALREADY_REVIEWED_NOTICE, INTENT_TYPES, REVIEW_TONES, SIGNAL_TYPES, humanize } from '@/lib/intent';
 import usePolling from '@/hooks/usePolling';
 import useApiAction, { errorMessage } from '@/hooks/useApiAction';
 import ReasonDialog from '@/components/ops/ReasonDialog';
@@ -34,6 +34,147 @@ export const REVIEW_DECISIONS = {
     changes: ['The assessment is marked rejected and kept in the history.', "The lead's current intent does not change."],
   },
 };
+
+const FIELD = 'w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-normal focus-visible:outline focus-visible:outline-2';
+const sameSet = (a, b) => a.length === b.length && a.every((v) => b.includes(v));
+
+function ChipGroup({ legend, options, value, onChange }) {
+  const toggle = (opt) => onChange(value.includes(opt) ? value.filter((v) => v !== opt) : [...value, opt]);
+  return (
+    <fieldset className="space-y-1.5">
+      <legend className="text-sm font-medium">{legend}</legend>
+      <div className="flex flex-wrap gap-1.5">
+        {options.map((opt) => (
+          <label key={opt}
+            className={`cursor-pointer rounded-full border px-2.5 py-1 text-xs focus-within:outline focus-within:outline-2 ${value.includes(opt) ? 'border-[var(--ops-accent)] bg-[var(--ops-accent)] text-white' : 'border-border text-muted-foreground hover:text-foreground'}`}>
+            <input type="checkbox" className="sr-only" checked={value.includes(opt)} onChange={() => toggle(opt)} />
+            {humanize(opt)}
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
+/** "AI said: X" under a field, with a Reset link once the reviewer has changed it. */
+function AiHint({ label, edited, onReset }) {
+  if (label === null && !edited) return <span />;
+  return (
+    <p className="flex items-center gap-2 text-xs text-muted-foreground">
+      {label !== null && <span>AI said: {label}</span>}
+      {edited && (
+        <button type="button" onClick={onReset} className="text-[var(--ops-accent)] underline underline-offset-2 focus-visible:outline focus-visible:outline-2">
+          Reset
+        </button>
+      )}
+    </p>
+  );
+}
+
+/** Approve with corrections: only the fields the reviewer changed are sent; the rest keep the AI value. */
+function EditApproveDialog({ item, assessment: a, scope, onClose, onDone, onConflict }) {
+  const [primary, setPrimary] = useState(a.primary_intent);
+  const [secondary, setSecondary] = useState(a.secondary_intents || []);
+  const [signals, setSignals] = useState(a.buying_signals || []);
+  const [rationale, setRationale] = useState(a.rationale || '');
+  const [confidence, setConfidence] = useState(String(a.confidence ?? 0));
+  const [optOut, setOptOut] = useState('keep'); // keep | yes | no
+
+  const confNum = Number(confidence);
+  const confValid = confidence !== '' && Number.isInteger(confNum) && confNum >= 0 && confNum <= 100;
+  const edits = {};
+  if (primary !== a.primary_intent) edits.primary_intent = primary;
+  const secondaryClean = secondary.filter((s) => s !== primary);
+  if (!sameSet(secondaryClean, (a.secondary_intents || []).filter((s) => s !== primary))) edits.secondary_intents = secondaryClean;
+  if (!sameSet(signals, a.buying_signals || [])) edits.buying_signals = signals;
+  if (rationale.trim() && rationale.trim() !== (a.rationale || '').trim()) edits.rationale = rationale.trim();
+  if (confValid && confNum !== a.confidence) edits.confidence = confNum;
+  if (optOut !== 'keep') edits.opt_out_confirmed = optOut === 'yes';
+  const changed = Object.keys(edits);
+
+  const list = (arr) => (arr.length ? arr.map(humanize).join(', ') : 'none');
+  const optOutLabel = { yes: 'confirmed', no: 'not an opt-out' }[optOut];
+  const summary = changed.map((k) => {
+    switch (k) {
+      case 'primary_intent': return `Intent: ${humanize(a.primary_intent)} → ${humanize(primary)}`;
+      case 'secondary_intents': return `Secondary intents: ${list(a.secondary_intents || [])} → ${list(secondaryClean)}`;
+      case 'buying_signals': return `Buying signals: ${list(a.buying_signals || [])} → ${list(signals)}`;
+      case 'confidence': return `Confidence: ${a.confidence} → ${confNum}`;
+      case 'opt_out_confirmed': return `Explicit opt-out: ${optOutLabel}`;
+      default: return `Changed: ${humanize(k).toLowerCase()}`;
+    }
+  });
+
+  const request = useCallback(
+    (reason) => reviewIntentAssessment(item.assessment_id, 'approved', reason, scope, edits),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [item.assessment_id, scope, JSON.stringify(edits)],
+  );
+  const { run } = useApiAction(request, { success: 'Assessment edited and approved', onSuccess: onDone, onConflict });
+
+  return (
+    <ReasonDialog open onOpenChange={(open) => { if (!open) onClose(); }}
+      title={`Edit & approve: ${item.prospect_name || 'assessment'}`}
+      description="Correct what the AI got wrong. Fields you leave alone keep the AI's value; customer status and recommended action are recalculated from your changes."
+      changes={changed.length ? summary : ['No fields changed: this approves the AI assessment as it is.']}
+      confirmLabel="Approve with edits" canConfirm={confValid} wide
+      onConfirm={async (reason) => Boolean(await run(reason))}>
+      <div className="space-y-4">
+        <div className="space-y-1.5">
+          <label className="block space-y-1.5 text-sm font-medium">
+            Intent
+            <select value={primary} onChange={(e) => setPrimary(e.target.value)} className={FIELD}>
+              {INTENT_TYPES.map((t) => <option key={t} value={t}>{humanize(t)}</option>)}
+            </select>
+          </label>
+          <AiHint label={humanize(a.primary_intent)} edited={'primary_intent' in edits} onReset={() => setPrimary(a.primary_intent)} />
+        </div>
+        <div className="space-y-1.5">
+          <ChipGroup legend="Also (secondary intents)" options={INTENT_TYPES.filter((t) => t !== primary)} value={secondary} onChange={setSecondary} />
+          <AiHint label={list(a.secondary_intents || [])} edited={'secondary_intents' in edits} onReset={() => setSecondary(a.secondary_intents || [])} />
+        </div>
+        <div className="space-y-1.5">
+          <ChipGroup legend="Buying signals" options={SIGNAL_TYPES} value={signals} onChange={setSignals} />
+          <AiHint label={list(a.buying_signals || [])} edited={'buying_signals' in edits} onReset={() => setSignals(a.buying_signals || [])} />
+        </div>
+        <div className="space-y-1.5">
+          <label className="block space-y-1.5 text-sm font-medium">
+            Why (rationale)
+            <textarea rows={2} maxLength={500} value={rationale} onChange={(e) => setRationale(e.target.value)} className={FIELD} />
+          </label>
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <AiHint label={null} edited={'rationale' in edits} onReset={() => setRationale(a.rationale || '')} />
+            <span aria-hidden="true">{rationale.length}/500</span>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <label className="block space-y-1.5 text-sm font-medium">
+              Confidence (0-100)
+              <input type="number" min={0} max={100} value={confidence} onChange={(e) => setConfidence(e.target.value)}
+                aria-invalid={!confValid} className={FIELD} />
+            </label>
+            <input type="range" min={0} max={100} aria-label="Confidence slider" value={confValid ? confNum : 0}
+              onChange={(e) => setConfidence(e.target.value)} className="w-full accent-[var(--ops-accent)]" />
+            {!confValid && <p role="alert" className="text-xs text-destructive">Enter a whole number from 0 to 100.</p>}
+            <AiHint label={String(a.confidence ?? 0)} edited={'confidence' in edits} onReset={() => setConfidence(String(a.confidence ?? 0))} />
+          </div>
+          <div className="space-y-1.5">
+            <label className="block space-y-1.5 text-sm font-medium">
+              Explicit opt-out
+              <select value={optOut} onChange={(e) => setOptOut(e.target.value)} className={FIELD}>
+                <option value="keep">Keep as detected</option>
+                <option value="yes">Confirm opt-out</option>
+                <option value="no">Not an opt-out</option>
+              </select>
+            </label>
+            <AiHint label={null} edited={optOut !== 'keep'} onReset={() => setOptOut('keep')} />
+          </div>
+        </div>
+      </div>
+    </ReasonDialog>
+  );
+}
 
 function ReviewDialog({ item, decision, scope, onClose, onDone, onConflict }) {
   const meta = REVIEW_DECISIONS[decision];
@@ -201,6 +342,7 @@ export default function IntentReviewPage({ onReviewed }) {
                         {showActions && details[item.assessment_id]?.data && (
                           <div className="flex flex-wrap gap-2">
                             <OpsButton size="sm" variant="primary" onClick={() => setActing({ item, decision: 'approved' })}>Approve</OpsButton>
+                            <OpsButton size="sm" variant="outline" onClick={() => setActing({ item, decision: 'edit', assessment: details[item.assessment_id].data })}>Edit &amp; approve</OpsButton>
                             <OpsButton size="sm" variant="outline" onClick={() => setActing({ item, decision: 'rejected' })}>Reject</OpsButton>
                           </div>
                         )}
@@ -222,7 +364,11 @@ export default function IntentReviewPage({ onReviewed }) {
         </nav>
       )}
 
-      {acting && (
+      {acting?.decision === 'edit' && (
+        <EditApproveDialog item={acting.item} assessment={acting.assessment} scope={scope}
+          onClose={() => setActing(null)} onDone={afterDecision} onConflict={afterConflict} />
+      )}
+      {acting && acting.decision !== 'edit' && (
         <ReviewDialog item={acting.item} decision={acting.decision} scope={scope}
           onClose={() => setActing(null)} onDone={afterDecision} onConflict={afterConflict} />
       )}

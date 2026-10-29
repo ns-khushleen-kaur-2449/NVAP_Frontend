@@ -509,8 +509,10 @@ export const getIntentAssessment = (id, params) => api.get(`/api/intent-assessme
 // One call log's assessment (database or Vapi id): { assessment | null, review | null }; anyone who may see it.
 export const getCallIntentAssessment = (callId) => api.get(`/api/intent-assessment/calls/${callId}`);
 // decision: approved | rejected; 409 when someone already reviewed it.
-export const reviewIntentAssessment = (id, decision, reason, params) =>
-  api.post(`/api/intent-assessment/${id}/review`, { decision, reason }, { params });
+// edits (optional, with approved): the reviewer's corrections - primary_intent, secondary_intents,
+// buying_signals, rationale, confidence (0-100), opt_out_confirmed. Omitted fields keep the AI value.
+export const reviewIntentAssessment = (id, decision, reason, params, edits) =>
+  api.post(`/api/intent-assessment/${id}/review`, { decision, reason, ...edits }, { params });
 
 // Conversion Workspace (tenant scoped; a Super Admin passes tenant_id).
 export const getConversionWorkspace = (params) => api.get('/api/ai/conversion/workspace', { params });

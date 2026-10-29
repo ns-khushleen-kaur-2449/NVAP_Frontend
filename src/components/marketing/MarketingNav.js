@@ -11,7 +11,7 @@ const PLATFORM = [
   { icon: LayoutGrid, label: 'What is SmartSDR?', desc: 'The complete platform overview', to: '/#what' },
   { icon: Sparkles, label: 'Features', desc: 'Every tool for AI real-estate sales', to: '/#platform' },
   { icon: PhoneCall, label: 'Voice Agent', desc: 'Autonomous AI that calls & qualifies leads', to: '/#voice-agent' },
-  { icon: Calendar, label: 'Scheduling', desc: 'Auto-book site visits & callbacks', to: '/#how' },
+  { icon: Calendar, label: 'Scheduling', desc: 'Auto-book site visits & callbacks', to: '/#scheduling' },
 ];
 
 export default function MarketingNav({ overHero = false }) {
@@ -31,7 +31,8 @@ export default function MarketingNav({ overHero = false }) {
   }, [overHero]);
 
   const solid = scrolled || open || !!menu;
-  const textLight = overHero && !solid;
+  // The hero band is only dark in dark mode; in light mode the nav text stays dark.
+  const textLight = overHero && !solid && isDark;
 
   return (
     <header

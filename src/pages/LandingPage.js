@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence, useScroll, useTransform } from 'framer-motion';
 import {
   ArrowRight, Plus, PlayCircle, Zap, ShieldCheck, Target, FileSearch, Quote,
+  Check, Layers, BookOpen, FileSpreadsheet, PhoneCall, Calendar, BellRing, BarChart3, PhoneOff, Gauge,
 } from 'lucide-react';
 import MarketingNav from '@/components/marketing/MarketingNav';
 import MarketingFooter from '@/components/marketing/MarketingFooter';
@@ -28,107 +29,111 @@ const MEETINGS = [
 
 const STATS = [
   { v: '3.4×', k: 'more qualified conversations' },
-  { v: '87%', k: 'average call-quality score' },
+  { v: '100%', k: 'of your lead list called' },
   { v: '24/7', k: 'autonomous lead calling' },
-  { v: '<2min', k: 'from call to scored report' },
+  { v: 'HOT · WARM · COLD', k: 'every lead scored automatically' },
 ];
 
 const STEPS = [
-  { n: '01', t: 'Connect your calls and leads', d: 'Upload call recordings, import a lead list, or sync from your sheet. No new process to learn.' },
-  { n: '02', t: 'Let the agents do the work', d: 'The Voice Agent calls and qualifies leads while Executive Analytics scores and summarises every conversation.' },
-  { n: '03', t: 'Act on what matters', d: 'Managers open a clear executive report; agents follow the leads that are ready to move.' },
+  { n: '01', t: 'Connect your calls and leads', d: 'Import a lead list or sync from your sheet. No new process to learn.' },
+  { n: '02', t: 'Let the Voice Agent do the work', d: 'The Voice Agent calls and qualifies every lead, then scores each one so you know who is ready to move.' },
+  { n: '03', t: 'Act on what matters', d: 'Reps follow the hottest leads first, and managers see which leads are moving.' },
 ];
 
 const PLANS = [
   {
-    name: 'Solo', tagline: 'A sales team of one', highlight: false,
-    priceQ: '$199', priceA: '$2,199', periodQ: '/mo', periodA: '/yr',
-    billingQ: 'billed quarterly, cancel anytime', billingA: 'billed annually, cancel anytime',
+    name: 'Plus', tagline: 'A sales team of one', highlight: false,
+    price: '$249', period: '/mo',
+    billing: 'billed monthly',
     desc: 'For solo agents and small teams who want more qualified conversations without more headcount.',
-    specs: ['200 AI-qualified calls/month', '1 user', '1 Voice Agent seat · 1 phone line'],
-    // features: [
-    //   'Rocket AI, your expert real-estate GTM agent',
-    //   'AI-qualified calls & follow-ups on autopilot',
-    //   'Unlimited AI call scripts & personas',
-    //   'Turnkey phone-line setup',
-    //   'Native 2-way HubSpot CRM sync',
-    //   'Self-serve onboarding, set up in minutes',
-    //   'Email & in-app chat support',
-    // ],
-    footnote: 'Start now without a sales call',
-    cta: 'Explore',
+    specs: [
+      '150 AI-qualified calls/month',
+      '450 voice minutes · 750 LLM steps',
+      '1 tenant',
+      '1 LangSmith / LLMOps seat',
+      'Best-effort SLA',
+      'Email support',
+      'Overage: $1.75/call',
+    ],
+    cta: 'Choose Plus',
   },
   {
-    name: 'Explore', tagline: 'Most popular', highlight: true,
-    priceQ: '$799', priceA: '$8,399', periodQ: '/mo', periodA: '/yr',
-    billingQ: 'billed quarterly, payment in advance', billingA: 'billed annually, payment in advance',
+    name: 'Pro', tagline: 'Most popular', highlight: true,
+    price: '$1,499', period: '/mo',
+    billing: 'billed monthly',
     desc: 'For proving voice outreach can fill your pipeline.',
-    specs: ['800 AI-qualified calls/month', 'Unlimited users', '2 Voice Agent seats · 6 phone lines'],
-    // features: [
-    //   'Everything in Solo, plus:',
-    //   'AI research & monitoring of your HubSpot data',
-    //   'Lead signals: property views, portal activity & keyword tracking',
-    //   'Works with your existing lead lists',
-    //   'Dedicated onboarding specialist',
-    //   '24/7 Slack support',
-    //   'Per-campaign managed service available for +$149/campaign',
-    //   'Monthly check-in & webinar',
-    // ],
-    cta: 'Choose Explore',
+    specs: [
+      '1,000 AI-qualified calls/month',
+      '3,000 voice minutes · 5,000 LLM steps',
+      'Up to 10 tenants',
+      '3 LangSmith / LLMOps seats',
+      'CRM & calendar integration',
+      '99.5% uptime SLA',
+      'Priority email + chat support',
+      'Overage: $1.35/call',
+    ],
+    cta: 'Choose Pro',
   },
   {
-    name: 'Scale', tagline: 'Get results faster', highlight: false,
-    priceQ: '$1,999', priceA: '$23,999', periodQ: '/mo', periodA: '/yr',
-    billingQ: 'billed quarterly, payment in advance', billingA: 'billed annually, payment in advance',
+    name: 'Pro+', tagline: 'Get results faster', highlight: false,
+    price: '$3,999', period: '/mo',
+    billing: 'billed monthly',
     desc: 'For making voice outreach a channel you can count on.',
-    specs: ['2,500 AI-qualified calls/month', 'Unlimited users', '6 Voice Agent seats · 18 phone lines'],
-    // features: [
-    //   'Everything in Explore, plus:',
-    //   'Native two-way Salesforce CRM sync',
-    //   'AI research & monitoring of HubSpot & Salesforce data',
-    //   'AI voicemail drops & personalized call scripts',
-    //   'Website visitor tracking, enrichment & outreach',
-    //   'Dedicated onboarding specialist',
-    //   'Fully managed service available for +$2,500/mo',
-    //   'Priority support with bi-weekly performance review calls',
-    // ],
-    cta: 'Choose Scale',
+    specs: [
+      '3,500 AI-qualified calls/month',
+      '10,500 voice minutes · 17,500 LLM steps',
+      'Unlimited tenants (fair use)',
+      '5 LangSmith / LLMOps seats, pooled',
+      'CRM & calendar integration',
+      'Dedicated customer success manager',
+      '99.9% uptime SLA, custom',
+      'Dedicated Slack channel support',
+      'Overage: $1.05/call',
+    ],
+    cta: 'Choose Pro+',
   },
 ];
-
-// The annual toggle used to advertise a hard-coded "save 20%". Derive it from
-// PLANS instead so the badge cannot quietly contradict the prices above — the
-// numbers are parsed back out of the display strings rather than duplicated,
-// so there is one place to edit a price.
-const _priceNum = (s) => Number(String(s).replace(/[^0-9.]/g, ''));
-
-const MAX_ANNUAL_SAVING_PCT = Math.max(
-  0,
-  ...PLANS.map((p) => {
-    const yearAtQuarterlyRate = _priceNum(p.priceQ) * 12;
-    if (!yearAtQuarterlyRate) return 0;
-    return Math.round(((yearAtQuarterlyRate - _priceNum(p.priceA)) / yearAtQuarterlyRate) * 100);
-  })
-);
 
 const WHAT = [
   { n: '01', icon: Target, t: 'Call every lead, not just the easy ones', d: 'The Voice Agent works your entire list autonomously — no lead goes cold because a rep ran out of hours.' },
-  { n: '02', icon: FileSearch, t: 'Score every call on real criteria', d: 'Rapport, discovery, objection handling and more — each conversation is graded against a rubric you control.' },
-  { n: '03', icon: Zap, t: 'Answers in minutes, not weeks', d: 'From a finished call to a scored, summarised report in under two minutes. Act while the lead is still warm.' },
+  { n: '02', icon: FileSearch, t: 'Know which leads are ready', d: 'Every lead gets a score from fit and engagement, labelled HOT, WARM or COLD, with the reasons behind it.' },
+  { n: '03', icon: Zap, t: 'Follow up while the lead is warm', d: 'Scores update as soon as a lead engages, so your team acts on the right lead at the right time.' },
+];
+
+const FEATURES = [
+  { icon: Layers, t: 'Campaign builder', d: 'Pick a lead list, an agent and a schedule, then launch a calling campaign in a few clicks.' },
+  { icon: Gauge, t: 'Lead scoring', d: 'Every call is scored HOT, WARM or COLD from fit and engagement, with the reasons shown.' },
+  { icon: BookOpen, t: 'Knowledge base', d: 'Give the agent your projects, pricing and FAQs so it answers the way your team would.' },
+  { icon: FileSpreadsheet, t: 'Lead imports & sync', d: 'Upload a list or sync from Google Sheets. No new process to learn.' },
+  { icon: BarChart3, t: 'Live dashboard', d: 'Dialed, connected, interested and hot leads, per agent, refreshed as calls happen.' },
+  { icon: PhoneOff, t: 'Do-not-call safety', d: 'Numbers on your do-not-call list are never dialed, so campaigns stay compliant.' },
+];
+
+const VOICE_POINTS = [
+  'Calls your whole lead list autonomously, around the clock',
+  'Asks your qualifying questions and understands the answers',
+  'Marks each lead Interested, Callback or Not interested',
+  'Hands hot leads to your reps while they are still warm',
+];
+
+const SCHEDULING_POINTS = [
+  { icon: Calendar, t: 'Site visits booked on the call', d: 'When a lead says yes, the agent proposes a time and books it against your calendar.' },
+  { icon: BellRing, t: 'Callbacks that do not slip', d: 'Leads who ask for a later call, or a person, become tasks with a due time for your reps.' },
+  { icon: PhoneCall, t: 'Smart retries', d: 'No answer or busy? The agent retries later in the day, when the lead is likelier to pick up.' },
 ];
 
 const TESTIMONIALS = [
-  { q: 'Every call finally gets scored the same way. Coaching my team went from guesswork to a 10-minute review.', n: 'Sales Manager', r: 'Residential brokerage' },
+  { q: 'Every lead finally gets scored the same way. Deciding who to call first went from guesswork to a glance.', n: 'Sales Manager', r: 'Residential brokerage' },
   { q: 'The Voice Agent worked a stale lead list overnight and booked site visits we would have written off.', n: 'Team Lead', r: ' developer' },
-  { q: 'Managers used to argue about which calls were good. Now the report just tells us — with the transcript to back it up.', n: 'Operations Head', r: 'Property advisory' },
+  { q: 'Managers used to argue about which leads were worth chasing. Now the score just tells us, with the reasons behind it.', n: 'Operations Head', r: 'Property advisory' },
 ];
 
 const FAQS = [
-  { q: 'What exactly are the two agents?', a: 'Voice Agent autonomously calls and qualifies your leads. Executive Analytics scores and summarises every call so managers get a clear executive view. Both come in every plan.' },
+  { q: 'What exactly is the Voice Agent?', a: 'The Voice Agent autonomously calls and qualifies your leads, books appointments, and scores each lead so your team knows who to follow up with first.' },
   { q: 'Do I need to change my current tools?', a: 'No. Import a lead list, drop in recordings, or sync from Google Sheets. SmartSDR fits around the way your brokerage already works.' },
-  { q: 'How fast is a call scored?', a: 'Under two minutes from the end of a call to a fully scored, summarised report — rapport, discovery, objection handling and more.' },
+  { q: 'How is a lead scored?', a: 'Each lead gets a score out of 100 from how well they fit your ideal customer and how engaged they are, labelled HOT, WARM or COLD. You can see the reasons behind every score.' },
   { q: 'Is my data secure?', a: 'Enterprise plans include SSO and role-based access. Your call data stays yours and is never used to train shared models.' },
-  { q: 'Can I tune how calls are scored?', a: 'Yes. The scoring rubric is fully configurable so it reflects how your brokerage actually sells.' },
+  { q: 'Can I tune how the agent talks to leads?', a: 'Yes. You set the script, the questions it asks and the knowledge it draws on, so it reflects how your brokerage actually sells.' },
 ];
 
 /* ── Reveal: rises in on scroll down, settles back on scroll up ── */
@@ -151,7 +156,7 @@ const HEADLINE = ['The', 'Future', 'of', 'Sales', 'starts', 'with', 'Smart', 'Co
 /* ── Reusable gradient CTA card (used near the top) ── */
 function CtaCard({ navigate }) {
   return (
-    <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-[var(--pine)] via-[var(--pine-2)] to-[var(--deep)] px-8 py-14 text-center text-white md:px-16 md:py-20">
+    <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-[var(--pine)] via-[var(--pine-2)] to-[var(--pine-2)] dark:to-[var(--deep)] px-8 py-14 text-center text-white md:px-16 md:py-20">
       <div className="pointer-events-none absolute -left-20 -top-20 h-72 w-72 rounded-full opacity-40 mk-aurora"
         style={{ background: 'radial-gradient(circle, rgba(255,255,255,0.4), transparent 60%)' }} />
       <div className="pointer-events-none absolute -right-16 -bottom-10 h-64 w-64 rounded-full opacity-30 mk-aurora"
@@ -160,7 +165,7 @@ function CtaCard({ navigate }) {
         See it run on your own calls
       </h2>
       <p className="relative mx-auto mt-5 max-w-xl text-[1.05rem] text-white/85">
-        Sign in to launch a Voice Agent campaign or drop in a recording and get a scored report back.
+        Sign in to launch a Voice Agent campaign and see your leads scored.
       </p>
       <div className="relative mt-9 flex flex-wrap justify-center gap-4">
         <button onClick={() => navigate('/login')}
@@ -183,7 +188,7 @@ function HowItWorks() {
   const fill = useTransform(scrollYProgress, [0, 1], ['0%', '100%']);
 
   return (
-    <section id="how" className="scroll-mt-24 relative overflow-hidden bg-[var(--deep)] px-6 py-28 text-white md:px-10 md:py-36">
+    <section id="how" className="mk-band scroll-mt-24 relative overflow-hidden bg-[var(--deep)] px-6 py-28 text-white md:px-10 md:py-36">
       <div className="pointer-events-none absolute -right-40 top-10 h-[30rem] w-[30rem] rounded-full opacity-40 mk-aurora"
         style={{ background: 'radial-gradient(circle, rgba(248,114,23,0.5), transparent 60%)' }} />
       <div className="relative mx-auto max-w-[1200px]">
@@ -239,7 +244,6 @@ export default function LandingPage() {
   const navigate = useNavigate();
   const { hash } = useLocation();
   const [openFaq, setOpenFaq] = useState(0);
-  const [billing, setBilling] = useState('annually');
   const firstRender = useRef(true);
 
   // On reload the URL may still carry a hash — clear it and stay at the top.
@@ -273,7 +277,7 @@ export default function LandingPage() {
       <MarketingNav overHero />
 
       {/* ── Hero ─────────────────────────────────────────────── */}
-      <section className="relative overflow-hidden bg-[var(--deep)] pt-36 pb-20 md:pt-44 md:pb-24">
+      <section className="mk-band relative overflow-hidden bg-[var(--deep)] pt-36 pb-20 md:pt-44 md:pb-24">
         <HeroWave3D className="pointer-events-none absolute inset-x-0 bottom-0 top-1/3 z-0 opacity-60" />
 
         <motion.div className="pointer-events-none absolute inset-0" style={{ y: blobY }}>
@@ -306,7 +310,7 @@ export default function LandingPage() {
             <motion.p initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.5 }}
               className="mt-7 max-w-xl text-[1.06rem] leading-relaxed text-white/65">
               SmartSDR's autonomous <strong className="font-semibold text-white">Voice Agent</strong> calls and
-              qualifies your leads — so agents chase the right leads and managers see what's working.
+              qualifies your leads — so your team chases the right leads and sees what's working.
             </motion.p>
 
             <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.65 }}
@@ -408,8 +412,92 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ── Features (nav: Platform → Features) ──────────────── */}
+      <section id="platform" className="scroll-mt-24 bg-[var(--paper)] px-6 pb-24 md:px-10 md:pb-32">
+        <div className="mx-auto max-w-[1200px]">
+          <Reveal className="mb-14 max-w-2xl">
+            <p className="mk-eyebrow text-[var(--pine)]">Features</p>
+            <h2 className="mk-display mt-4 text-[2.4rem] font-semibold leading-[1.05] text-[var(--ink)] md:text-[3.4rem]">
+              Everything you need to run voice outreach
+            </h2>
+          </Reveal>
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {FEATURES.map((f, i) => (
+              <Reveal key={f.t} delay={(i % 3) * 0.1}>
+                <div className="h-full rounded-2xl border border-[var(--line)] bg-white p-7 transition-all duration-300 hover:-translate-y-1 hover:border-[var(--pine)]/40 dark:bg-[var(--stone)]">
+                  <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--pine)] to-[var(--brass)] text-white shadow-md">
+                    <f.icon className="h-5 w-5" />
+                  </span>
+                  <h3 className="mk-display mt-5 text-[1.25rem] font-semibold leading-tight text-[var(--ink)]">{f.t}</h3>
+                  <p className="mt-2 text-[0.95rem] leading-relaxed text-[var(--mist)]">{f.d}</p>
+                </div>
+              </Reveal>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Voice Agent (nav: Platform → Voice Agent) ────────── */}
+      <section id="voice-agent" className="mk-band scroll-mt-24 relative overflow-hidden bg-[var(--deep)] px-6 py-24 text-white md:px-10 md:py-32">
+        <div className="pointer-events-none absolute -left-40 top-10 h-[28rem] w-[28rem] rounded-full opacity-40 mk-aurora"
+          style={{ background: 'radial-gradient(circle, rgba(248,114,23,0.45), transparent 60%)' }} />
+        <div className="relative mx-auto grid max-w-[1200px] items-center gap-14 md:grid-cols-2">
+          <Reveal>
+            <p className="mk-eyebrow text-[var(--brass-2)]">Voice Agent</p>
+            <h2 className="mk-display mt-4 text-[2.4rem] font-semibold leading-[1.05] md:text-[3.2rem]">
+              An SDR that never stops dialing
+            </h2>
+            <p className="mt-5 max-w-lg text-[1.02rem] leading-relaxed text-white/65">
+              The Voice Agent calls and qualifies your leads, so your reps spend their time on conversations that are ready to close.
+            </p>
+            <ul className="mt-7 space-y-3">
+              {VOICE_POINTS.map((p) => (
+                <li key={p} className="flex items-start gap-3 text-[0.98rem] text-white/85">
+                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--pine)]">
+                    <Check className="h-3 w-3 text-white" />
+                  </span>
+                  {p}
+                </li>
+              ))}
+            </ul>
+            <button onClick={() => navigate('/login')}
+              className="group mt-9 inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-[var(--pine)] to-[var(--brass)] px-7 py-3.5 text-[0.95rem] font-semibold text-white transition-all hover:-translate-y-0.5">
+              Try the Voice Agent <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+            </button>
+          </Reveal>
+          <Reveal delay={0.1} className="flex justify-center">
+            <div className="mk-float"><VoiceCard /></div>
+          </Reveal>
+        </div>
+      </section>
+
       {/* ── How it works ─────────────────────────────────────── */}
       <HowItWorks />
+
+      {/* ── Scheduling (nav: Platform → Scheduling) ──────────── */}
+      <section id="scheduling" className="scroll-mt-24 bg-[var(--paper)] px-6 py-24 md:px-10 md:py-32">
+        <div className="mx-auto max-w-[1200px]">
+          <Reveal className="mb-14 max-w-2xl">
+            <p className="mk-eyebrow text-[var(--pine)]">Scheduling</p>
+            <h2 className="mk-display mt-4 text-[2.4rem] font-semibold leading-[1.05] text-[var(--ink)] md:text-[3.4rem]">
+              Site visits and callbacks, booked for you
+            </h2>
+          </Reveal>
+          <div className="grid gap-6 md:grid-cols-3">
+            {SCHEDULING_POINTS.map((s, i) => (
+              <Reveal key={s.t} delay={i * 0.1}>
+                <div className="h-full rounded-2xl border border-[var(--line)] bg-white p-7 dark:bg-[var(--stone)]">
+                  <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--stone)] text-[var(--pine)]">
+                    <s.icon className="h-5 w-5" />
+                  </span>
+                  <h3 className="mk-display mt-5 text-[1.25rem] font-semibold leading-tight text-[var(--ink)]">{s.t}</h3>
+                  <p className="mt-2 text-[0.95rem] leading-relaxed text-[var(--mist)]">{s.d}</p>
+                </div>
+              </Reveal>
+            ))}
+          </div>
+        </div>
+      </section>
 
       {/* ── Testimonials (Wall of love) ──────────────────────── */}
       <section className="bg-[var(--paper)] px-6 py-24 md:px-10 md:py-32">
@@ -443,35 +531,20 @@ export default function LandingPage() {
           <Reveal className="mb-10 max-w-2xl">
             <p className="mk-eyebrow text-[var(--pine)]">Pricing</p>
             <h2 className="mk-display mt-4 text-[2.4rem] font-semibold leading-[1.05] text-[var(--ink)] md:text-[3.4rem]">
-              Simple plans, both agents included
+              Simple plans, Voice Agent included
             </h2>
             <p className="mt-4 max-w-xl text-[1.02rem] text-[var(--mist)]">
-              Every plan includes Voice Agent and Executive Analytics — pick a tier by volume, not by feature.
+              Every plan includes the Voice Agent — pick a tier by volume, not by feature.
             </p>
           </Reveal>
 
-          {/* Billing toggle */}
-          <div className="mb-12 inline-flex rounded-full border border-[var(--line)] bg-[var(--stone)] p-1">
-            {['quarterly', 'annually'].map((b) => (
-              <button key={b} onClick={() => setBilling(b)}
-                className={cn('rounded-full px-5 py-2 text-sm font-semibold capitalize transition-colors',
-                  billing === b ? 'bg-[var(--pine)] text-white shadow' : 'text-[var(--mist)] hover:text-[var(--ink)]')}>
-                {b}{b === 'annually' && MAX_ANNUAL_SAVING_PCT > 0 && (
-                  <span className="ml-1 text-xs opacity-90">· save up to {MAX_ANNUAL_SAVING_PCT}%</span>
-                )}
-              </button>
-            ))}
-          </div>
-
           <div className="grid gap-6 md:grid-cols-3 items-start">
             {PLANS.map((p, i) => {
-              const price = billing === 'annually' ? p.priceA : p.priceQ;
-              const period = billing === 'annually' ? p.periodA : p.periodQ;
-              const billingNote = billing === 'annually' ? p.billingA : p.billingQ;
+              const { price, period, billing: billingNote } = p;
               return (
                 <Reveal key={p.name} delay={i * 0.1}>
                   <div className={cn('flex h-full flex-col rounded-[1.5rem] p-8 transition-transform duration-300 hover:-translate-y-1',
-                    p.highlight ? 'bg-[var(--deep)] text-white ring-2 ring-[var(--pine)] shadow-[0_40px_80px_-40px_rgba(248,114,23,0.5)]' : 'bg-white ring-1 ring-[var(--line)] dark:bg-[var(--stone)]')}>
+                    p.highlight ? 'mk-band bg-[var(--deep)] text-white ring-2 ring-[var(--pine)] shadow-[0_40px_80px_-40px_rgba(248,114,23,0.5)]' : 'bg-white ring-1 ring-[var(--line)] dark:bg-[var(--stone)]')}>
                     {p.highlight && (
                       <span className="mb-4 inline-flex w-fit items-center gap-1.5 rounded-full bg-[var(--pine)] px-3 py-1 text-[0.65rem] font-bold uppercase tracking-wider text-white">
                         <Zap className="h-3 w-3" /> Most popular

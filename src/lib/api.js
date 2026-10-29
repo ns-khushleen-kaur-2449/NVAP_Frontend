@@ -106,6 +106,9 @@ export const getProspect = (id) => api.get(`/api/v1/prospects/${id}`);
 export const createProspect = (data, params) => api.post('/api/v1/prospects', data, { params });
 export const updateProspect = (id, data) => api.patch(`/api/v1/prospects/${id}`, data);
 export const deleteProspect = (id) => api.delete(`/api/v1/prospects/${id}`);
+export const getLeadScore = (id) => api.get(`/api/lead-scores/${id}`);
+export const getLeadScoreHistory = (id, params) => api.get(`/api/lead-scores/${id}/history`, { params });
+export const calculateLeadScore = (id) => api.post(`/api/lead-scores/${id}`);
 export const changeProspectStage = (id, stage, reason) =>
   api.post(`/api/v1/prospects/${id}/stage`, { stage: String(stage).toUpperCase(), reason });
 export const getProspectStageEvents = (id) => api.get(`/api/v1/prospects/${id}/stage-events`);

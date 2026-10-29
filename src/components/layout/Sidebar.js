@@ -32,9 +32,7 @@ const PENDING_NAV = [
 // Voice Agent's own internal views — reached as /voice_agent?tab=<id>, read by
 // VoiceAgent.js's existing searchParams-sync effect.
 const VOICE_TABS = [
-  // Only for roles that may view assistants (the dashboard answers 403 otherwise).
-  { id: 'dashboard', label: 'Dashboard',                icon: LayoutDashboard, requires: canViewAssistants },
-  { id: 'builder',   label: 'Lead-to-Campaign Builder', icon: Layers },
+  { id: 'builder',  label: 'Lead-to-Campaign Builder', icon: Layers },
   { id: 'logs',      label: 'Call Logs',                icon: Phone },
   // Creating assistants is Manager and up (the backend's AssistantAction.CREATE); the knowledge
   // base is refused to Sales Reps, so neither is offered to them.
@@ -90,9 +88,8 @@ export function Sidebar() {
   // const onReportAgent = REPORT_TABS.some(
   //   (t) => location.pathname === t.path.split('?')[0]
   // );
-  // With no ?tab=, VoiceAgent shows the dashboard (or the builder for roles that cannot view assistants).
-  const defaultVoiceTab = canViewAssistants(user) ? 'dashboard' : 'builder';
-  const currentTab = onVoiceAgent ? (params.get('tab') || (params.get('view') === 'logs' ? 'logs' : defaultVoiceTab)) : null;
+  // With no ?tab=, VoiceAgent shows the campaign builder.
+  const currentTab = onVoiceAgent ? (params.get('tab') || (params.get('view') === 'logs' ? 'logs' : 'builder')) : null;
 
   return (
     <TooltipProvider delayDuration={0}>

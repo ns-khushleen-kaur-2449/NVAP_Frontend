@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { CheckCircle2, CircleAlert, Clock3, FileCheck2, RefreshCw, Search, ShieldCheck, Sparkles, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
@@ -19,6 +19,7 @@ import { formatDateTime, relativeTime } from '@/lib/ops';
 
 const REFRESH_MS = 15000;
 const PAGE_SIZE = 50;
+const SEARCH_DEBOUNCE_MS = 300;
 
 const stageTone = (stage) => ({
   QUALIFIED: 'good', CONVERTED: 'accent', ENGAGED: 'info', CONTACTED: 'warn',
@@ -36,8 +37,8 @@ const requestId = () => window.crypto?.randomUUID?.() || `conversion-${Date.now(
 
 function SummaryCard({ label, value, detail, icon: Icon, tone = 'accent' }) {
   return (
-    <section className="ops-card flex min-w-0 items-start justify-between gap-3 p-4 shadow-sm">
-      <div>
+    <section className="ops-card flex h-full min-w-0 items-start justify-between gap-3 p-4 shadow-sm">
+      <div className="min-w-0">
         <p className="text-sm font-medium text-muted-foreground">{label}</p>
         <p className="ops-num mt-1 text-3xl font-semibold tracking-tight">{value}</p>
         <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
@@ -166,6 +167,7 @@ export default function ConversionWorkspace() {
   const superAdmin = isSuperAdmin(user);
   const reviewer = canReviewConversions(user);
   const [tenantId, setTenantId] = useState('');
+  const [search, setSearch] = useState('');
   const [query, setQuery] = useState('');
   const [workspace, setWorkspace] = useState(null);
   const [workspaceError, setWorkspaceError] = useState(null);
@@ -174,9 +176,16 @@ export default function ConversionWorkspace() {
   const [detail, setDetail] = useState(null);
   const [detailError, setDetailError] = useState(null);
   const [dialog, setDialog] = useState(null);
+  const detailRequest = useRef(0);
 
   const scope = useMemo(() => superAdmin ? { tenant_id: tenantId } : {}, [superAdmin, tenantId]);
   const ready = !superAdmin || Boolean(tenantId);
+
+  // Debounce typing so each keystroke does not hit the API.
+  useEffect(() => {
+    const timer = setTimeout(() => setQuery(search.trim()), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   useEffect(() => {
     if (requestedProspectId) setSelectedId(requestedProspectId);
@@ -202,6 +211,8 @@ export default function ConversionWorkspace() {
   const refreshWorkspace = usePolling(loadWorkspace, REFRESH_MS, [loadWorkspace], { enabled: ready });
 
   const loadDetail = useCallback(async () => {
+    // Only the newest request may write state, so a slow response for a previous prospect cannot overwrite the current one.
+    const requestToken = ++detailRequest.current;
     if (!selectedId || !ready) {
       setDetail(null);
       return;
@@ -212,6 +223,7 @@ export default function ConversionWorkspace() {
         getConversionTimeline(selectedId, scope),
         getConversionEvidenceCandidates(selectedId, { ...scope, page: 1, page_size: 100 }),
       ]);
+      if (requestToken !== detailRequest.current) return;
       if (timeline.status !== 'fulfilled') throw timeline.reason;
       setDetail({
         timeline: timeline.value.data.items || [],
@@ -219,18 +231,21 @@ export default function ConversionWorkspace() {
         evidenceError: evidence.status === 'rejected' ? errorMessage(evidence.reason, 'Evidence is currently unavailable.') : null,
       });
     } catch (error) {
+      if (requestToken !== detailRequest.current) return;
       setDetail(null);
       setDetailError(errorMessage(error, 'The selected prospect could not be loaded.'));
     }
   }, [ready, scope, selectedId]);
 
-  useEffect(() => { loadDetail(); }, [loadDetail]);
+  // Clear the previous prospect's detail straight away instead of showing it under the new header.
+  useEffect(() => { setDetail(null); }, [selectedId, scope]);
+  // Poll with the workspace so a pending decision created elsewhere shows up without a manual refresh.
+  usePolling(loadDetail, REFRESH_MS, [loadDetail], { enabled: ready && Boolean(selectedId) });
 
   const selected = workspace?.prospects?.find((prospect) => String(prospect.prospect_id) === String(selectedId));
   const decision = detail?.timeline?.find((item) => String(item.id) === String(selected?.pending_decision_id) && item.type === 'decision');
   const latestDecision = detail?.timeline?.find((item) => item.type === 'decision');
-  const activeDecision = decision || latestDecision;
-  const overviewDecision = activeDecision?.detail;
+  const overviewDecision = (decision || latestDecision)?.detail;
   const activeTab = [
     { id: 'overview', label: 'Overview' },
     { id: 'history', label: 'Full history' },
@@ -241,6 +256,17 @@ export default function ConversionWorkspace() {
   const afterAction = async () => {
     setDialog(null);
     await Promise.all([loadWorkspace(), loadDetail()]);
+  };
+
+  const tabIds = activeTab.map((item) => item.id);
+  const onTabKeyDown = (event) => {
+    const offset = { ArrowRight: 1, ArrowLeft: -1 }[event.key];
+    const target = event.key === 'Home' ? 0 : event.key === 'End' ? tabIds.length - 1
+      : offset ? (tabIds.indexOf(tab) + offset + tabIds.length) % tabIds.length : null;
+    if (target === null) return;
+    event.preventDefault();
+    setTab(tabIds[target]);
+    document.getElementById(`conversion-tab-${tabIds[target]}`)?.focus();
   };
 
   const chooseProspect = (id) => {
@@ -267,6 +293,8 @@ export default function ConversionWorkspace() {
     {superAdmin && !tenantId && <div className="ops-tone ops-tone-info rounded-[14px] p-4 text-sm">Select a tenant to review its Conversion work.</div>}
     {workspaceError && <ErrorState message={workspaceError} onRetry={loadWorkspace} />}
 
+    {ready && !workspace && !workspaceError && <SkeletonRows rows={4} label="Loading Conversion Workspace" />}
+
     {ready && workspace && <>
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <SummaryCard label="Awaiting approvals" value={workspace.summary.awaiting_approvals} detail="Decisions requiring review" icon={Clock3} tone="warn" />
@@ -275,22 +303,22 @@ export default function ConversionWorkspace() {
         <SummaryCard label="Converted prospects" value={workspace.summary.converted_prospects} detail="Approved transitions" icon={FileCheck2} tone="accent" />
       </section>
 
-      <section className="grid items-start gap-4 xl:grid-cols-[280px_minmax(0,1fr)_300px]">
-        <aside className="ops-card overflow-hidden">
-          <div className="border-b border-border p-4">
+      <section className="grid items-stretch gap-4 xl:h-[clamp(560px,calc(100vh-17rem),720px)] xl:grid-cols-[280px_minmax(0,1fr)_300px] xl:grid-rows-1">
+        <aside className="ops-card relative flex min-h-[320px] flex-col overflow-hidden xl:min-h-0">
+          <div className="shrink-0 border-b border-border p-4">
             <h2 className="font-semibold">Prospects</h2>
             <p className="mt-1 text-xs text-muted-foreground">Only prospects you are allowed to inspect.</p>
             <label className="relative mt-3 block">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search prospects"
+              <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search prospects" aria-label="Search prospects"
                 className="h-10 w-full rounded-lg border border-border bg-[hsl(var(--surface-2))] pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-[var(--ops-accent)]" />
             </label>
           </div>
-          <ul className="max-h-[520px] overflow-y-auto">
+          <ul className="min-h-0 flex-1 overflow-y-auto xl:h-0">
             {workspace.prospects.map((prospect) => {
               const active = String(prospect.prospect_id) === String(selectedId);
               return <li key={prospect.prospect_id}>
-                <button type="button" onClick={() => chooseProspect(prospect.prospect_id)}
+                <button type="button" onClick={() => chooseProspect(prospect.prospect_id)} aria-current={active ? 'true' : undefined}
                   className={`w-full border-b border-border px-4 py-3 text-left transition-colors last:border-0 ${active ? 'border-l-4 border-l-[var(--ops-accent)] bg-[hsl(var(--surface-2))]' : 'hover:bg-[hsl(var(--surface-2))]/70'}`}>
                   <div className="flex items-center justify-between gap-2"><span className="truncate text-sm font-semibold">{prospect.full_name || 'Unnamed prospect'}</span>
                     {prospect.pending_decision_id && <StatusBadge label="Review" tone="warn" />}
@@ -302,11 +330,11 @@ export default function ConversionWorkspace() {
                 </button>
               </li>;
             })}
-            {!workspace.prospects.length && <li className="p-4"><EmptyState title="No matching prospects." /></li>}
+            {!workspace.prospects.length && <li className="p-4"><EmptyState title="No matching prospects." body={query ? 'Try a different name or email.' : undefined} /></li>}
           </ul>
         </aside>
 
-        <section className="ops-card min-w-0 overflow-hidden">
+        <section className="ops-card flex min-h-0 min-w-0 flex-col overflow-hidden">
           {!selected && <div className="p-8"><EmptyState title="Select a prospect to inspect conversion activity." /></div>}
           {selected && <>
             <div className="border-b border-border p-5">
@@ -314,19 +342,19 @@ export default function ConversionWorkspace() {
                 <div><h2 className="text-xl font-semibold">{selected.full_name || 'Unnamed prospect'}</h2><p className="mt-1 text-sm text-muted-foreground">{selected.email || 'No email recorded'}</p></div>
                 <StatusBadge label={readable(selected.current_stage)} tone={stageTone(selected.current_stage)} className="text-sm" />
               </div>
-              <dl className="mt-4 grid gap-3 sm:grid-cols-3">
-                <div className="rounded-xl border border-border bg-[hsl(var(--surface-2))] p-3"><dt className="text-xs font-semibold text-muted-foreground">Current stage</dt><dd className="mt-1 font-semibold">{readable(selected.current_stage)}</dd></div>
-                <div className="rounded-xl border border-border bg-[hsl(var(--surface-2))] p-3"><dt className="text-xs font-semibold text-muted-foreground">Latest qualification</dt><dd className="mt-1 font-semibold">{readable(overviewDecision?.qualification_status)}</dd></div>
-                <div className="rounded-xl border border-border bg-[hsl(var(--surface-2))] p-3"><dt className="text-xs font-semibold text-muted-foreground">Proposed stage</dt><dd className="mt-1 font-semibold">{readable(overviewDecision?.target_stage)}</dd></div>
+              <dl className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="flex min-h-[88px] flex-col rounded-xl border border-border bg-[hsl(var(--surface-2))] p-3"><dt className="text-xs font-semibold text-muted-foreground">Current stage</dt><dd className="mt-auto pt-1 font-semibold">{readable(selected.current_stage)}</dd></div>
+                <div className="flex min-h-[88px] flex-col rounded-xl border border-border bg-[hsl(var(--surface-2))] p-3"><dt className="text-xs font-semibold text-muted-foreground">Latest qualification</dt><dd className="mt-auto pt-1 font-semibold">{readable(overviewDecision?.qualification_status)}</dd></div>
+                <div className="flex min-h-[88px] flex-col rounded-xl border border-border bg-[hsl(var(--surface-2))] p-3"><dt className="text-xs font-semibold text-muted-foreground">Proposed stage</dt><dd className="mt-auto pt-1 font-semibold">{readable(overviewDecision?.target_stage)}</dd></div>
               </dl>
             </div>
-            <div role="tablist" aria-label="Conversion details" className="flex overflow-x-auto border-b border-border px-3">
-              {activeTab.map((item) => <button key={item.id} type="button" role="tab" aria-selected={tab === item.id} onClick={() => setTab(item.id)}
+            <div role="tablist" aria-label="Conversion details" onKeyDown={onTabKeyDown} className="flex shrink-0 overflow-x-auto border-b border-border px-3">
+              {activeTab.map((item) => <button key={item.id} id={`conversion-tab-${item.id}`} type="button" role="tab" aria-selected={tab === item.id} aria-controls="conversion-tabpanel" tabIndex={tab === item.id ? 0 : -1} onClick={() => setTab(item.id)}
                 className={`-mb-px whitespace-nowrap border-b-2 px-3 py-3 text-sm font-semibold ${tab === item.id ? 'border-[var(--ops-accent)] text-[color:var(--ops-accent-ink)]' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
                 {item.label}{item.count > 0 && <span className="ops-num ml-1 rounded-full bg-[hsl(var(--surface-2))] px-1.5 py-0.5 text-xs">{item.count}</span>}
               </button>)}
             </div>
-            <div className="min-h-[360px] p-5">
+            <div id="conversion-tabpanel" role="tabpanel" aria-labelledby={`conversion-tab-${tab}`} className="min-h-[360px] flex-1 overflow-y-auto p-5 xl:min-h-0">
               {detailError && <ErrorState message={detailError} onRetry={loadDetail} />}
               {!detail && !detailError && <SkeletonRows rows={4} label="Loading conversion details" />}
               {detail && tab === 'overview' && <div className="space-y-5">
@@ -363,14 +391,15 @@ export default function ConversionWorkspace() {
           </>}
         </section>
 
-        <aside className="space-y-4">
-          <section className="ops-card p-4"><p className="text-xs font-bold uppercase tracking-[0.14em] text-[color:var(--ops-accent-ink)]">Approval desk</p>
+        <aside className="flex min-h-0 flex-col gap-4 xl:overflow-y-auto">
+          <section className="ops-card shrink-0 p-4 xl:flex-1"><p className="text-xs font-bold uppercase tracking-[0.14em] text-[color:var(--ops-accent-ink)]">Approval desk</p>
             {!selected?.pending_decision_id && <><h2 className="mt-2 font-semibold">No decision awaiting review</h2><p className="mt-2 text-sm text-muted-foreground">Select a prospect with a pending conversion proposal to review it here.</p></>}
             {selected?.pending_decision_id && <><div className="mt-2 flex items-center justify-between gap-2"><h2 className="font-semibold">Conversion decision</h2><StatusBadge label="Pending" tone="warn" /></div><p className="mt-3 text-sm text-muted-foreground">The backend revalidates the policy and verified evidence before approving a transition.</p><dl className="mt-3"><DetailRow label="Current stage">{readable(selected.current_stage)}</DetailRow><DetailRow label="Proposed stage">{readable(selected.pending_target_stage)}</DetailRow><DetailRow label="Authorization">{reviewer ? 'You can review this decision' : 'Read-only access'}</DetailRow></dl>
-              {reviewer && activeDecision && <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-1"><OpsButton variant="primary" onClick={() => setDialog({ type: 'approve', decision: activeDecision })}><CheckCircle2 className="h-4 w-4" /> Approve</OpsButton><OpsButton variant="danger" onClick={() => setDialog({ type: 'reject', decision: activeDecision })}><XCircle className="h-4 w-4" /> Reject</OpsButton></div>}
+              {reviewer && decision && <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-1"><OpsButton variant="primary" onClick={() => setDialog({ type: 'approve', decision })}><CheckCircle2 className="h-4 w-4" /> Approve</OpsButton><OpsButton variant="danger" onClick={() => setDialog({ type: 'reject', decision })}><XCircle className="h-4 w-4" /> Reject</OpsButton></div>}
+              {reviewer && detail && !decision && <p className="mt-4 text-sm text-muted-foreground">The pending decision is not in the loaded history yet. Refresh data to review it.</p>}
             </>}
           </section>
-          <section className="ops-card p-4"><div className="flex items-center gap-2"><CircleAlert className="h-4 w-4 text-[color:var(--ops-accent-ink)]" /><h2 className="font-semibold">Audit-safe by design</h2></div><p className="mt-2 text-sm text-muted-foreground">The canonical stage lives in the prospect record. Evidence verification, decisions, reviews and executed transitions remain separately auditable.</p></section>
+          <section className="ops-card shrink-0 p-4"><div className="flex items-center gap-2"><CircleAlert className="h-4 w-4 text-[color:var(--ops-accent-ink)]" /><h2 className="font-semibold">Audit-safe by design</h2></div><p className="mt-2 text-sm text-muted-foreground">The canonical stage lives in the prospect record. Evidence verification, decisions, reviews and executed transitions remain separately auditable.</p></section>
         </aside>
       </section>
     </>}

@@ -10,9 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
-import { Plus, Pencil, Search, Sparkles, X, ChevronRight, ChevronLeft, Users, Download, UserCog, ArrowRight, HelpCircle } from 'lucide-react';
+import { Plus, Pencil, Search, Sparkles, X, ChevronRight, ChevronLeft, Users, Download, UserCog, ArrowRight } from 'lucide-react';
 import {
   getProspect, getProspects, createProspect,
   bulkQualifyLeads, bulkAssignLeads, bulkUpdateStage,
@@ -21,36 +20,7 @@ import {
 import { formatCurrency, STAGE_OPTIONS } from '@/lib/utils';
 import { toLeadRow } from '@/lib/prospects';
 import { StageBadge, PriorityBadge, StatusBadge } from '@/components/shared/StatusBadges';
-import { ScoreGauge } from '@/components/shared/ScoreGauge';
-
-const ScoreFactorsPanel = ({ factors, whyScore }) => {
-  if (!factors || factors.length === 0) return null;
-  return (
-    <div className="p-3 rounded-lg border border-border bg-[hsl(var(--surface-2))]">
-      <p className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
-        <HelpCircle className="w-3 h-3" /> Why This Score
-      </p>
-      {whyScore && <p className="text-sm mb-3 text-foreground/90">{whyScore}</p>}
-      <div className="space-y-2">
-        {factors.map((f, i) => (
-          <div key={i}>
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-xs font-medium">{f.factor}</span>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] text-muted-foreground">w:{f.weight}%</span>
-                <span className="text-xs tabular-nums font-medium" style={{
-                  color: f.score >= 70 ? 'hsl(173,80%,36%)' : f.score >= 40 ? 'hsl(38,55%,62%)' : 'hsl(0,72%,52%)'
-                }}>{f.score}/100</span>
-              </div>
-            </div>
-            <Progress value={f.score} className="h-1.5" />
-            <p className="text-[10px] text-muted-foreground mt-0.5">{f.reason}</p>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
+import LeadScorePanel from '@/components/leads/LeadScorePanel';
 
 export default function LeadsPage() {
   const [leads, setLeads] = useState([]);
@@ -272,7 +242,7 @@ export default function LeadsPage() {
         {/* Lead Table with Checkboxes */}
         <Card className="card-base flex-1 overflow-hidden">
           <ScrollArea className="h-full">
-            <Table data-testid="leads-table">
+            <Table data-testid="leads-table" className="[&_th]:px-2 [&_td]:px-2">
               <TableHeader className="sticky top-0 z-10">
                 <TableRow className="bg-[hsl(var(--surface-3))] hover:bg-[hsl(var(--surface-3))]">
                   <TableHead className="w-10">
@@ -297,9 +267,9 @@ export default function LeadsPage() {
                       <Checkbox checked={selectedIds.has(lead.id)} onCheckedChange={() => toggleSelect(lead.id)} />
                     </TableCell>
                     <TableCell onClick={() => selectLead(lead)}>
-                      <div>
-                        <p className="text-sm font-medium">{lead.name}</p>
-                        <p className="text-xs text-muted-foreground">{lead.email || lead.phone}</p>
+                      <div className="max-w-[12rem]">
+                        <p className="text-sm font-medium truncate">{lead.name}</p>
+                        <p className="text-xs text-muted-foreground truncate" title={lead.email || lead.phone}>{lead.email || lead.phone}</p>
                       </div>
                     </TableCell>
                     <TableCell onClick={() => selectLead(lead)}><StageBadge stage={lead.stage} /></TableCell>
@@ -377,10 +347,11 @@ export default function LeadsPage() {
                   </div>
                 </div>
 
-                {/* Score + Quick Info */}
-                <div className="flex items-center gap-6 mb-5 p-4 rounded-xl border border-border bg-[hsl(var(--surface-2))]">
-                  <ScoreGauge score={selectedLead.ai_score} size={100} />
-                  <div className="flex-1 space-y-1">
+                <LeadScorePanel
+                  key={selectedLead.id}
+                  prospectId={selectedLead.id}
+                  onScored={(s) => setLeads((rows) => rows.map((r) => (r.id === selectedLead.id ? { ...r, ai_score: Math.round(s.lead_score) } : r)))}
+                >
                     <div className="grid grid-cols-2 gap-2 text-sm">
                       <div><span className="text-muted-foreground">Budget:</span> <span>{formatCurrency(selectedLead.budget_min)} - {formatCurrency(selectedLead.budget_max)}</span></div>
                       <div><span className="text-muted-foreground">Timeline:</span> <span>{selectedLead.timeline || 'N/A'}</span></div>
@@ -388,15 +359,7 @@ export default function LeadsPage() {
                       <div><span className="text-muted-foreground">Category:</span> <span>{selectedLead.category || 'N/A'} ({selectedLead.sub_category || 'N/A'})</span></div>
                       <div><span className="text-muted-foreground">Source:</span> <span>{selectedLead.source}</span></div>
                     </div>
-                  </div>
-                </div>
-
-                {/* AI Explainability - Score Factors */}
-                {selectedLead.ai_score_factors?.length > 0 && (
-                  <div className="mb-4">
-                    <ScoreFactorsPanel factors={selectedLead.ai_score_factors} whyScore={selectedLead.ai_why_score} />
-                  </div>
-                )}
+                </LeadScorePanel>
 
                 {/* AI Summary */}
                 {selectedLead.ai_summary && (

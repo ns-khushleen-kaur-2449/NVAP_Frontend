@@ -189,17 +189,16 @@ describe('Admin items live in Settings, not the sidebar', () => {
   });
 });
 
-describe('Voice Agent dashboard nav follows /api/v1/assistants', () => {
-  test.each([
-    ['super_admin', true], ['tenant_admin', true], ['manager', true], ['rep', false],
-  ])('%s sees the Dashboard entry: %s', (role, shown) => {
+describe('Dashboard is a single entry at the top of the nav', () => {
+  test.each(['super_admin', 'tenant_admin', 'manager', 'rep'])('%s has no second Dashboard under Voice Agent', (role) => {
     const { container } = renderWithAuth(<Sidebar />, { user: USERS[role], path: '/voice_agent' });
-    expect(Boolean(container.querySelector('a[href="/voice_agent?tab=dashboard"]'))).toBe(shown);
+    expect(container.querySelector('a[href="/voice_agent?tab=dashboard"]')).toBeNull();
+    expect(container.querySelectorAll('a[href="/dashboard"]')).toHaveLength(1);
   });
 });
 
 describe('Voice Agent nav hides what a Sales Rep is refused', () => {
-  const VOICE_TABS = ['dashboard', 'builder', 'logs', 'create', 'kb', 'csv', 'single', 'requests'];
+  const VOICE_TABS = ['builder', 'logs', 'create', 'kb', 'csv', 'single', 'requests'];
   const visibleTabs = (role) => {
     const { container } = renderWithAuth(<Sidebar />, { user: USERS[role], path: '/voice_agent' });
     return VOICE_TABS.filter((tab) => container.querySelector(`a[href="/voice_agent?tab=${tab}"]`));

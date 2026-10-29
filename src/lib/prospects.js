@@ -8,6 +8,7 @@ export const toLeadRow = (p) => ({
   name: p.full_name || '',
   stage: (p.stage || '').toLowerCase(),
   status: p.is_lead ? 'lead' : 'prospect',
+  ai_score: p.lead_score == null ? null : Math.round(p.lead_score),
 });
 
 // prospect_stage_events -> the Timeline component's event shape.

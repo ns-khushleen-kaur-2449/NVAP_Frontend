@@ -10,6 +10,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useAuth } from '@/lib/AuthContext';
 import ThemeToggle from '@/components/shared/ThemeToggle';
+import BrandLockup, { NetsmartzMark } from '@/components/shared/BrandLockup';
 import { canUseAssistantRequests, canViewAssistants } from '@/lib/rbac';
 
 const APP_NAV = [
@@ -23,7 +24,8 @@ const PENDING_NAV = [
   { path: '/operations',  label: 'Operations',   icon: ClipboardCheck },
   { path: '/prospecting', label: 'Prospecting',  icon: Users },
   { path: '/conversion',  label: 'Conversion',   icon: GitCompareArrows },
-  { path: '/strategist',  label: 'AI Strategist', icon: Sparkles },
+  // Hidden from the menu for now; the /strategist page and route still work.
+  // { path: '/strategist',  label: 'AI Strategist', icon: Sparkles },
   { path: '/inbox',       label: 'Inbox',        icon: InboxIcon },
   { path: '/catalog',     label: 'Catalog',      icon: Package },
   { path: '/meetings',    label: 'Meetings',     icon: CalendarClock },
@@ -99,11 +101,11 @@ export function Sidebar() {
           collapsed ? 'w-[72px]' : 'w-[264px]'
         )}
       >
-        <div className={cn('flex items-center gap-2.5 border-b border-[var(--line)] px-4 h-14 shrink-0', collapsed && 'justify-center px-2')}>
-          <Link to="/welcome" className="flex items-center gap-2 leading-none">
-            <span className="mk-display text-lg font-semibold text-[var(--ink)] whitespace-nowrap">
-              {collapsed ? 'S' : <>Smart<span className="text-[var(--pine)]">SDR</span></>}
-            </span>
+        <div className={cn('flex shrink-0 items-center border-b border-[var(--line)]', collapsed ? 'h-14 justify-center px-2' : 'px-5 py-4')}>
+          <Link to="/welcome" aria-label="SmartSDR by Netsmartz — home" className={cn('flex items-center text-[var(--ink)]', !collapsed && 'w-full')}>
+            {collapsed
+              ? <NetsmartzMark size={30} />
+              : <BrandLockup layout="stacked" size="sm" wordAlign="end" className="flex w-full" />}
           </Link>
         </div>
 

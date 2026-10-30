@@ -1,6 +1,6 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ArrowUpRight } from 'lucide-react';
-import ntzLogo from '@/assets/NTZLOGOnew1.png';
+import BrandLockup from '@/components/shared/BrandLockup';
 
 export default function MarketingFooter() {
   const navigate = useNavigate();
@@ -21,8 +21,10 @@ export default function MarketingFooter() {
       <div className="mx-auto max-w-[1400px] px-6 py-20 md:px-10">
         <div className="grid gap-14 md:grid-cols-[1.4fr_1fr_1fr]">
           <div>
-            <p className="mk-eyebrow text-[var(--brass-2)]">SmartSDR · by Netsmartz</p>
-            <h3 className="mk-display mt-5 max-w-md text-[2.2rem] font-semibold leading-[1.1]">
+            <Link to="/" aria-label="SmartSDR by Netsmartz — home" className="inline-flex">
+              <BrandLockup layout="stacked" size="xl" />
+            </Link>
+            <h3 className="mk-display mt-8 max-w-md text-[2.2rem] font-semibold leading-[1.1]">
               Put your calls to work.
             </h3>
             <button
@@ -31,15 +33,6 @@ export default function MarketingFooter() {
             >
               Get started <ArrowUpRight className="h-4 w-4" />
             </button>
-
-            <div className="mt-11">
-              <span className="text-[0.6rem] font-semibold uppercase tracking-[0.24em] text-white/35">Built by</span>
-              <img
-                src={ntzLogo}
-                alt="Netsmartz — celebrating 26 years"
-                className="mt-1 h-14 w-auto max-w-[220px] object-contain object-left"
-              />
-            </div>
           </div>
 
           <div>

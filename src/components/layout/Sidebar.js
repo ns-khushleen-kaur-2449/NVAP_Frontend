@@ -11,7 +11,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useAuth } from '@/lib/AuthContext';
 import ThemeToggle from '@/components/shared/ThemeToggle';
 import BrandLockup, { NetsmartzMark } from '@/components/shared/BrandLockup';
-import { canUseAssistantRequests, canViewAssistants } from '@/lib/rbac';
+import { canViewAssistants } from '@/lib/rbac';
 
 const APP_NAV = [
   { path: '/dashboard',   label: 'Dashboard',    icon: LayoutDashboard },
@@ -45,8 +45,10 @@ const VOICE_TABS = [
   // below falls back to the ?tab= form for every entry without one.
   { id: 'campaigns', label: 'Voice Campaigns',          icon: Megaphone, path: '/voice-campaigns' },
   { id: 'single',    label: 'Single Call',              icon: PhoneCall },
-  // Sales Reps propose assistant changes here; Managers and Tenant Admins review them.
-  { id: 'requests',  label: 'Assistant Requests',       icon: ClipboardCheck, requires: canUseAssistantRequests },
+  // Assistant Requests — hidden from the nav for now (the page and its links from notifications still work).
+  // Sales Reps propose assistant changes there; Managers and Tenant Admins review them. Restore this line and
+  // the canUseAssistantRequests import from '@/lib/rbac' to bring it back.
+  // { id: 'requests',  label: 'Assistant Requests',       icon: ClipboardCheck, requires: canUseAssistantRequests },
 ];
 
 // Report Agent views — hidden from the nav for now. Restore this array, the

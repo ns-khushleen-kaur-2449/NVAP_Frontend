@@ -30,26 +30,6 @@ function StatusBadge({ status, label }) {
   );
 }
 
-function LeadStatusBadge({ status }) {
-  const map = {
-    hot: 'bg-rose-500/15 text-rose-500 border-rose-500/25',
-    cold: 'bg-blue-500/15 text-blue-500 border-blue-500/25',
-    warm: 'bg-amber-500/15 text-amber-500 border-amber-500/25',
-  };
-  const labelMap = {
-    hot: '🔥 Hot Lead',
-    cold: '❄️ Cold Lead',
-    warm: '🌤️ Warm Lead',
-  };
-  const s = map[status] || map.warm;
-  const label = labelMap[status] || '🌤️ Warm Lead';
-  return (
-    <Badge variant="outline" className={`${s} gap-1 text-[10px] font-semibold uppercase tracking-wider shrink-0`}>
-      {label}
-    </Badge>
-  );
-}
-
 function SourceBadge({ source }) {
   const map = {
     manual: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
@@ -240,7 +220,6 @@ export default function CallLogsList({ assistantId = '', assistantName = '', onC
                       <p className="text-sm font-semibold text-foreground truncate">{log.customer_name || 'Unknown'}</p>
                       <StatusBadge status={log.status} label={log.status_label} />
                       <SourceBadge source={log.source_type} />
-                      <LeadStatusBadge status={log.lead_status} />
                       {log.appointment_booked && (
                         <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/25 text-[10px] gap-0.5">
                           <Calendar className="w-2.5 h-2.5" /> Booked

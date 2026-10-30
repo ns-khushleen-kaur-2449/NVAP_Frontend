@@ -42,8 +42,37 @@ describe('Brochures for the overview email', () => {
     const row = within(await rowOf('Test drive'));
     const file = new File(['%PDF-1.7'], 'Drive.pdf', { type: 'application/pdf' });
     fireEvent.change(row.getByLabelText('Brochure file'), { target: { files: [file] } });
-    await waitFor(() => expect(api.uploadBrochure).toHaveBeenCalledWith('mt-2', file));
+    // The uploader names it first: the suggestion is the meeting type's name.
+    expect(api.uploadBrochure).not.toHaveBeenCalled();
+    expect(row.getByLabelText('Name in emails')).toHaveValue('Test drive Brochure');
+    fireEvent.click(row.getByRole('button', { name: 'Upload' }));
+    await waitFor(() => expect(api.uploadBrochure).toHaveBeenCalledWith('mt-2', file, 'Test drive Brochure'));
     await waitFor(() => expect(api.listBrochures).toHaveBeenCalledTimes(2));
+  });
+
+  it('sends the name the uploader typed, and needs one', async () => {
+    api.uploadBrochure.mockResolvedValue({ data: {} });
+    render(<SchedulingSetup canEdit />);
+    const row = within(await rowOf('Test drive'));
+    const file = new File(['%PDF-1.7'], 'scan_0042.pdf', { type: 'application/pdf' });
+    fireEvent.change(row.getByLabelText('Brochure file'), { target: { files: [file] } });
+    fireEvent.change(row.getByLabelText('Name in emails'), { target: { value: '  ' } });
+    fireEvent.click(row.getByRole('button', { name: 'Upload' }));
+    expect(api.uploadBrochure).not.toHaveBeenCalled();
+    fireEvent.change(row.getByLabelText('Name in emails'), { target: { value: 'Apex Test Drive Guide' } });
+    fireEvent.click(row.getByRole('button', { name: 'Upload' }));
+    await waitFor(() => expect(api.uploadBrochure).toHaveBeenCalledWith('mt-2', file, 'Apex Test Drive Guide'));
+  });
+
+  it('renames an uploaded brochure', async () => {
+    api.renameBrochure.mockResolvedValue({ data: {} });
+    render(<SchedulingSetup canEdit />);
+    const row = within(await rowOf('Product demo'));
+    fireEvent.click(row.getByRole('button', { name: 'Rename Demo.pdf' }));
+    expect(row.getByLabelText('Name in emails')).toHaveValue('Demo');
+    fireEvent.change(row.getByLabelText('Name in emails'), { target: { value: 'Product Demo Brochure' } });
+    fireEvent.click(row.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(api.renameBrochure).toHaveBeenCalledWith(expect.anything(), 'Product Demo Brochure'));
   });
 
   it('refuses a file over the limit before uploading', async () => {

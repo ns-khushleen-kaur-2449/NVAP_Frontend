@@ -441,30 +441,36 @@ export const seedScheduling = () => api.post('/api/v1/scheduling/seed');
 const brochurePath = (meetingTypeId) => (meetingTypeId
   ? `/api/v1/scheduling/meeting-types/${meetingTypeId}/brochure` : '/api/v1/scheduling/brochures/default');
 export const listBrochures = () => api.get('/api/v1/scheduling/brochures');
-export const uploadBrochure = (meetingTypeId, file) => {
+// `name` (optional) is what the attachment is called in emails; left out: the file's own name.
+const brochureForm = (file, name) => {
   const form = new FormData();
   form.append('file', file);
+  if (name && name.trim()) form.append('name', name.trim());
+  return form;
+};
+export const uploadBrochure = (meetingTypeId, file, name) => {
+  const form = brochureForm(file, name);
   return api.put(brochurePath(meetingTypeId), form, { headers: { 'Content-Type': 'multipart/form-data' } });
 };
 export const deleteBrochure = (meetingTypeId) => api.delete(brochurePath(meetingTypeId));
 export const downloadBrochure = (id) => api.get(`/api/v1/scheduling/brochures/${id}/file`, { responseType: 'blob' });
 // A brochure's description, shown in the brochure email a lead asks for ("ABOUT IT").
 export const describeBrochure = (id, description) => api.patch(`/api/v1/scheduling/brochures/${id}`, { description });
+// Rename a brochure: the attachment's file name in emails (".pdf" is added when missing).
+export const renameBrochure = (id, name) => api.patch(`/api/v1/scheduling/brochures/${id}`, { name });
 
 // Products a lead can ask for a brochure about (Settings; Tenant Admin edits). Saving one re-publishes
 // the agents that use send_brochure with the new product list.
 export const listProducts = () => api.get('/api/v1/scheduling/products');
 export const createProduct = (data) => api.post('/api/v1/scheduling/products', data);
 export const updateProduct = (id, data) => api.patch(`/api/v1/scheduling/products/${id}`, data);
-export const uploadProductBrochure = (productId, file) => {
-  const form = new FormData();
-  form.append('file', file);
+export const uploadProductBrochure = (productId, file, name) => {
+  const form = brochureForm(file, name);
   return api.put(`/api/v1/scheduling/products/${productId}/brochure`, form, { headers: { 'Content-Type': 'multipart/form-data' } });
 };
 // A catalog row's brochure: stored on the brochure product with the row's name (created when missing).
-export const uploadCatalogItemBrochure = (itemId, file) => {
-  const form = new FormData();
-  form.append('file', file);
+export const uploadCatalogItemBrochure = (itemId, file, name) => {
+  const form = brochureForm(file, name);
   return api.put(`/api/v1/catalog/items/${itemId}/brochure`, form, { headers: { 'Content-Type': 'multipart/form-data' } });
 };
 export const deleteProductBrochure = (productId) => api.delete(`/api/v1/scheduling/products/${productId}/brochure`);

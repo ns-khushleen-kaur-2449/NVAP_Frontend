@@ -55,7 +55,9 @@ it("uploads a product's brochure", async () => {
   const row = (await screen.findByText('Punch EV')).closest('[role="listitem"]');
   const file = new File(['%PDF-1.7'], 'punch.pdf', { type: 'application/pdf' });
   fireEvent.change(within(row).getByLabelText('Brochure file'), { target: { files: [file] } });
-  await waitFor(() => expect(api.uploadProductBrochure).toHaveBeenCalledWith('p-2', file));
+  // Named first: the suggestion is the product's name.
+  fireEvent.click(within(row).getByRole('button', { name: 'Upload' }));
+  await waitFor(() => expect(api.uploadProductBrochure).toHaveBeenCalledWith('p-2', file, 'Punch EV Brochure'));
 });
 
 it('changes the brochure sender only with a reason, offering only people with a connected mailbox', async () => {

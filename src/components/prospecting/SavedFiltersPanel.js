@@ -148,7 +148,9 @@ export default function SavedFiltersPanel({ refreshKey, canShare, disabled, sele
       )}
 
       {items && items.length > 0 && (
-        <ul className={`space-y-2 transition-opacity ${loading ? 'opacity-50' : ''}`} aria-busy={loading}>
+        // Capped and scrolled on its own, so a long list never pushes the results far down the page.
+        <ul className={`space-y-2 max-h-[26rem] overflow-y-auto pr-1 transition-opacity ${loading ? 'opacity-50' : ''}`}
+          aria-busy={loading} aria-label="Saved searches" tabIndex={0}>
           {items.map((saved) => (
             <li key={saved.filter_id} aria-current={saved.filter_id === selectedId ? 'true' : undefined}
               className={`border rounded-lg p-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between ${saved.filter_id === selectedId ? 'border-primary' : 'border-border'}`}>

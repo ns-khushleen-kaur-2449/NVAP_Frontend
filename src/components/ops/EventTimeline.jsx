@@ -34,6 +34,8 @@ function actorText(kind, name) {
   return {
     user: 'by a team member', system: 'by the system', scheduler: 'by the scheduler', call: 'from a call',
     lead_call: 'by the lead, on a call', lead_calendar: "from the lead's calendar", sync: 'by the calendar sync',
+    // Nylas does not say who changed the executive's calendar (delegates, guests with edit rights), so name it.
+    executive_calendar: "changed in the executive's calendar",
   }[kind] || (kind ? `by ${humanize(kind).toLowerCase()}` : '');
 }
 

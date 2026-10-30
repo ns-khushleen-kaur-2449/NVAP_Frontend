@@ -195,6 +195,22 @@ export default function AddLeadDialog({ open, onOpenChange, onCreated }) {
                 </p>}
           </div>
 
+          <div className="space-y-1.5">
+            <Label htmlFor="lead-email">
+              Email <span className="text-xs font-normal text-muted-foreground">(optional)</span>
+            </Label>
+            <Input
+              id="lead-email"
+              type="email"
+              placeholder="name@example.com"
+              value={form.email}
+              onChange={(e) => setField('email', e.target.value)}
+              aria-invalid={Boolean(errors.email)}
+              className={errors.email ? 'border-red-400 focus-visible:ring-red-200' : ''}
+            />
+            {errors.email && <p className="text-[11px] text-red-600">{errors.email}</p>}
+          </div>
+
           <button
             type="button"
             onClick={() => setShowOptional(v => !v)}
@@ -206,29 +222,14 @@ export default function AddLeadDialog({ open, onOpenChange, onCreated }) {
 
           {showOptional && (
             <div className="space-y-4 rounded-lg border border-border bg-muted/30 p-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="lead-email" className="text-xs">Email</Label>
-                  <Input
-                    id="lead-email"
-                    type="email"
-                    placeholder="name@example.com"
-                    value={form.email}
-                    onChange={(e) => setField('email', e.target.value)}
-                    aria-invalid={Boolean(errors.email)}
-                    className={errors.email ? 'border-red-400 focus-visible:ring-red-200' : ''}
-                  />
-                  {errors.email && <p className="text-[11px] text-red-600">{errors.email}</p>}
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="lead-city" className="text-xs">City</Label>
-                  <Input
-                    id="lead-city"
-                    placeholder="e.g. Dubai"
-                    value={form.city}
-                    onChange={(e) => setField('city', e.target.value)}
-                  />
-                </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="lead-city" className="text-xs">City</Label>
+                <Input
+                  id="lead-city"
+                  placeholder="e.g. Dubai"
+                  value={form.city}
+                  onChange={(e) => setField('city', e.target.value)}
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-3">

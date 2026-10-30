@@ -138,7 +138,8 @@ it('puts the company brochure on top and a Brochure column per product', async (
   expect(row.getByText('Uses the company brochure')).toBeInTheDocument();
   const file = new File(['%PDF-1.7'], 'Nexon.pdf', { type: 'application/pdf' });
   fireEvent.change(screen.getByLabelText('Brochure for Nexon EV'), { target: { files: [file] } });
-  await waitFor(() => expect(api.uploadCatalogItemBrochure).toHaveBeenCalledWith('i-1', file));
+  fireEvent.click(screen.getByRole('button', { name: 'Upload' }));
+  await waitFor(() => expect(api.uploadCatalogItemBrochure).toHaveBeenCalledWith('i-1', file, 'Nexon EV Brochure'));
   unmount();
 
   const manager = renderWithAuth(<CatalogPage />, { user: USERS.manager });

@@ -1,10 +1,10 @@
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { Download, FileText, Loader2, Pencil, Upload, X } from 'lucide-react';
+import { Check, Download, FileText, Loader2, Pencil, Upload, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
-  deleteBrochure, deleteProductBrochure, describeBrochure, downloadBrochure, uploadBrochure, uploadProductBrochure,
+  deleteBrochure, deleteProductBrochure, describeBrochure, downloadBrochure, renameBrochure, uploadBrochure, uploadProductBrochure,
 } from '@/lib/api';
 
 // Brochure pieces shared by Settings' scheduling and products sections (moved from SchedulingSetup.jsx).
@@ -12,6 +12,10 @@ import {
 // Mirrors the backend's BROCHURE_MAX_BYTES default.
 export const BROCHURE_MAX_MB = 10;
 export const DESCRIPTION_MAX = 500;
+// Mirrors the backend's brochure NAME_MAX: the attachment's file name in emails.
+export const NAME_MAX = 120;
+
+const withoutPdf = (name) => String(name || '').replace(/\.pdf$/i, '').trim();
 
 export const errorList = (e, fallback) => {
   const detail = e?.response?.data?.detail;
@@ -33,34 +37,87 @@ export const isDefaultBrochure = (b) => (b.is_default ?? (!b.meeting_type_id && 
 
 /**
  * One brochure slot: the company default (no ids), a meeting type's (meetingTypeId) or a product's (productId).
- * PDF only; the backend checks the file itself. ``onUpload`` replaces the upload call (the Catalog's Brochure column).
+ * PDF only; the backend checks the file itself. ``onUpload(file, name)`` replaces the upload call (the Catalog's
+ * Brochure column). After picking a file the uploader names it: that name is the attachment's in every email
+ * (``suggestedName`` first, else the file's own name). An uploaded brochure can be renamed with the pencil.
  */
 export function BrochureControl({
-  meetingTypeId = null, productId = null, brochure, fallbackNote, removeNote, canEdit, onChanged, onUpload, inputLabel = 'Brochure file',
+  meetingTypeId = null, productId = null, brochure, fallbackNote, removeNote, canEdit, onChanged, onUpload,
+  inputLabel = 'Brochure file', suggestedName,
 }) {
   const input = useRef(null);
   const [busy, setBusy] = useState(false);
+  // A picked file waiting for its name, or the name being edited for the uploaded one.
+  const [pending, setPending] = useState(null);
+  const [renaming, setRenaming] = useState(null);
 
-  const upload = async (file) => {
+  const resetInput = () => { if (input.current) input.current.value = ''; };
+
+  const pick = (file) => {
     if (!file) return;
     if (file.size > BROCHURE_MAX_MB * 1024 * 1024) {
       toast.error(`The brochure must be at most ${BROCHURE_MAX_MB} MB`);
+      resetInput();
+      return;
+    }
+    setPending({ file, name: withoutPdf(suggestedName) || withoutPdf(file.name) });
+  };
+
+  const upload = async () => {
+    const { file, name } = pending;
+    if (!name.trim()) {
+      toast.error('Give the brochure a name');
       return;
     }
     setBusy(true);
     try {
-      if (onUpload) await onUpload(file); // e.g. a Catalog row, which creates its product first
-      else if (productId) await uploadProductBrochure(productId, file);
-      else await uploadBrochure(meetingTypeId, file);
+      if (onUpload) await onUpload(file, name.trim()); // e.g. a Catalog row, which creates its product first
+      else if (productId) await uploadProductBrochure(productId, file, name.trim());
+      else await uploadBrochure(meetingTypeId, file, name.trim());
       toast.success(brochure ? 'Brochure replaced' : 'Brochure uploaded');
+      setPending(null);
       await onChanged();
     } catch (e) {
       toast.error(errorList(e, 'Failed to upload the brochure')[0]);
     } finally {
       setBusy(false);
-      if (input.current) input.current.value = '';
+      resetInput();
     }
   };
+
+  const rename = async () => {
+    if (!renaming.trim()) {
+      toast.error('Give the brochure a name');
+      return;
+    }
+    setBusy(true);
+    try {
+      await renameBrochure(brochure.id, renaming.trim());
+      toast.success('Brochure renamed');
+      setRenaming(null);
+      await onChanged();
+    } catch (e) {
+      toast.error(errorList(e, 'Failed to rename the brochure')[0]);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const nameField = (value, onChange, onSave, onCancel, saveLabel, label) => (
+    <div className="flex items-center gap-1.5 flex-wrap" role="group" aria-label={label}>
+      <label className="text-muted-foreground" htmlFor={`${inputLabel}-name`}>Name in emails</label>
+      <div className="flex items-center">
+        <Input id={`${inputLabel}-name`} dir="auto" value={value} maxLength={NAME_MAX} autoFocus
+          onChange={(e) => onChange(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') onSave(); if (e.key === 'Escape') onCancel(); }}
+          className="h-7 w-56 text-xs bg-[hsl(var(--surface-2))] border-border rounded-r-none" />
+        <span className="h-7 px-1.5 inline-flex items-center border border-l-0 border-border rounded-r-md text-muted-foreground bg-muted/40">.pdf</span>
+      </div>
+      <Button size="sm" className="h-7 px-2" disabled={busy} onClick={onSave}>
+        {busy ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Check className="w-3.5 h-3.5 mr-1" />}{saveLabel}
+      </Button>
+      <Button size="sm" variant="ghost" className="h-7 px-2" disabled={busy} onClick={onCancel}>Cancel</Button>
+    </div>
+  );
 
   const remove = async () => {
     const after = removeNote || (meetingTypeId
@@ -92,6 +149,25 @@ export function BrochureControl({
     }
   };
 
+  if (pending) {
+    return (
+      <div className="space-y-1 text-xs">
+        <p className="text-muted-foreground flex items-center gap-1.5">
+          <FileText className="w-3.5 h-3.5 shrink-0" /> {pending.file.name} ({sizeLabel(pending.file.size)})
+        </p>
+        {nameField(pending.name, (name) => setPending((p) => ({ ...p, name })), upload,
+          () => { setPending(null); resetInput(); }, brochure ? 'Replace' : 'Upload', 'Name the brochure')}
+      </div>
+    );
+  }
+  if (renaming !== null) {
+    return (
+      <div className="text-xs">
+        {nameField(renaming, setRenaming, rename, () => setRenaming(null), 'Save', `Rename ${brochure.filename}`)}
+      </div>
+    );
+  }
+
   return (
     <div className="flex items-center gap-2 flex-wrap text-xs">
       <FileText className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
@@ -107,7 +183,13 @@ export function BrochureControl({
       {canEdit && (
         <>
           <input ref={input} type="file" accept="application/pdf,.pdf" className="hidden" aria-label={inputLabel}
-            onChange={(e) => upload(e.target.files?.[0])} />
+            onChange={(e) => pick(e.target.files?.[0])} />
+          {brochure && (
+            <Button size="sm" variant="ghost" className="h-7 px-1.5" disabled={busy} onClick={() => setRenaming(withoutPdf(brochure.filename))}
+              aria-label={`Rename ${brochure.filename}`} title="Rename (the name leads see on the attachment)">
+              <Pencil className="w-3 h-3" />
+            </Button>
+          )}
           <Button size="sm" variant="ghost" className="h-7 px-2" disabled={busy} onClick={() => input.current?.click()}>
             {busy ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Upload className="w-3.5 h-3.5 mr-1" />}
             {brochure ? 'Replace' : 'Upload PDF'}

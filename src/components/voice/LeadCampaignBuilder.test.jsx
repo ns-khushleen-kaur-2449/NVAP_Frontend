@@ -69,3 +69,19 @@ it('links each lead name to its page on /leads', () => {
   render(<LeadCampaignBuilder leads={LEADS} assistants={ASSISTANTS} onCampaignStarted={jest.fn()} />);
   expect(screen.getByRole('link', { name: 'Table Lead' })).toHaveAttribute('href', '/leads?prospect=table-lead');
 });
+
+it('builds its filters from the leads and shows their real details, not placeholders', () => {
+  const custom = (fuel, model) => ({ fuel_preference: fuel, interested_in: model });
+  const leads = [
+    { id: 'a', name: 'Asha', stage: 'new', city: 'Mohali', created_at: '2026-10-01T00:00:00Z', custom_fields: custom('electric', 'Nexon EV') },
+    { id: 'b', name: 'Bal', stage: 'engaged', city: 'Chandigarh', created_at: '2026-10-02T00:00:00Z', custom_fields: custom('diesel', 'XUV700') },
+  ];
+  render(<LeadCampaignBuilder leads={leads} assistants={ASSISTANTS} />);
+  expect(screen.getByText('Interested in')).toBeInTheDocument();
+  expect(screen.getByText('Nexon EV')).toBeInTheDocument();
+  expect(screen.queryByText('Signature')).not.toBeInTheDocument();
+  // Quick filters come from the data; the old real-estate ones are gone.
+  expect(screen.getByRole('combobox', { name: 'Quick filter: Stage' })).toBeInTheDocument();
+  expect(screen.getByRole('combobox', { name: 'Quick filter: City' })).toBeInTheDocument();
+  expect(screen.queryByText(/All Projects|All Categories/)).not.toBeInTheDocument();
+});

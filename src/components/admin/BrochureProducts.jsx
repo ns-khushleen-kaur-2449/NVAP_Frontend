@@ -206,7 +206,7 @@ export default function BrochureProducts({ canEdit, candidates = [] }) {
                   {p.aliases.map((a) => <Badge key={a} variant="secondary" className="text-[11px]" dir="auto">{a}</Badge>)}
                   {!p.is_active && <Badge variant="outline" className="text-[11px]">Inactive</Badge>}
                 </div>
-                <BrochureControl productId={p.id} brochure={p.brochure} canEdit={canEdit} onChanged={load}
+                <BrochureControl productId={p.id} brochure={p.brochure} canEdit={canEdit} onChanged={load} suggestedName={`${p.name} Brochure`}
                   fallbackNote="No brochure: leads asking for it get the company brochure"
                   removeNote="Leads asking for it will get the company brochure." />
                 <DescriptionEditor brochure={p.brochure} canEdit={canEdit} onChanged={load} />

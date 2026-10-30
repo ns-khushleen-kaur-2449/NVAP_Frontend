@@ -504,7 +504,8 @@ export default function CatalogPage() {
                       <BrochureControl productId={row.brochure_product_id} brochure={row.brochure} canEdit={brochureAdmin}
                         inputLabel={`Brochure for ${row.name}`} fallbackNote="Uses the company brochure"
                         removeNote="Leads asking for it will get the company brochure."
-                        onUpload={(file) => uploadCatalogItemBrochure(row.id, file)}
+                        suggestedName={`${row.name} Brochure`}
+                        onUpload={(file, name) => uploadCatalogItemBrochure(row.id, file, name)}
                         onChanged={async () => { await load(); setBrochureVersion((v) => v + 1); }} />
                     </td>
                   )}

@@ -25,6 +25,15 @@ export default function SavedSearches({ refreshKey, canShare, onEdit }) {
   const [sort, setSort] = useState('score_desc');
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const latestRun = useRef(0);
+  // The list of saved searches can be long: bring a newly chosen search's results into view.
+  const resultsHeading = useRef(null);
+  const selectedId = selected?.filter_id;
+  useEffect(() => {
+    if (!selectedId || !resultsHeading.current) return;
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    resultsHeading.current.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+    resultsHeading.current.focus({ preventScroll: true });
+  }, [selectedId]);
 
   const mounted = useRef(true);
   useEffect(() => {
@@ -90,7 +99,9 @@ export default function SavedSearches({ refreshKey, canShare, onEdit }) {
 
       {selected && (
         <section className="space-y-3" aria-label="Saved search results">
-          <h3 className="text-sm font-semibold">Results for “{selected.name}”</h3>
+          <h3 ref={resultsHeading} tabIndex={-1} className="text-sm font-semibold scroll-mt-4 focus:outline-none">
+            Results for “{selected.name}”
+          </h3>
 
           {error && (
             <div role="alert">

@@ -495,6 +495,7 @@ export default function SchedulingSetup({ canEdit }) {
                       )}
                       <div className="mt-1.5">
                         <BrochureControl meetingTypeId={m.id} brochure={brochureOf(m.id)} canEdit={canEdit} onChanged={loadBrochures}
+                          suggestedName={`${m.name} Brochure`}
                           fallbackNote={companyBrochure ? `Uses the company brochure (${companyBrochure.filename})` : null} />
                       </div>
                     </div>

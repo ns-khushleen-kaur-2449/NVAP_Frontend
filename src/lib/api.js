@@ -549,6 +549,12 @@ export const approveConversionDecision = (decisionId, data) =>
 export const rejectConversionDecision = (decisionId, data) =>
   api.post(`/api/ai/conversion/decisions/${decisionId}/reject`, data);
 
+// ── Lead scoring parameters (Tenant Admin / Super Admin edit with a reason; Manager views; Super Admin passes tenant_id) ──
+// update body: { disabled: [parameter], reason, expected_config_hash } — 409 when the hash is out of date.
+export const getLeadScoringConfig = (params) => api.get('/api/lead-scoring/config', { params });
+export const updateLeadScoringConfig = (data, params) => api.put('/api/lead-scoring/config', data, { params });
+export const getLeadScoringConfigHistory = (params) => api.get('/api/lead-scoring/config/history', { params });
+
 // ── Tenant rules (Tenant Admin edits with a reason; Manager views; Super Admin passes tenant_id) ──
 export const getContactRules = (params) => api.get('/api/v1/contact-rules', { params });
 export const updateContactRules = (data, params) => api.put('/api/v1/contact-rules', data, { params });

@@ -352,12 +352,17 @@ export default function LeadsPage() {
                   prospectId={selectedLead.id}
                   onScored={(s) => setLeads((rows) => rows.map((r) => (r.id === selectedLead.id ? { ...r, ai_score: Math.round(s.lead_score) } : r)))}
                 >
+                    {/* Only the details this lead has: an empty one is left out rather than shown as N/A. */}
                     <div className="grid grid-cols-2 gap-2 text-sm">
-                      <div><span className="text-muted-foreground">Budget:</span> <span>{formatCurrency(selectedLead.budget_min)} - {formatCurrency(selectedLead.budget_max)}</span></div>
-                      <div><span className="text-muted-foreground">Timeline:</span> <span>{selectedLead.timeline || 'N/A'}</span></div>
-                      <div><span className="text-muted-foreground">Project:</span> <span>{selectedLead.project || 'N/A'}</span></div>
-                      <div><span className="text-muted-foreground">Category:</span> <span>{selectedLead.category || 'N/A'} ({selectedLead.sub_category || 'N/A'})</span></div>
-                      <div><span className="text-muted-foreground">Source:</span> <span>{selectedLead.source}</span></div>
+                      {(selectedLead.budget_min || selectedLead.budget_max) && (
+                        <div><span className="text-muted-foreground">Budget:</span> <span>{[selectedLead.budget_min, selectedLead.budget_max].filter(Boolean).map(formatCurrency).join(' - ')}</span></div>
+                      )}
+                      {selectedLead.timeline && <div><span className="text-muted-foreground">Timeline:</span> <span>{selectedLead.timeline}</span></div>}
+                      {selectedLead.project && <div><span className="text-muted-foreground">Project:</span> <span>{selectedLead.project}</span></div>}
+                      {(selectedLead.category || selectedLead.sub_category) && (
+                        <div><span className="text-muted-foreground">Category:</span> <span>{[selectedLead.category, selectedLead.sub_category].filter(Boolean).join(' / ')}</span></div>
+                      )}
+                      {selectedLead.source && <div><span className="text-muted-foreground">Source:</span> <span>{selectedLead.source}</span></div>}
                     </div>
                 </LeadScorePanel>
 

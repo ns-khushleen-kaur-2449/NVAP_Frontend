@@ -96,7 +96,7 @@ export default function RegisterPage() {
               <div className="relative">
                 <input id="reg-password" type={showPassword ? 'text' : 'password'} placeholder="Min. 6 characters" value={password}
                   onChange={e => setPassword(e.target.value)}
-                  className="w-full h-12 px-4 pr-12 rounded-xl text-sm outline-none transition-all duration-200"
+                  className="no-native-reveal w-full h-12 px-4 pr-12 rounded-xl text-sm outline-none transition-all duration-200"
                   style={inputBase} onFocus={onFocus} onBlur={onBlur} data-testid="register-password-input" required />
                 <button type="button" onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-4 top-1/2 -translate-y-1/2 text-[var(--mist)] hover:text-[var(--ink)] transition-colors" tabIndex={-1}>

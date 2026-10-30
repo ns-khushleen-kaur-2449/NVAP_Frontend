@@ -188,6 +188,11 @@ export function canEditTenantRules(actor) {
   return actor?.role === ROLES.TENANT_ADMIN;
 }
 
+/** Tenant Admins (and a Super Admin, naming a tenant) choose the lead scoring parameters; Managers view them. */
+export function canEditLeadScoring(actor) {
+  return Boolean(actor) && ['tenant_admin', 'super_admin'].includes(actor.role);
+}
+
 /** Only a Super Admin changes the outer calling bound. */
 export function canEditCallingBound(actor) {
   return isSuperAdmin(actor);

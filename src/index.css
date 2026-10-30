@@ -4,6 +4,10 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Fields with their own show/hide button: hide the browser's built-in one (Edge) so there is only one. */
+.no-native-reveal::-ms-reveal,
+.no-native-reveal::-ms-clear { display: none; }
+
 /* ============================================================
    SmartSDR — marketing design layer  (scope: .mk)
    Netsmartz identity: signal orange + warm neutrals.

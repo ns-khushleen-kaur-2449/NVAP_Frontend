@@ -12,6 +12,7 @@ import CalendarConnections from '@/components/CalendarConnections';
 import ToolsManager from '@/components/admin/ToolsManager';
 import SchedulingSetup from '@/components/admin/SchedulingSetup';
 import OperationsSettings from '@/components/ops/OperationsSettings';
+import LeadScoringSettings from '@/components/ops/LeadScoringSettings';
 import { useAuth } from '@/lib/AuthContext';
 import { canViewOperations } from '@/lib/rbac';
 import { getSettings, updateSettings } from '@/lib/api';
@@ -23,6 +24,7 @@ export const SETTINGS_TABS = [
   { value: 'calendar', label: 'Calendar', show: () => true },
   { value: 'scheduling', label: 'Meeting scheduling', show: ({ hasRole }) => hasRole('tenant_admin', 'manager') },
   { value: 'rules', label: 'Calling rules', show: ({ user }) => canViewOperations(user) },
+  { value: 'scoring', label: 'Lead scoring', show: ({ user }) => canViewOperations(user) },
   { value: 'tools', label: 'Tools', show: ({ hasRole }) => hasRole('super_admin') },
 ];
 
@@ -149,6 +151,11 @@ export default function SettingsPage() {
         {/* Contact rules, appointment rules and the outer calling bound (OperationsSettings checks the role). */}
         <TabsContent value="rules" className="mt-4">
           <OperationsSettings />
+        </TabsContent>
+
+        {/* Which lead score parameters are used: Tenant Admins edit, Managers view (LeadScoringSettings checks the role). */}
+        <TabsContent value="scoring" className="mt-4">
+          <LeadScoringSettings />
         </TabsContent>
 
         {/* Platform Vapi tools are managed by Super Admins only. */}

@@ -206,7 +206,7 @@ export default function LoginPage() {
                   <input id="login-password" type={showPassword ? 'text' : 'password'} autoComplete="current-password"
                     placeholder="Enter your password" value={password}
                     onChange={e => setPassword(e.target.value)}
-                    className={cn(fieldClass, 'pr-12')} data-testid="login-password-input" required />
+                    className={cn(fieldClass, 'pr-12', 'no-native-reveal')} data-testid="login-password-input" required />
                   <LockKeyhole className={fieldIconClass} aria-hidden="true" />
                   <button type="button" onClick={() => setShowPassword(!showPassword)}
                     aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword}

@@ -4,12 +4,14 @@ import { motion, AnimatePresence, useScroll, useTransform } from 'framer-motion'
 import {
   ArrowRight, Plus, PlayCircle, Zap, ShieldCheck, Target, FileSearch, Quote,
   Check, Layers, BookOpen, FileSpreadsheet, PhoneCall, Calendar, BellRing, BarChart3, PhoneOff, Gauge,
+  AudioLines, UserCog, Users, Mail, CalendarSync, Headset, Infinity as InfinityIcon,
 } from 'lucide-react';
 import MarketingNav from '@/components/marketing/MarketingNav';
 import MarketingFooter from '@/components/marketing/MarketingFooter';
 import HeroWave3D from '@/components/marketing/HeroWave3D';
 import { VoiceCard } from '@/components/marketing/ProductVisuals';
-import HelperCharacter from '@/components/shared/HelperCharacter';
+import WorkflowVisual from '@/components/marketing/WorkflowVisual';
+import { NetsmartzLogo, SmartSDRWordmark } from '@/components/shared/BrandLockup';
 import { cn } from '@/lib/utils';
 
 import hubspot from '@/assets/hubspot.png';
@@ -40,56 +42,74 @@ const STEPS = [
   { n: '03', t: 'Act on what matters', d: 'Reps follow the hottest leads first, and managers see which leads are moving.' },
 ];
 
+// Each plan is laid out as the same seven rows (header, price, usage, seats,
+// features, add-on seats, CTA) so the cards line up for comparison.
 const PLANS = [
   {
-    name: 'Plus', tagline: 'A sales team of one', highlight: false,
+    name: 'Plus', highlight: false,
     price: '$249', period: '/mo',
     billing: 'billed monthly',
-    desc: 'For solo agents and small teams who want more qualified conversations without more headcount.',
-    specs: [
-      '150 AI-qualified calls/month',
-      '450 voice minutes · 750 LLM steps',
-      '1 tenant',
-      '1 LangSmith / LLMOps seat',
-      'Best-effort SLA',
-      'Email support',
-      'Overage: $1.75/call',
+    desc: 'For solo agents and small sales teams.',
+    usage: [
+      { icon: PhoneCall, value: '150', label: 'AI-qualified calls/month' },
+      { icon: AudioLines, value: '450', label: 'voice minutes' },
+    ],
+    seats: [
+      { icon: UserCog, value: '1', label: 'Manager seat' },
+      { icon: Users, value: '3', label: 'Sales Rep seats' },
+    ],
+    features: [
+      { icon: Mail, label: 'Email support' },
+    ],
+    addons: [
+      { label: 'Extra Manager seat', price: '$39', period: '/month' },
+      { label: 'Extra Sales Rep seat', price: '$19', period: '/month' },
     ],
     cta: 'Choose Plus',
   },
   {
-    name: 'Pro', tagline: 'Most popular', highlight: true,
+    name: 'Pro', highlight: true,
     price: '$1,499', period: '/mo',
     billing: 'billed monthly',
-    desc: 'For proving voice outreach can fill your pipeline.',
-    specs: [
-      '1,000 AI-qualified calls/month',
-      '3,000 voice minutes · 5,000 LLM steps',
-      'Up to 10 tenants',
-      '3 LangSmith / LLMOps seats',
-      'CRM & calendar integration',
-      '99.5% uptime SLA',
-      'Priority email + chat support',
-      'Overage: $1.35/call',
+    desc: 'For growing teams scaling voice outreach.',
+    usage: [
+      { icon: PhoneCall, value: '1,000', label: 'AI-qualified calls/month' },
+      { icon: AudioLines, value: '3,000', label: 'voice minutes' },
+    ],
+    seats: [
+      { icon: UserCog, value: '3', label: 'Manager seats' },
+      { icon: Users, value: '15', label: 'Sales Rep seats' },
+    ],
+    features: [
+      { icon: Mail, label: 'Priority email support' },
+      { icon: CalendarSync, label: 'CRM & calendar integration' },
+    ],
+    addons: [
+      { label: 'Extra Manager seat', price: '$29', period: '/month' },
+      { label: 'Extra Sales Rep seat', price: '$15', period: '/month' },
     ],
     cta: 'Choose Pro',
   },
   {
-    name: 'Pro+', tagline: 'Get results faster', highlight: false,
+    name: 'Pro+', highlight: false,
     price: '$3,999', period: '/mo',
     billing: 'billed monthly',
-    desc: 'For making voice outreach a channel you can count on.',
-    specs: [
-      '3,500 AI-qualified calls/month',
-      '10,500 voice minutes · 17,500 LLM steps',
-      'Unlimited tenants (fair use)',
-      '5 LangSmith / LLMOps seats, pooled',
-      'CRM & calendar integration',
-      'Dedicated customer success manager',
-      '99.9% uptime SLA, custom',
-      'Dedicated Slack channel support',
-      'Overage: $1.05/call',
+    desc: 'For large teams with high-volume outreach.',
+    usage: [
+      { icon: PhoneCall, value: '3,500', label: 'AI-qualified calls/month' },
+      { icon: AudioLines, value: '10,500', label: 'voice minutes' },
     ],
+    seats: [
+      { icon: UserCog, value: 'Unlimited', label: 'Manager seats' },
+      { icon: Users, value: 'Unlimited', label: 'Sales Rep seats' },
+    ],
+    features: [
+      { icon: Mail, label: 'Priority email support' },
+      { icon: CalendarSync, label: 'CRM & calendar integration' },
+      { icon: Headset, label: 'Dedicated customer success manager' },
+    ],
+    addons: [],
+    addonsNote: 'Unlimited Manager and Sales Rep seats are included.',
     cta: 'Choose Pro+',
   },
 ];
@@ -218,6 +238,138 @@ function HowItWorks() {
   );
 }
 
+/* ── Pricing card: seven rows that line up across cards via CSS subgrid (lg+) ── */
+const PLAN_ROW = 'mx-5 sm:mx-6 lg:mx-5 xl:mx-6';
+const PLAN_SECTION = cn(PLAN_ROW, 'border-t border-[var(--line)] py-4');
+const ICON_CHIP = 'flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[rgba(248,114,23,0.1)] text-[var(--pine)]';
+
+function PlanLabel({ children }) {
+  return <p className="mb-2.5 text-[0.68rem] font-bold uppercase tracking-[0.14em] text-[var(--mist)]">{children}</p>;
+}
+
+// Hover lift is driven by `group-hover/plan` from the Reveal wrapper, which does not
+// move: if the card itself were the hover target, lifting it would pull its
+// bottom edge out from under the cursor and the card would flicker.
+// The whole card selects the plan; focusing its button selects it too, so
+// keyboard users get the same selection as mouse users.
+function PlanCard({ plan, selected, onSelect, onChoose }) {
+  const p = plan;
+  return (
+    <div onClick={onSelect} onFocus={onSelect} className={cn(
+      'relative flex h-full cursor-pointer select-none flex-col rounded-[1.5rem] bg-white ring-1 ring-[var(--line)] dark:bg-[var(--stone)]',
+      'transition-[transform,box-shadow] duration-300 ease-out motion-reduce:transition-none',
+      'lg:row-span-7 lg:grid lg:grid-rows-subgrid lg:gap-y-0',
+      p.highlight && 'bg-[radial-gradient(120%_45%_at_50%_0%,rgba(248,114,23,0.16),transparent_70%)]',
+      selected
+        ? 'ring-2 ring-[var(--pine)] shadow-[0_32px_64px_-32px_rgba(248,114,23,0.6)] group-hover/plan:shadow-[0_40px_72px_-30px_rgba(248,114,23,0.7)] lg:-translate-y-3 lg:group-hover/plan:-translate-y-4'
+        : 'group-hover/plan:-translate-y-1 group-hover/plan:ring-[rgba(248,114,23,0.45)] group-hover/plan:shadow-[0_28px_56px_-32px_rgba(0,0,0,0.5)]',
+    )}>
+      {selected && <span className="sr-only">Selected plan</span>}
+      {p.highlight && (
+        <span className="absolute -top-3 left-1/2 inline-flex -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-full bg-[var(--pine)] px-3 py-1 text-[0.65rem] font-bold uppercase tracking-wider text-white shadow-[0_6px_16px_-6px_rgba(248,114,23,0.8)]">
+          <Zap className="h-3 w-3" /> Most popular
+        </span>
+      )}
+
+      {/* 1 · Plan name and description */}
+      <div className={cn(PLAN_ROW, 'pt-7')}>
+        <h3 className="mk-display text-[1.6rem] font-semibold leading-tight text-[var(--ink)]">{p.name}</h3>
+        <p className="mt-1.5 text-sm leading-relaxed text-[var(--mist)]">{p.desc}</p>
+      </div>
+
+      {/* 2 · Price */}
+      <div className={cn(PLAN_ROW, 'pb-5 pt-4')}>
+        <p className="flex items-baseline gap-1">
+          <span className="mk-display text-[2.5rem] font-semibold leading-none tracking-tight tabular-nums text-[var(--ink)]">{p.price}</span>
+          <span className="text-base text-[var(--mist)]">{p.period}</span>
+        </p>
+        <p className="mt-2 text-xs text-[var(--mist)]">{p.billing}</p>
+      </div>
+
+      {/* 3 · Usage allowance */}
+      <div className={PLAN_SECTION}>
+        <PlanLabel>Usage allowance</PlanLabel>
+        <ul className="space-y-2">
+          {p.usage.map((u) => (
+            <li key={u.label} className="flex items-center gap-3 text-sm text-[var(--ink)]/80">
+              <span className={ICON_CHIP}><u.icon className="h-3.5 w-3.5" /></span>
+              <span><span className="font-semibold tabular-nums text-[var(--ink)]">{u.value}</span> {u.label}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {/* 4 · Included seats — the check marks them as part of the price */}
+      <div className={PLAN_SECTION}>
+        <PlanLabel>Included seats</PlanLabel>
+        <ul className="space-y-2">
+          {p.seats.map((s) => (
+            <li key={s.label} className="flex items-center gap-3 text-sm text-[var(--ink)]/80">
+              <span className={ICON_CHIP}><s.icon className="h-3.5 w-3.5" /></span>
+              <span className="flex-1"><span className="font-semibold tabular-nums text-[var(--ink)]">{s.value}</span> {s.label}</span>
+              <Check className="h-4 w-4 shrink-0 text-[var(--pine)]" aria-label="Included" />
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {/* 5 · Features and support */}
+      <div className={PLAN_SECTION}>
+        <PlanLabel>Features &amp; support</PlanLabel>
+        <ul className="space-y-2">
+          {p.features.map((f) => (
+            <li key={f.label} className="flex items-center gap-3 text-sm text-[var(--ink)]/80">
+              <span className={ICON_CHIP}><f.icon className="h-3.5 w-3.5" /></span>
+              {f.label}
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {/* 6 · Additional seats — priced per month, unlike the included ones */}
+      <div className={PLAN_SECTION}>
+        <PlanLabel>{p.addons.length ? 'Additional seats (optional)' : 'Additional seats'}</PlanLabel>
+        {p.addons.length ? (
+          <ul className="space-y-2">
+            {p.addons.map((a) => (
+              <li key={a.label} className="flex items-center gap-3 text-sm text-[var(--ink)]/80">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-dashed border-[var(--line)] text-[var(--mist)]">
+                  <Plus className="h-3.5 w-3.5" />
+                </span>
+                <span className="flex-1">{a.label}</span>
+                <span className="whitespace-nowrap">
+                  <span className="font-semibold tabular-nums text-[var(--pine)]">{a.price}</span>
+                  <span className="text-xs text-[var(--mist)]">{a.period}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="flex items-center gap-3 text-sm text-[var(--ink)]/80">
+            <span className={ICON_CHIP}><InfinityIcon className="h-3.5 w-3.5" /></span>
+            {p.addonsNote}
+          </p>
+        )}
+      </div>
+
+      {/* 7 · CTA, pinned to the bottom so all three buttons align */}
+      <div className={cn(PLAN_ROW, 'mt-auto pb-6 pt-2 lg:mt-0 lg:self-end')}>
+        <button onClick={onChoose}
+          className={cn(
+            'group/cta inline-flex h-11 w-full items-center justify-center gap-2 rounded-full text-sm font-semibold transition-colors duration-200',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pine)] focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-[var(--stone)]',
+            selected
+              ? 'bg-[var(--pine)] text-white shadow-[0_10px_24px_-10px_rgba(248,114,23,0.8)] hover:bg-[var(--pine-2)]'
+              : 'border-[1.5px] border-[var(--line)] text-[var(--ink)] hover:border-[var(--pine)] hover:text-[var(--pine)]',
+          )}>
+          {p.cta}
+          <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover/cta:translate-x-0.5 motion-reduce:transition-none" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function FaqItem({ item, open, onToggle }) {
   return (
     <div className="border-b border-[var(--line)]">
@@ -244,6 +396,8 @@ export default function LandingPage() {
   const navigate = useNavigate();
   const { hash } = useLocation();
   const [openFaq, setOpenFaq] = useState(0);
+  // The highlighted plan card; Pro (most popular) until the visitor picks another.
+  const [selectedPlan, setSelectedPlan] = useState('Pro');
   const firstRender = useRef(true);
 
   // On reload the URL may still carry a hash — clear it and stay at the top.
@@ -271,10 +425,20 @@ export default function LandingPage() {
   const heroFade = useTransform(scrollY, [0, 460], [1, 0]);
   const blobY = useTransform(scrollY, [0, 800], [0, 180]);
   const visualY = useTransform(scrollY, [0, 600], [0, 70]);
+  // The hero fades and drifts as you scroll only from lg up. Below lg the workflow
+  // visual sits under the copy, and the fade would hide it before it is reached.
+  const [heroScrollFx, setHeroScrollFx] = useState(() => Boolean(window.matchMedia?.('(min-width: 1024px)').matches));
+  useEffect(() => {
+    const mq = window.matchMedia?.('(min-width: 1024px)');
+    if (!mq) return undefined;
+    const onChange = (e) => setHeroScrollFx(e.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
 
   return (
     <div className="mk overflow-x-hidden bg-[var(--paper)]">
-      <MarketingNav overHero />
+      <MarketingNav overHero showBrand={false} />
 
       {/* ── Hero ─────────────────────────────────────────────── */}
       <section className="mk-band relative overflow-hidden bg-[var(--deep)] pt-36 pb-20 md:pt-44 md:pb-24">
@@ -289,10 +453,15 @@ export default function LandingPage() {
             style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,.5) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.5) 1px, transparent 1px)', backgroundSize: '56px 56px', maskImage: 'radial-gradient(ellipse at 50% 15%, black, transparent 72%)' }} />
         </motion.div>
 
-        <motion.div style={{ y: heroY, opacity: heroFade }} className="relative z-10 mx-auto grid max-w-[1300px] items-center gap-16 px-6 md:grid-cols-[1.15fr_0.85fr] md:px-10">
+        <motion.div style={heroScrollFx ? { y: heroY, opacity: heroFade } : undefined} className="relative z-10 mx-auto grid max-w-[1300px] items-center gap-16 px-6 md:px-10 lg:grid-cols-[1.15fr_0.85fr]">
           <div>
-            <h1 className="mk-display text-[3rem] font-semibold leading-[1.03] text-white sm:text-[3.7rem] md:text-[4.6rem]">
-              <motion.span className="flex flex-wrap gap-x-4"
+            {/* Brand first, then the headline: logo > SmartSDR > headline in size. */}
+            <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
+              <NetsmartzLogo className="h-14 sm:h-20 lg:h-24" />
+              <SmartSDRWordmark className="mt-3 block text-[3.25rem] text-white sm:mt-4 sm:text-[4.25rem] lg:text-[5rem]" />
+            </motion.div>
+            <h1 className="mk-display mt-6 text-[1.4rem] font-semibold leading-snug text-white sm:text-[1.6rem] lg:text-[1.8rem]">
+              <motion.span className="flex flex-wrap gap-x-[0.28em]"
                 initial="hidden" animate="show"
                 variants={{ show: { transition: { staggerChildren: 0.06, delayChildren: 0.15 } } }}>
                 {HEADLINE.map((w, i) => (
@@ -319,16 +488,20 @@ export default function LandingPage() {
                 className="group inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-[var(--pine)] to-[var(--brass)] px-7 py-3.5 text-[0.95rem] font-semibold text-white shadow-[0_10px_40px_-8px_rgba(248,114,23,0.6)] transition-all hover:-translate-y-0.5">
                 Get started <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
               </button>
-              <a href="#what" className="inline-flex items-center gap-2 rounded-full border border-white/20 px-7 py-3.5 text-[0.95rem] font-semibold text-white transition-all hover:bg-white/10">
+              {/* Explicit per-theme colours. No "bg-white" in the class list: the light-mode
+                  .mk-band rules in index.css match it by substring and would grey the button
+                  and keep its text white. */}
+              <a href="#what" className="inline-flex items-center gap-2 rounded-full border border-[rgba(23,19,15,0.25)] px-7 py-3.5 text-[0.95rem] font-semibold text-[var(--ink)] transition-all hover:border-[var(--pine)] hover:text-[var(--pine)] dark:border-[rgba(255,255,255,0.2)] dark:text-[#FFFFFF] dark:hover:border-[rgba(255,255,255,0.2)] dark:hover:bg-[rgba(255,255,255,0.1)] dark:hover:text-[#FFFFFF]">
                 <PlayCircle className="h-4 w-4" /> See the platform
               </a>
             </motion.div>
           </div>
 
-          {/* Single live product card — centered, no overlap */}
-          <motion.div style={{ y: visualY }} className="relative hidden justify-center md:flex">
+          {/* Workflow visual: AI calls → understands conversations → books meetings.
+              Beside the copy from lg; below it on smaller screens. */}
+          <motion.div style={heroScrollFx ? { y: visualY } : undefined} className="relative mx-auto w-full max-w-[34rem] lg:max-w-none">
             <motion.div initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, delay: 0.5 }}>
-              <div className="mk-float"><VoiceCard /></div>
+              <WorkflowVisual />
             </motion.div>
           </motion.div>
         </motion.div>
@@ -538,54 +711,14 @@ export default function LandingPage() {
             </p>
           </Reveal>
 
-          <div className="grid gap-6 md:grid-cols-3 items-start">
-            {PLANS.map((p, i) => {
-              const { price, period, billing: billingNote } = p;
-              return (
-                <Reveal key={p.name} delay={i * 0.1}>
-                  <div className={cn('flex h-full flex-col rounded-[1.5rem] p-8 transition-transform duration-300 hover:-translate-y-1',
-                    p.highlight ? 'mk-band bg-[var(--deep)] text-white ring-2 ring-[var(--pine)] shadow-[0_40px_80px_-40px_rgba(248,114,23,0.5)]' : 'bg-white ring-1 ring-[var(--line)] dark:bg-[var(--stone)]')}>
-                    {p.highlight && (
-                      <span className="mb-4 inline-flex w-fit items-center gap-1.5 rounded-full bg-[var(--pine)] px-3 py-1 text-[0.65rem] font-bold uppercase tracking-wider text-white">
-                        <Zap className="h-3 w-3" /> Most popular
-                      </span>
-                    )}
-                    <h3 className={cn('mk-display text-[1.4rem] font-semibold', !p.highlight && 'text-[var(--ink)]')}>{p.name}</h3>
-                    <p className={cn('mt-1 text-sm font-medium', p.highlight ? 'text-[var(--brass-2)]' : 'text-[var(--pine)]')}>{p.tagline}</p>
-
-                    <div className="mt-5 flex items-baseline gap-1">
-                      <AnimatePresence mode="wait">
-                        <motion.span key={price} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
-                          transition={{ duration: 0.2 }} className="mk-display text-[2.4rem] font-semibold">{price}</motion.span>
-                      </AnimatePresence>
-                      <span className={cn('text-sm', p.highlight ? 'text-white/50' : 'text-[var(--mist)]')}>{period}</span>
-                    </div>
-                    <p className={cn('mt-1 text-xs', p.highlight ? 'text-white/45' : 'text-[var(--mist)]')}>{billingNote}</p>
-
-                    <p className={cn('mt-4 text-sm leading-relaxed', p.highlight ? 'text-white/70' : 'text-[var(--mist)]')}>{p.desc}</p>
-
-                    <div className="mt-6">
-                      <p className={cn('text-[0.65rem] font-bold uppercase tracking-wider', p.highlight ? 'text-white/40' : 'text-[var(--mist)]')}>Specs</p>
-                      <ul className="mt-3 space-y-2">
-                        {p.specs.map((s) => (
-                          <li key={s} className={cn('text-sm', p.highlight ? 'text-white/80' : 'text-[var(--ink)]/80')}>{s}</li>
-                        ))}
-                      </ul>
-                    </div>
-
-                    {p.footnote && (
-                      <p className={cn('mt-6 text-xs italic', p.highlight ? 'text-white/50' : 'text-[var(--mist)]')}>{p.footnote}</p>
-                    )}
-
-                    <button onClick={() => navigate('/login')}
-                      className={cn('mt-8 rounded-full px-6 py-3 text-sm font-semibold transition-all',
-                        p.highlight ? 'bg-white text-[var(--deep)] hover:bg-[var(--brass-2)]' : 'bg-[var(--stone)] text-[var(--pine)] hover:bg-[var(--pine)] hover:text-white')}>
-                      {p.cta}
-                    </button>
-                  </div>
-                </Reveal>
-              );
-            })}
+          {/* One column (max 30rem) below lg; three subgrid-aligned columns from lg up. */}
+          <div className="mx-auto grid max-w-[30rem] gap-8 lg:max-w-[1120px] lg:grid-cols-3 lg:gap-x-6 lg:gap-y-0">
+            {PLANS.map((p, i) => (
+              <Reveal key={p.name} delay={i * 0.1} className="group/plan lg:row-span-7 lg:grid lg:grid-rows-subgrid lg:gap-y-0">
+                <PlanCard plan={p} selected={selectedPlan === p.name}
+                  onSelect={() => setSelectedPlan(p.name)} onChoose={() => navigate('/login')} />
+              </Reveal>
+            ))}
           </div>
         </div>
       </section>
@@ -611,7 +744,6 @@ export default function LandingPage() {
       </section>
 
       <MarketingFooter />
-      <HelperCharacter />
     </div>
   );
 }

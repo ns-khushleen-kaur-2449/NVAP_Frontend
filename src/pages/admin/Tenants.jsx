@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Building2, Copy, Loader2, Plus, RefreshCw } from 'lucide-react';
+import { Building2, Copy, Loader2, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,7 +12,10 @@ import {
   AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { errorText } from '@/components/admin/userBits';
-import { activateTenant, createTenantWithAdmin, listTenants, suspendTenant } from '@/lib/api';
+import {
+  activateTenant, addTenantPhoneNumber, createTenantWithAdmin, listTenantPhoneNumbers, listTenants,
+  removeTenantPhoneNumber, suspendTenant,
+} from '@/lib/api';
 import { generateTemporaryPassword } from '@/lib/passwords';
 
 function NewTenantDialog({ open, onOpenChange, onCreated }) {
@@ -103,12 +106,137 @@ function NewTenantDialog({ open, onOpenChange, onCreated }) {
   );
 }
 
-/** Super Admin: every tenant, with its users; create, suspend and activate. */
+/** Super Admin: the Vapi phone numbers a tenant's admins may attach to its assistants.  Nothing here contacts Vapi. */
+function PhoneNumbersDialog({ tenant, onClose }) {
+  const [rows, setRows] = useState(null);
+  const [form, setForm] = useState({ vapi_phone_number_id: '', label: '' });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+  const [removing, setRemoving] = useState(null);
+
+  const load = useCallback(async () => {
+    try {
+      setRows((await listTenantPhoneNumbers(tenant.tenant_id)).data);
+    } catch (e) {
+      setError(errorText(e, 'Could not load phone numbers'));
+      setRows([]);
+    }
+  }, [tenant]);
+
+  useEffect(() => {
+    if (!tenant) return;
+    setRows(null);
+    setError(null);
+    setForm({ vapi_phone_number_id: '', label: '' });
+    load();
+  }, [tenant, load]);
+
+  const set = (patch) => setForm((f) => ({ ...f, ...patch }));
+  const add = async () => {
+    if (!form.vapi_phone_number_id.trim()) { setError('A Vapi phone number id is required'); return; }
+    setSaving(true);
+    setError(null);
+    try {
+      await addTenantPhoneNumber(tenant.tenant_id, {
+        vapi_phone_number_id: form.vapi_phone_number_id.trim(), label: form.label.trim() || null,
+      });
+      setForm({ vapi_phone_number_id: '', label: '' });
+      await load();
+    } catch (e) {
+      setError(errorText(e, 'Could not add the phone number'));
+    } finally {
+      setSaving(false);
+    }
+  };
+  const remove = async (row) => {
+    try {
+      await removeTenantPhoneNumber(tenant.tenant_id, row.id);
+      toast.success('Phone number removed');
+      await load();
+    } catch (e) {
+      toast.error(errorText(e, 'Could not remove the phone number'));
+    } finally {
+      setRemoving(null);
+    }
+  };
+
+  return (
+    <>
+      <Dialog open={Boolean(tenant)} onOpenChange={(open) => !open && onClose()}>
+        <DialogContent className="sm:max-w-[620px]" data-testid="tenant-phone-numbers-dialog">
+          <DialogHeader>
+            <DialogTitle>Phone numbers of {tenant?.name}</DialogTitle>
+            <DialogDescription>
+              The Vapi phone numbers this tenant's admins may attach to its assistants. A number belongs to one tenant at most.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-lg border border-border overflow-x-auto">
+            {!rows ? (
+              <div className="flex justify-center py-6"><Loader2 className="w-4 h-4 animate-spin text-primary" /></div>
+            ) : rows.length === 0 ? (
+              <p className="text-sm text-muted-foreground p-4">
+                Nothing given yet: this tenant's admins can't attach any number until you add one.
+              </p>
+            ) : (
+              <Table>
+                <TableHeader><TableRow><TableHead>Vapi number id</TableHead><TableHead>Label</TableHead><TableHead>Added</TableHead><TableHead /></TableRow></TableHeader>
+                <TableBody>
+                  {rows.map((row) => (
+                    <TableRow key={row.id}>
+                      <TableCell><code className="text-xs">{row.vapi_phone_number_id}</code></TableCell>
+                      <TableCell className="text-sm">{row.label || '—'}</TableCell>
+                      <TableCell className="text-sm">{new Date(row.created_at).toLocaleDateString()}</TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="ghost" size="icon" aria-label={`Remove ${row.label || row.vapi_phone_number_id}`}
+                          onClick={() => setRemoving(row)}><Trash2 className="w-4 h-4" /></Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <label className="block text-xs font-medium text-muted-foreground">Vapi phone number id
+              <Input value={form.vapi_phone_number_id} onChange={(e) => set({ vapi_phone_number_id: e.target.value })} className="mt-1" />
+            </label>
+            <label className="block text-xs font-medium text-muted-foreground">Label
+              <Input value={form.label} onChange={(e) => set({ label: e.target.value })} className="mt-1" placeholder="Sales line" />
+            </label>
+          </div>
+          {error && <p className="text-xs text-red-600" role="alert">{error}</p>}
+          <DialogFooter>
+            <Button onClick={add} disabled={saving} className="bg-primary text-primary-foreground">
+              {saving && <Loader2 className="w-4 h-4 mr-1 animate-spin" />} Add number
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <AlertDialog open={Boolean(removing)} onOpenChange={(open) => !open && setRemoving(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove {removing?.label || removing?.vapi_phone_number_id}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {tenant?.name}'s admins can no longer attach it. An assistant it is already attached to keeps it in Vapi.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => remove(removing)}>Remove</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
+
+/** Super Admin: every tenant, with its users; create, suspend and activate; give phone numbers. */
 export default function TenantsPage() {
   const [tenants, setTenants] = useState(null);
   const [creating, setCreating] = useState(false);
   const [confirming, setConfirming] = useState(null);
   const [busyId, setBusyId] = useState(null);
+  const [numbersFor, setNumbersFor] = useState(null);
 
   const load = useCallback(async () => {
     try {
@@ -175,7 +303,8 @@ export default function TenantsPage() {
                     <TableCell className="text-sm">{tenant.active_user_count} active / {tenant.user_count}</TableCell>
                     <TableCell className="text-sm">{tenant.admin_count}</TableCell>
                     <TableCell className="text-sm">{new Date(tenant.created_at).toLocaleDateString()}</TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right space-x-2 whitespace-nowrap">
+                      <Button variant="outline" size="sm" onClick={() => setNumbersFor(tenant)}>Phone numbers</Button>
                       <Button variant="outline" size="sm" disabled={busyId === tenant.tenant_id} onClick={() => setConfirming(tenant)}>
                         {tenant.status === 'active' ? 'Suspend' : 'Activate'}
                       </Button>
@@ -189,6 +318,7 @@ export default function TenantsPage() {
       </Card>
 
       <NewTenantDialog open={creating} onOpenChange={setCreating} onCreated={load} />
+      <PhoneNumbersDialog tenant={numbersFor} onClose={() => setNumbersFor(null)} />
       <AlertDialog open={Boolean(confirming)} onOpenChange={(open) => !open && setConfirming(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>

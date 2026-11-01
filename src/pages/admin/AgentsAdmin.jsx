@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Bot, Loader2, Plus, Trash2 } from 'lucide-react';
+import { Bot, Loader2, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,10 +10,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { errorText } from '@/components/admin/userBits';
 import {
-  createAgent, getAgentAccess, listAgentAssistants, listAgents, registerAgentAssistant, removeAgentAssistant,
-  setAgentAccess, updateAgent,
+  createAgent, getAgentAccess, getAgentHealth, listAgentAssistants, listAgents, registerAgentAssistant,
+  removeAgentAssistant, setAgentAccess, updateAgent,
 } from '@/lib/api';
-import { AGENT_STATUS_ACTIONS, AGENT_STATUS_LABELS, accessSummary } from '@/lib/agents';
+import { AGENT_STATUS_ACTIONS, AGENT_STATUS_LABELS, accessSummary, healthState, problemLabel } from '@/lib/agents';
 
 const STATUS_STYLE = {
   draft: 'bg-amber-500/10 text-amber-600 border-amber-500/25',
@@ -22,6 +22,31 @@ const STATUS_STYLE = {
 };
 
 const field = 'block text-xs font-medium text-muted-foreground';
+
+const HEALTH = {
+  ready: { label: 'Ready', style: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/25' },
+  attention: { label: 'Needs attention', style: 'bg-amber-500/10 text-amber-600 border-amber-500/25' },
+  no_code: { label: 'No code on this server', style: 'bg-red-500/10 text-red-600 border-red-500/25' },
+  unknown: { label: "Couldn't check", style: 'text-muted-foreground' },
+};
+
+/** ``health`` is undefined while loading, null when the check failed, else the endpoint's answer. */
+function HealthCell({ health }) {
+  if (health === undefined) return <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" aria-label="Checking" />;
+  const state = healthState(health);
+  // "no_code_pack" is what the badge already says.
+  const problems = state === 'attention' ? health.problems : [];
+  return (
+    <div className="space-y-1">
+      <Badge variant="outline" className={`text-[11px] ${HEALTH[state].style}`}>{HEALTH[state].label}</Badge>
+      {problems.length > 0 && (
+        <ul className="text-xs text-muted-foreground list-disc pl-4">
+          {problems.map((code) => <li key={code}>{problemLabel(code)}</li>)}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 function NewAgentDialog({ open, onOpenChange, onCreated }) {
   const [form, setForm] = useState({ key: '', name: '', industry: '', description: '' });
@@ -275,6 +300,7 @@ export default function AgentsAdminPage() {
   const [accessFor, setAccessFor] = useState(null);
   const [assistantsFor, setAssistantsFor] = useState(null);
   const [busyId, setBusyId] = useState(null);
+  const [health, setHealth] = useState({});
 
   const load = useCallback(async () => {
     try {
@@ -285,7 +311,17 @@ export default function AgentsAdminPage() {
     }
   }, []);
 
+  // One check per agent; a failed check marks only that agent.
+  const checkHealth = useCallback(async (list) => {
+    setHealth({});
+    const results = await Promise.allSettled(list.map((agent) => getAgentHealth(agent.id)));
+    setHealth(Object.fromEntries(list.map((agent, i) => [
+      agent.id, results[i].status === 'fulfilled' ? results[i].value.data : null,
+    ])));
+  }, []);
+
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (agents?.length) checkHealth(agents); }, [agents, checkHealth]);
 
   const changeStatus = async (agent, status) => {
     setBusyId(agent.id);
@@ -323,6 +359,12 @@ export default function AgentsAdminPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Agent</TableHead><TableHead>Status</TableHead><TableHead>Available to</TableHead>
+                  <TableHead>
+                    <span className="inline-flex items-center gap-1">Health
+                      <Button variant="ghost" size="icon" className="h-6 w-6" aria-label="Check health again"
+                        onClick={() => checkHealth(agents)}><RefreshCw className="w-3 h-3" /></Button>
+                    </span>
+                  </TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -337,6 +379,7 @@ export default function AgentsAdminPage() {
                       <Badge variant="outline" className={`text-[11px] ${STATUS_STYLE[agent.status] || ''}`}>{AGENT_STATUS_LABELS[agent.status] || agent.status}</Badge>
                     </TableCell>
                     <TableCell className="text-sm">{accessSummary(agent)}</TableCell>
+                    <TableCell data-testid={`agent-health-${agent.key}`}><HealthCell health={health[agent.id]} /></TableCell>
                     <TableCell className="text-right space-x-2 whitespace-nowrap">
                       {(AGENT_STATUS_ACTIONS[agent.status] || []).map((status) => (
                         <Button key={status} variant="outline" size="sm" disabled={busyId === agent.id}

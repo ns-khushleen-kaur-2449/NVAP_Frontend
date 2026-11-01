@@ -6,7 +6,7 @@ import AgentsPage from '@/pages/Agents';
 import RequirePermission from '@/components/auth/RequirePermission';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { PERMISSIONS } from '@/lib/rbac';
-import { agentRoute, accessSummary } from '@/lib/agents';
+import { agentRoute, accessSummary, healthState, problemLabel } from '@/lib/agents';
 import * as api from '@/lib/api';
 import { USERS, renderWithAuth } from '@/test/renderWithAuth';
 
@@ -20,7 +20,13 @@ jest.mock('@/lib/api', () => ({
   registerAgentAssistant: jest.fn(),
   removeAgentAssistant: jest.fn(),
   listAvailableAgents: jest.fn(),
+  getAgentHealth: jest.fn(),
 }));
+
+const HEALTH = {
+  'a-1': { key: 'sdr', has_code: true, contract_version: 1, ok: false, problems: ['campaign_runner_disabled', 'something_new'] },
+  'a-2': { key: 'hiring', has_code: false, contract_version: null, ok: false, problems: ['no_code_pack'] },
+};
 
 const AGENTS = [
   { id: 'a-1', key: 'sdr', name: 'SmartSDR', industry: 'Sales', description: 'Outbound sales calls', status: 'active', access_scope: 'all' },
@@ -40,6 +46,7 @@ beforeEach(() => {
   api.listAgentAssistants.mockResolvedValue({ data: [] });
   api.registerAgentAssistant.mockResolvedValue({ data: {} });
   api.listAvailableAgents.mockResolvedValue({ data: [AGENTS[0], AGENTS[1]] });
+  api.getAgentHealth.mockImplementation((id) => Promise.resolve({ data: HEALTH[id] }));
 });
 
 describe('agent permissions', () => {
@@ -80,6 +87,15 @@ describe('lib/agents', () => {
     expect(accessSummary({ access_scope: 'all' })).toBe('All organisations');
     expect(accessSummary({ access_scope: 'selected' })).toBe('Selected organisations');
   });
+
+  test('health state and problem words', () => {
+    expect(healthState({ has_code: true, ok: true, problems: [] })).toBe('ready');
+    expect(healthState({ has_code: true, ok: false, problems: ['vapi_not_configured'] })).toBe('attention');
+    expect(healthState({ has_code: false, ok: false, problems: ['no_code_pack'] })).toBe('no_code');
+    expect(healthState(null)).toBe('unknown');
+    expect(problemLabel('vapi_not_configured')).toBe('Vapi is not configured');
+    expect(problemLabel('brand_new_code')).toBe('brand_new_code');
+  });
 });
 
 describe('Agents (tenant view)', () => {
@@ -114,6 +130,36 @@ describe('Agent catalog admin (Super Admin)', () => {
     expect(within(sdr).getByText('Active')).toBeInTheDocument();
     expect(within(sdr).getByText('All organisations')).toBeInTheDocument();
     expect(within(screen.getByTestId('agent-row-hiring')).getByText('Draft')).toBeInTheDocument();
+  });
+
+  test('shows each agent\'s health with its problems in words', async () => {
+    renderWithAuth(<AgentsAdminPage />, { user: USERS.super_admin });
+    const sdr = await screen.findByTestId('agent-health-sdr');
+    expect(await within(sdr).findByText('Needs attention')).toBeInTheDocument();
+    expect(within(sdr).getByText('Campaign runner is off on this server')).toBeInTheDocument();
+    expect(within(sdr).getByText('something_new')).toBeInTheDocument();
+    const hiring = screen.getByTestId('agent-health-hiring');
+    expect(await within(hiring).findByText('No code on this server')).toBeInTheDocument();
+    expect(within(hiring).queryByRole('listitem')).not.toBeInTheDocument();
+    expect(api.getAgentHealth).toHaveBeenCalledWith('a-1');
+    expect(api.getAgentHealth).toHaveBeenCalledWith('a-2');
+  });
+
+  test('a ready agent, and one whose check failed, without hiding the others', async () => {
+    api.getAgentHealth.mockImplementation((id) => (id === 'a-1'
+      ? Promise.resolve({ data: { key: 'sdr', has_code: true, contract_version: 1, ok: true, problems: [] } })
+      : Promise.reject(new Error('network'))));
+    renderWithAuth(<AgentsAdminPage />, { user: USERS.super_admin });
+    expect(await within(await screen.findByTestId('agent-health-sdr')).findByText('Ready')).toBeInTheDocument();
+    expect(await within(screen.getByTestId('agent-health-hiring')).findByText("Couldn't check")).toBeInTheDocument();
+  });
+
+  test('health can be checked again', async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<AgentsAdminPage />, { user: USERS.super_admin });
+    await within(await screen.findByTestId('agent-health-sdr')).findByText('Needs attention');
+    await user.click(screen.getByRole('button', { name: /check health again/i }));
+    await waitFor(() => expect(api.getAgentHealth).toHaveBeenCalledTimes(4));
   });
 
   test('activating a draft changes its status', async () => {

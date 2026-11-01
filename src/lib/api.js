@@ -92,6 +92,10 @@ export const listTenants = () => api.get('/api/tenants');
 export const createTenantWithAdmin = (data) => api.post('/api/tenants/with-admin', data);
 export const suspendTenant = (id) => api.post(`/api/tenants/${id}/suspend`);
 export const activateTenant = (id) => api.post(`/api/tenants/${id}/activate`);
+// Super Admin only: the Vapi phone numbers a tenant may attach to its assistants (nothing is sent to Vapi).
+export const listTenantPhoneNumbers = (tenantId) => api.get(`/api/tenants/${tenantId}/phone-numbers`);
+export const addTenantPhoneNumber = (tenantId, data) => api.post(`/api/tenants/${tenantId}/phone-numbers`, data);
+export const removeTenantPhoneNumber = (tenantId, numberId) => api.delete(`/api/tenants/${tenantId}/phone-numbers/${numberId}`);
 export const getRoleDashboard = () => api.get('/api/v1/dashboard');
 
 // ── Agents (the platform catalog; backend app/api/v1/endpoints/agents.py) ──
@@ -107,6 +111,8 @@ export const setAgentAccess = (id, accessScope, tenantIds = []) =>
 export const listAgentAssistants = (id) => api.get(`/api/v1/agents/${id}/assistants`);
 export const registerAgentAssistant = (id, data) => api.post(`/api/v1/agents/${id}/assistants`, data);
 export const removeAgentAssistant = (id, rowId) => api.delete(`/api/v1/agents/${id}/assistants/${rowId}`);
+// Whether this server has the agent's code and can run it: { key, has_code, contract_version, ok, problems }.
+export const getAgentHealth = (id) => api.get(`/api/v1/agents/${id}/health`);
 // Users the caller may see (was /api/auth/users, which never existed).
 export const listUsers = () => authApi.get('/api/users', { params: { page_size: 100 } });
 

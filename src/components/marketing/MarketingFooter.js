@@ -22,7 +22,7 @@ export default function MarketingFooter() {
         <div className="grid gap-14 md:grid-cols-[1.4fr_1fr_1fr]">
           <div>
             <Link to="/" aria-label="SmartSDR by Netsmartz — home" className="inline-flex">
-              <BrandLockup layout="stacked" size="xl" />
+              <BrandLockup layout="stacked" size="xl" wordAlign="sdr" />
             </Link>
             <h3 className="mk-display mt-8 max-w-md text-[2.2rem] font-semibold leading-[1.1]">
               Put your calls to work.

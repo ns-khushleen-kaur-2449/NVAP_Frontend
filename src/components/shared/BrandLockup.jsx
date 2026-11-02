@@ -23,6 +23,8 @@ const LOGO_H = 198;
 // Where the "netsmartz" lettering starts (x px in the 860×198 file), right after
 // the square mark. The stacked lockup indents SmartSDR to this line.
 const LOGO_WORDMARK_X = 127;
+// Where the word "netsmartz" ends and the orange 27 begins (x px in the same file).
+const LOGO_WORDMARK_END_X = 525;
 
 // Size the logo with a height class only. width:auto keeps the natural ratio,
 // and object-contain plus max-w-full keep it undistorted and inside its parent
@@ -63,9 +65,20 @@ export function NetsmartzMark({ size = 32, className }) {
   );
 }
 
-export function SmartSDRWordmark({ className, style }) {
+// With sdrAt (px from the wordmark's left edge), "SDR" starts exactly there and
+// "Smart" ends at that point: a fixed-width box right-aligns "Smart" against it.
+export function SmartSDRWordmark({ className, style, sdrAt }) {
+  const base = 'mk-display font-semibold leading-none tracking-tight whitespace-nowrap';
+  if (sdrAt != null) {
+    return (
+      <span style={style} className={cn(base, 'inline-flex', className)}>
+        <span style={{ width: sdrAt }} className="flex shrink-0 justify-end">Smart</span>
+        <span className="text-[var(--pine)]">SDR</span>
+      </span>
+    );
+  }
   return (
-    <span style={style} className={cn('mk-display font-semibold leading-none tracking-tight whitespace-nowrap', className)}>
+    <span style={style} className={cn(base, className)}>
       Smart<span className="text-[var(--pine)]">SDR</span>
     </span>
   );
@@ -85,18 +98,22 @@ const STACKED_SIZES = {
   xl: { logo: 'h-16', logoPx: 64, word: 'text-[2.25rem]', gap: 'gap-3' },
 };
 
-// Stacked wordAlign: "letters" starts SmartSDR where the "netsmartz" letters
-// start (not under the square mark); "end" right-aligns it with the logo's edge.
+// Stacked wordAlign:
+//   "letters" starts SmartSDR where the "netsmartz" letters start (not under the square mark);
+//   "end"     right-aligns it with the logo's (or a full-width lockup's) right edge;
+//   "sdr"     starts the orange "SDR" where the word "netsmartz" ends, so "Smart" sits under
+//             "netsmartz" and "SDR" under the 27.
 export default function BrandLockup({ layout = 'inline', size = 'md', tone = 'auto', wordAlign = 'letters', className, wordClassName }) {
   if (layout === 'stacked') {
     const s = STACKED_SIZES[size];
     const alignEnd = wordAlign === 'end';
-    const indent = alignEnd ? 0 : Math.round((s.logoPx * LOGO_WORDMARK_X) / LOGO_H);
+    const indent = alignEnd || wordAlign === 'sdr' ? 0 : Math.round((s.logoPx * LOGO_WORDMARK_X) / LOGO_H);
+    const sdrAt = wordAlign === 'sdr' ? (s.logoPx * LOGO_WORDMARK_END_X) / LOGO_H : undefined;
     return (
       <span className={cn('inline-flex flex-col', alignEnd ? 'items-end' : 'items-start', s.gap, className)}>
         {/* The logo stays left; with "end", a full-width lockup pushes SmartSDR to the far right. */}
         <NetsmartzLogo tone={tone} className={cn(s.logo, 'self-start')} />
-        <SmartSDRWordmark className={cn(s.word, wordClassName)} style={indent ? { marginLeft: indent } : undefined} />
+        <SmartSDRWordmark className={cn(s.word, wordClassName)} style={indent ? { marginLeft: indent } : undefined} sdrAt={sdrAt} />
       </span>
     );
   }

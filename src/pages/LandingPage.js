@@ -9,7 +9,7 @@ import {
 import MarketingNav from '@/components/marketing/MarketingNav';
 import MarketingFooter from '@/components/marketing/MarketingFooter';
 import HeroWave3D from '@/components/marketing/HeroWave3D';
-import { VoiceCard } from '@/components/marketing/ProductVisuals';
+import GlassCalendar from '@/components/marketing/GlassCalendar';
 import WorkflowVisual from '@/components/marketing/WorkflowVisual';
 import { NetsmartzLogo, SmartSDRWordmark } from '@/components/shared/BrandLockup';
 import { cn } from '@/lib/utils';
@@ -22,12 +22,6 @@ import twilio from '@/assets/twilio.png';
 import zoho from '@/assets/zoho.png';
 
 const LOGOS = [hubspot, salesforce, azure, dynamics, twilio, zoho];
-
-const MEETINGS = [
-  { a: 'AR', b: 'PK', days: 2 }, { a: 'SM', b: 'DV', days: 8 }, { a: 'RJ', b: 'NK', days: 3 },
-  { a: 'VT', b: 'AS', days: 8 }, { a: 'MK', b: 'RP', days: 4 }, { a: 'KG', b: 'HT', days: 3 },
-  { a: 'DN', b: 'SB', days: 4 }, { a: 'PA', b: 'JM', days: 1 },
-];
 
 const STATS = [
   { v: '3.4×', k: 'more qualified conversations' },
@@ -506,34 +500,13 @@ export default function LandingPage() {
           </motion.div>
         </motion.div>
 
-        {/* Booked-meetings live strip */}
-        <div className="relative z-10 mx-auto mt-16 max-w-[1300px] px-6 md:mt-20 md:px-10">
-          <p className="mb-6 text-center text-xs font-semibold uppercase tracking-[0.24em] text-white/45">This agent booked meetings with</p>
-          <div className="relative overflow-hidden [mask-image:linear-gradient(90deg,transparent,black_10%,black_90%,transparent)]">
-            <div className="mk-marquee flex w-max items-center gap-4">
-              {[...MEETINGS, ...MEETINGS].map((m, i) => (
-                <div key={i} className="flex shrink-0 items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-3 backdrop-blur">
-                  <div className="flex -space-x-2">
-                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-[var(--pine)] to-[var(--brass)] text-[0.6rem] font-bold text-white ring-2 ring-[var(--deep)]">{m.a}</span>
-                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-slate-500 to-slate-700 text-[0.6rem] font-bold text-white ring-2 ring-[var(--deep)]">{m.b}</span>
-                  </div>
-                  <div className="leading-tight">
-                    <p className="text-[0.7rem] font-semibold text-white">Meeting in {m.days} day{m.days > 1 ? 's' : ''}</p>
-                    <p className="text-[0.6rem] uppercase tracking-wider text-emerald-400">Outgoing</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
         {/* Trusted-by marquee */}
-        <div className="relative z-10 mx-auto mt-10 max-w-[1300px] px-6 md:px-10">
+        <div className="relative z-10 mx-auto mt-16 max-w-[1300px] px-6 md:mt-20 md:px-10">
           <p className="mb-6 text-center text-sm font-semibold uppercase tracking-[0.24em] text-white/40">Plugs into the tools you already use</p>
           <div className="relative overflow-hidden [mask-image:linear-gradient(90deg,transparent,black_12%,black_88%,transparent)]">
             <div className="mk-marquee flex w-max items-center gap-16">
               {[...LOGOS, ...LOGOS].map((src, i) => (
-                <img key={i} src={src} alt="" className="h-12 w-auto object-contain opacity-55 grayscale transition hover:opacity-100 hover:grayscale-0" />
+                <img key={i} src={src} alt="" className="h-12 w-auto object-contain" />
               ))}
             </div>
           </div>
@@ -639,7 +612,7 @@ export default function LandingPage() {
             </button>
           </Reveal>
           <Reveal delay={0.1} className="flex justify-center">
-            <div className="mk-float"><VoiceCard /></div>
+            <GlassCalendar />
           </Reveal>
         </div>
       </section>

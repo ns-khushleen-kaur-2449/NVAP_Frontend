@@ -13,7 +13,7 @@ import { Field, FieldMessages, OptionSelect, Section, TagInput, withCurrent } fr
 import LanguageField from './builder/LanguageField';
 import LeadFieldsSection from './builder/LeadFieldsSection';
 import OpenerSection from './builder/OpenerSection';
-import { OpenerPreview, PromptText } from './builder/PreviewParts';
+import { CatalogWordsProblem, OpenerPreview, PromptText } from './builder/PreviewParts';
 import {
   User, Building2, MessageSquare, ShieldCheck, Book, StickyNote, Cpu,
   Loader2, Plus, ListRestart, Save, Rocket, RotateCcw, AlertTriangle,
@@ -23,9 +23,10 @@ import { toast } from 'sonner';
 import {
   listBuilderConfigs, getBuilderConfig, createBuilderConfig, updateBuilderConfig,
   previewBuilderConfig, publishBuilderConfig, rollbackBuilderConfig, retryBuilderConfig,
-  getKnowledgeFiles, getCatalogItems, getLeadFieldRegistry, getCatalogTable, getCatalogSettings,
+  getKnowledgeFiles, getCatalogItems, getLeadFieldRegistry, getCatalogTable, getCatalogSettings, getBuilderLanguages,
 } from '../../lib/api';
-import { DEFAULT_LEAD_FIELDS, problemsFrom } from '../../lib/builderPersonalization';
+import { DEFAULT_LEAD_FIELDS, allProblems, problemsFrom } from '../../lib/builderPersonalization';
+import { directionOf, languageOf, needsGender } from '../../lib/builderLanguages';
 import { formatCurrency } from '../../lib/utils';
 
 // Option values mirror the backend contract in
@@ -38,9 +39,9 @@ const PERSONA_GENDERS = [
   { value: 'male', label: 'Male' },
 ];
 const SALUTATIONS = [
-  { value: 'first_name', label: 'By first name ("Hi Rahul")' },
-  { value: 'formal', label: 'Formal ("Hello Mr. Sharma")' },
-  { value: 'none', label: 'No name ("Hi there")' },
+  { value: 'first_name', label: 'By first name' },
+  { value: 'formal', label: 'Formal (title and last name)' },
+  { value: 'none', label: 'No name' },
 ];
 const PITCH_MODES = [
   { value: 'none', label: 'Nothing specific', hint: 'Just understand what they need' },
@@ -292,6 +293,12 @@ export default function AssistantBuilder() {
   const [registryLoading, setRegistryLoading] = useState(false);
   // Problems from the last preview or save (422), shown against their fields.
   const [problems, setProblems] = useState(() => problemsFrom(null));
+  // GET /assistant-builder/languages: what the agent may speak (drafts only for test tenants), with voice readiness.
+  const [languages, setLanguages] = useState([]);
+  const [languagesLoading, setLanguagesLoading] = useState(false);
+  // A publish the server refused (400: a voice missing for the language, a draft pack, a changed tool): kept on
+  // screen until the next publish, not only in a toast.
+  const [publishProblem, setPublishProblem] = useState(null);
 
   const payload = useMemo(() => toPayload(form), [form]);
   const payloadKey = useMemo(() => JSON.stringify(payload), [payload]);
@@ -301,7 +308,11 @@ export default function AssistantBuilder() {
     return { ...payload, prompt_override: promptOverrideFrom(promptDraft, preview?.generated_prompt) };
   }, [payload, editingPrompt, promptDraft, preview]);
   const isDirty = savedSnapshot !== JSON.stringify(savePayload);
-  const missing = missingFields(form);
+  const language = form.assistant.language;
+  const direction = directionOf(languages, language);
+  const genderRequired = needsGender(languages, language);
+  const missing = [...missingFields(form),
+    ...(genderRequired && !form.assistant.persona_gender ? ["agent's gender"] : [])];
 
   const fetchConfigs = useCallback(async () => {
     setLoadingList(true);
@@ -333,6 +344,11 @@ export default function AssistantBuilder() {
     getCatalogSettings()
       .then((res) => setCatalogPreset(res.data?.preset || null))
       .catch(() => setCatalogPreset(null));  // Sales Reps may not read settings: no note
+    setLanguagesLoading(true);
+    getBuilderLanguages()
+      .then((res) => setLanguages(res.data || []))
+      .catch(() => setLanguages([]))
+      .finally(() => setLanguagesLoading(false));
     setRegistryLoading(true);
     getLeadFieldRegistry()
       .then((res) => setRegistry(res.data))
@@ -458,11 +474,14 @@ export default function AssistantBuilder() {
 
   const runPublish = async (action, configId, version, successMessage) => {
     setPublishing(true);
+    setPublishProblem(null);
     try {
       const res = await action(configId, version);
       toast.success(`${successMessage} (version ${res.data.version})`);
     } catch (e) {
-      toast.error(errorDetail(e, 'Publishing to Vapi failed. See the version status for details.'));
+      const message = errorDetail(e, 'Publishing to Vapi failed. See the version status for details.');
+      toast.error(message);
+      if (e?.response?.status === 400) setPublishProblem(message);
     } finally {
       await refreshConfig(configId);
       setPublishing(false);
@@ -597,6 +616,13 @@ export default function AssistantBuilder() {
         </div>
       </div>
 
+      {publishProblem && (
+        <div role="alert" className="flex items-start gap-2 px-6 py-2.5 text-sm bg-amber-500/10 border-b border-amber-500/20 text-amber-800 dark:text-amber-300">
+          <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+          <span>Not published: {publishProblem}</span>
+        </div>
+      )}
+
       {latestStatus === 'sync_failed' && config?.latest?.sync_error && (
         <div className="flex items-start gap-2 px-6 py-2.5 text-sm bg-red-500/10 border-b border-red-500/20 text-red-700 dark:text-red-400">
           <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
@@ -613,17 +639,26 @@ export default function AssistantBuilder() {
                   <Input dir="auto" value={form.assistant.name} maxLength={255} onChange={(e) => update('assistant.name', e.target.value)} placeholder="e.g. Riya" className="bg-muted border-border" />
                 </Field>
                 <Field label="Language">
-                  <LanguageField value={form.assistant.language} onChange={(v) => update('assistant.language', v)} />
+                  <LanguageField languages={languages} loading={languagesLoading} value={language}
+                    gender={form.assistant.persona_gender} errors={problems.language}
+                    onChange={(v) => update('assistant.language', v)} />
                 </Field>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Field label="Agent's gender" hint="Match the voice. In Hindi the agent's verbs follow it (bol rahi / bol raha hoon).">
+                <Field
+                  label="Agent's gender"
+                  required={genderRequired}
+                  hint={genderRequired
+                    ? `Required for ${languageOf(languages, language)?.name || 'this language'}: the agent's own words change with it, and so does the voice.`
+                    : 'Match the voice. In languages where the agent\'s own words change with it, they follow this.'}
+                >
                   <OptionSelect
                     ariaLabel="Agent's gender"
                     value={form.assistant.persona_gender || 'unset'}
                     onChange={(v) => update('assistant.persona_gender', v === 'unset' ? '' : v)}
-                    options={PERSONA_GENDERS}
+                    options={genderRequired ? PERSONA_GENDERS.filter((g) => g.value !== 'unset') : PERSONA_GENDERS}
                   />
+                  <FieldMessages errors={problems.persona_gender} />
                 </Field>
                 <Field
                   label="Greeting style"
@@ -666,9 +701,12 @@ export default function AssistantBuilder() {
               defaultReason={form.assistant.default_call_reason}
               onDefaultReason={(v) => update('assistant.default_call_reason', v)}
               generated={preview?.first_message}
+              dir={direction}
               errors={problems}
               warnings={preview?.first_message_warnings || []}
             />
+
+            {problems.catalog_words.map((m) => <CatalogWordsProblem key={m} message={m} />)}
 
             <LeadFieldsSection
               enabled={form.personalized}
@@ -910,14 +948,14 @@ export default function AssistantBuilder() {
                   ) : previewError ? (
                     <div className="space-y-1">
                       <p className="text-sm text-red-600">Fix these to see the prompt:</p>
-                      <FieldMessages errors={[...problems.first_message, ...problems.default_call_reason,
-                        ...problems.lead_fields, ...problems.general].length
-                        ? [...problems.first_message, ...problems.default_call_reason, ...problems.lead_fields, ...problems.general]
+                      {problems.catalog_words.map((m) => <CatalogWordsProblem key={m} message={m} />)}
+                      <FieldMessages errors={allProblems(problems).length
+                        ? allProblems(problems).filter((m) => !problems.catalog_words.includes(m))
                         : [previewError]} />
                     </div>
                   ) : preview ? (
                     <>
-                      <OpenerPreview preview={preview} />
+                      <OpenerPreview preview={preview} dir={direction} />
                       <div>
                         <div className="flex items-center justify-between mb-1.5">
                           <p className="text-[11px] font-medium text-muted-foreground uppercase flex items-center gap-1.5">

@@ -368,7 +368,7 @@ export const getCatalogItems = () => api.get('/api/v1/catalog/items');
 export const getCatalogTable = (params) => api.get('/api/v1/catalog/table', { params });
 // The tenant's catalog settings as they apply (currency, words, preset, ...); Tenant Admins and Managers.
 // A Super Admin passes { tenant_id }. Changes need a reason; every mutating catalog response carries
-// `agents` ({ republish_scheduled, delay_seconds, drafts }).
+// `agents` ({ republish_scheduled, delay_seconds, drafts, missing_words? }).
 export const getCatalogSettings = (params) => api.get('/api/v1/catalog/settings', { params });
 export const updateCatalogSettings = (data, params) => api.patch('/api/v1/catalog/settings', data, { params });
 export const getCatalogSettingsHistory = (params) => api.get('/api/v1/catalog/settings/history', { params });
@@ -422,6 +422,8 @@ export const listAssistantTools = (assistantId) => api.get(`/api/v1/assistants/$
 export const listBuilderTools = () => api.get('/api/v1/assistant-builder/tools');
 // The lead fields an agent may know: standard Prospect fields plus this tenant's custom.<key> fields.
 export const getLeadFieldRegistry = () => api.get('/api/v1/assistant-builder/lead-fields');
+// The languages an agent may speak (approved packs; drafts for test tenants), each with its voice readiness.
+export const getBuilderLanguages = () => api.get('/api/v1/assistant-builder/languages');
 export const attachAssistantTool = (assistantId, toolId) => api.post(`/api/v1/assistants/${assistantId}/tools/${toolId}`);
 export const detachAssistantTool = (assistantId, toolId) => api.delete(`/api/v1/assistants/${assistantId}/tools/${toolId}`);
 

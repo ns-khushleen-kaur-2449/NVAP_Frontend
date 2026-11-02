@@ -1,6 +1,7 @@
 // Lead-field selection, opener placeholders and prompt display for the Agent Builder.
 // Mirrors app/features/assistant_builder/lead_fields.py and first_message.py; the backend
-// validates everything again on save (422), this only keeps the form honest.
+// validates everything again on save (422), this only keeps the form honest. Nothing here assumes a language:
+// the words an agent says come from its language pack on the server.
 
 /** What each usage lets the agent do, one short line each. */
 export const USAGES = [
@@ -52,12 +53,16 @@ export function registryGroups(registry, selected = []) {
 
 const greets = (leadFields, key) => leadFields.some((f) => f.key === key && f.usage === 'greet');
 
+/** Every problem in one list, for the preview panel. */
+export const allProblems = (problems) => [...problems.first_message, ...problems.default_call_reason, ...problems.lead_fields,
+  ...problems.language, ...problems.persona_gender, ...problems.catalog_words, ...problems.general];
+
 /** Placeholders a custom first message may use: the name ones only when first name is selected to greet. */
 export function placeholdersFor(leadFields = []) {
   const named = greets(leadFields, 'first_name');
   return [
     ...(named ? [
-      { token: '{salutation}', label: 'Greeting', hint: '"Hi Rahul", or "Hi there" when we don\'t know the name' },
+      { token: '{salutation}', label: 'Greeting', hint: 'The greeting with the first name, in the agent\'s language; without a name when we don\'t know it' },
       { token: '{customer_name}', label: 'First name', hint: 'Left out when we don\'t know it' },
     ] : []),
     { token: '{agent_name}', label: 'Agent name' },
@@ -70,13 +75,20 @@ export function placeholdersFor(leadFields = []) {
  * A 422 from preview or save, split by field. The builder answers either a list of plain
  * strings ("first_message: ...") or Pydantic errors ({loc, msg}).
  */
+// Plain-string 422s by their prefix (app/features/assistant_builder/languages.py, speech.py, first_message.py).
+const STRING_FIELDS = [['first_message', 'first_message'], ['assistant.language:', 'language'],
+  ['assistant.persona_gender:', 'persona_gender'], ['catalog words:', 'catalog_words']];
+
 export function problemsFrom(error) {
   const detail = error?.response?.data?.detail;
-  const result = { first_message: [], lead_fields: [], default_call_reason: [], general: [] };
+  const result = { first_message: [], lead_fields: [], default_call_reason: [], language: [], persona_gender: [],
+    catalog_words: [], general: [] };
   const items = typeof detail === 'string' ? [detail] : Array.isArray(detail) ? detail : [];
   for (const item of items) {
     if (typeof item === 'string') {
-      (item.startsWith('first_message') ? result.first_message : result.general).push(item);
+      const [prefix, field] = STRING_FIELDS.find(([p]) => item.startsWith(p)) || [];
+      if (field === 'language' || field === 'persona_gender') result[field].push(item.slice(prefix.length).trim());
+      else (field ? result[field] : result.general).push(item);  // catalog words keep their full text (parsed later)
       continue;
     }
     const loc = (item?.loc || []).filter((p) => p !== 'body');

@@ -31,6 +31,9 @@ const openFieldMenu = async (label) => {
   return within(await screen.findByRole('menu'));
 };
 
+// What GET /api/v1/catalog/settings answers in options.language_names: every language pack, drafts too.
+const LANGUAGE_NAMES = { en: 'English', hi: 'Hindi', ar: 'Arabic', fr: 'French', es: 'Spanish' };
+
 beforeEach(() => {
   jest.resetAllMocks();
   api.getCatalogTable.mockResolvedValue(table([colour, fabric]));
@@ -38,6 +41,7 @@ beforeEach(() => {
   api.listExecutiveCandidates.mockResolvedValue({ data: [] });
   api.listProducts.mockResolvedValue({ data: [] });
   api.getAppointmentRules.mockResolvedValue({ data: { rules: {} } });
+  api.getCatalogSettings.mockResolvedValue({ data: { options: { language_names: LANGUAGE_NAMES } } });
 });
 
 describe('Agent can filter by this', () => {
@@ -318,7 +322,8 @@ describe('Catalog settings', () => {
   const current = {
     currency: 'INR', price_format: 'indian', price_format_set: false, budget_tolerance_up: 0.1, budget_tolerance_down: 0.35,
     demo_label: null, stock_unit: 'units', words: { product: 'cloth' }, preset: null, overridden: ['words'],
-    options: { currencies: ['AED', 'INR', 'USD'], price_formats: ['indian', 'international'], languages: ['en', 'hi', 'ar', 'fr', 'es'] },
+    options: { currencies: ['AED', 'INR', 'USD'], price_formats: ['indian', 'international'], languages: ['en', 'hi', 'ar', 'fr', 'es'],
+      language_names: LANGUAGE_NAMES },
   };
   const spokenFor = ({ currency }) => ({ data: { spoken: currency === 'AED' ? '1.25 million dirhams' : '12.5 lakh' } });
   const open = async (user) => {

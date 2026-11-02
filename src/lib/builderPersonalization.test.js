@@ -1,4 +1,6 @@
-import { defaultSelection, placeholdersFor, problemsFrom, registryGroups, splitProtected } from './builderPersonalization';
+import {
+  allProblems, defaultSelection, placeholdersFor, problemsFrom, registryGroups, splitProtected,
+} from './builderPersonalization';
 
 const email = { key: 'email', label: 'Email on file', usages: ['confirm_only', 'never_say'], masks: ['none', 'email_hint'], default_mask: 'none' };
 const phone = { key: 'phone', label: 'Phone', usages: ['confirm_only', 'never_say'], masks: ['none', 'last4'], default_mask: 'last4' };
@@ -47,3 +49,21 @@ it('keeps a selected custom field visible even when no lead has it any more', ()
   const [, custom] = registryGroups({ standard: [], custom: [] }, [{ key: 'custom.unit_type', usage: 'context' }]);
   expect(custom.fields.map((f) => f.key)).toEqual(['custom.unit_type']);
 });
+
+
+it('routes language, gender and catalog-word refusals to their own fields', () => {
+  const problems = problemsFrom({ response: { data: { detail: [
+    "assistant.language: 'multi' is not a language this builder speaks; pick one of English (en).",
+    "assistant.persona_gender: Testish needs the agent's gender",
+    'catalog words: the agent says or reads label, which have no Testish text; add them',
+    'first_message: unknown placeholder {x}',
+    'something else',
+  ] } } });
+  expect(problems.language).toEqual(["'multi' is not a language this builder speaks; pick one of English (en)."]);
+  expect(problems.persona_gender).toEqual(["Testish needs the agent's gender"]);
+  expect(problems.catalog_words).toEqual(['catalog words: the agent says or reads label, which have no Testish text; add them']);
+  expect(problems.first_message).toEqual(['first_message: unknown placeholder {x}']);
+  expect(problems.general).toEqual(['something else']);
+  expect(allProblems(problems)).toHaveLength(5);
+});
+

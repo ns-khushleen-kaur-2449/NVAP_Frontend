@@ -40,3 +40,19 @@ export const healthState = (health) => {
 };
 
 export const accessSummary =(agent) => (agent?.access_scope === 'all' ? 'All organisations' : 'Selected organisations');
+
+/** Shared assistant version statuses, as the versions dialog shows them. */
+export const VERSION_STATUS_LABELS = Object.freeze({ published: 'Live', draft: 'Draft', superseded: 'Earlier live' });
+
+/** The editor's text as a draft payload: `{ payload }`, or `{ error }` saying why it can't be saved. */
+export const parseAssistantJson = (text) => {
+  let payload;
+  try {
+    payload = JSON.parse(text);
+  } catch (e) {
+    return { error: "That isn't valid JSON" };
+  }
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return { error: 'The assistant must be a JSON object' };
+  if (Object.keys(payload).length === 0) return { error: 'The assistant JSON is empty' };
+  return { payload };
+};

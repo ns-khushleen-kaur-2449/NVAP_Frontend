@@ -111,6 +111,14 @@ export const setAgentAccess = (id, accessScope, tenantIds = []) =>
 export const listAgentAssistants = (id) => api.get(`/api/v1/agents/${id}/assistants`);
 export const registerAgentAssistant = (id, data) => api.post(`/api/v1/agents/${id}/assistants`, data);
 export const removeAgentAssistant = (id, rowId) => api.delete(`/api/v1/agents/${id}/assistants/${rowId}`);
+// Super Admin only: a shared assistant's versions. Import reads Vapi; publish and restore change the assistant in Vapi.
+const assistantVersions = (id, rowId) => `/api/v1/agents/${id}/assistants/${rowId}/versions`;
+export const listAgentAssistantVersions = (id, rowId) => api.get(assistantVersions(id, rowId));
+export const importAgentAssistantVersion = (id, rowId) => api.post(`${assistantVersions(id, rowId)}/import`);
+export const createAgentAssistantDraft = (id, rowId, payload) => api.post(assistantVersions(id, rowId), { payload });
+export const checkAgentAssistantVersion = (id, rowId, n) => api.post(`${assistantVersions(id, rowId)}/${n}/check`);
+export const publishAgentAssistantVersion = (id, rowId, n) => api.post(`${assistantVersions(id, rowId)}/${n}/publish`);
+export const rollbackAgentAssistantVersion = (id, rowId, n) => api.post(`${assistantVersions(id, rowId)}/${n}/rollback`);
 // Whether this server has the agent's code and can run it: { key, has_code, contract_version, ok, problems }.
 export const getAgentHealth = (id) => api.get(`/api/v1/agents/${id}/health`);
 // Users the caller may see (was /api/auth/users, which never existed).

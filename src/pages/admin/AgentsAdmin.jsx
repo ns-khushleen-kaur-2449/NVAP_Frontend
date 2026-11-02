@@ -9,6 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { errorText } from '@/components/admin/userBits';
+import SharedAssistantVersionsDialog from '@/components/admin/SharedAssistantVersionsDialog';
 import {
   createAgent, getAgentAccess, getAgentHealth, listAgentAssistants, listAgents, registerAgentAssistant,
   removeAgentAssistant, setAgentAccess, updateAgent,
@@ -190,7 +191,7 @@ function AccessDialog({ agent, onClose, onSaved }) {
   );
 }
 
-function AssistantsDialog({ agent, onClose }) {
+function AssistantsDialog({ agent, onClose, onVersions }) {
   const [rows, setRows] = useState(null);
   const [form, setForm] = useState({ vapi_assistant_id: '', name: '', purpose: '' });
   const [saving, setSaving] = useState(false);
@@ -262,7 +263,10 @@ function AssistantsDialog({ agent, onClose }) {
                     <TableCell className="text-sm font-medium">{row.name}</TableCell>
                     <TableCell className="text-sm">{row.purpose || '—'}</TableCell>
                     <TableCell><code className="text-xs">{row.vapi_assistant_id}</code></TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right whitespace-nowrap">
+                      <Button variant="outline" size="sm" aria-label={`Versions of ${row.name}`} onClick={() => onVersions(row)}>
+                        Versions{row.published_version ? ` (live: ${row.published_version})` : ''}
+                      </Button>
                       <Button variant="ghost" size="icon" aria-label={`Remove ${row.name}`} onClick={() => remove(row)}><Trash2 className="w-4 h-4" /></Button>
                     </TableCell>
                   </TableRow>
@@ -299,6 +303,7 @@ export default function AgentsAdminPage() {
   const [creating, setCreating] = useState(false);
   const [accessFor, setAccessFor] = useState(null);
   const [assistantsFor, setAssistantsFor] = useState(null);
+  const [versionsFor, setVersionsFor] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [health, setHealth] = useState({});
 
@@ -400,7 +405,10 @@ export default function AgentsAdminPage() {
 
       <NewAgentDialog open={creating} onOpenChange={setCreating} onCreated={load} />
       <AccessDialog agent={accessFor} onClose={() => setAccessFor(null)} onSaved={load} />
-      <AssistantsDialog agent={assistantsFor} onClose={() => setAssistantsFor(null)} />
+      <AssistantsDialog agent={assistantsFor} onClose={() => setAssistantsFor(null)}
+        onVersions={(row) => { setVersionsFor({ agent: assistantsFor, assistant: row }); setAssistantsFor(null); }} />
+      <SharedAssistantVersionsDialog agent={versionsFor?.agent} assistant={versionsFor?.assistant}
+        onClose={() => setVersionsFor(null)} />
     </div>
   );
 }

@@ -353,11 +353,13 @@ function ToolEditorDialog({ open, onOpenChange, types, tool, onSaved }) {
 function TenantAccessDialog({ tool, onOpenChange, onSaved }) {
   const [tenants, setTenants] = useState(null);
   const [selected, setSelected] = useState(new Set());
+  const [reason, setReason] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!tool) return;
     setTenants(null);
+    setReason('');
     getToolTenants(tool.id)
       .then((res) => {
         setTenants(res.data.tenants);
@@ -373,13 +375,17 @@ function TenantAccessDialog({ tool, onOpenChange, onSaved }) {
   });
 
   const save = async () => {
+    if (reason.trim().length < 3) {
+      toast.error('Enter a reason for changing tenant tool access');
+      return;
+    }
     const losing = (tenants || []).filter((t) => t.granted && !selected.has(t.tenant_id) && t.assistant_count > 0);
     if (losing.length && !window.confirm(
       `${losing.map((t) => t.name).join(', ')} will lose this tool on ${losing.reduce((n, t) => n + t.assistant_count, 0)} agent(s). Continue?`,
     )) return;
     setSaving(true);
     try {
-      const res = await setToolTenants(tool.id, [...selected]);
+      const res = await setToolTenants(tool.id, [...selected], reason.trim());
       if (res.data.detach_errors?.length) {
         toast.warning(`Access saved, but Vapi did not update ${res.data.detach_errors.length} agent(s). Run tool sync for those tenants.`);
       } else {
@@ -418,8 +424,11 @@ function TenantAccessDialog({ tool, onOpenChange, onSaved }) {
             ))}
           </div>
         )}
+        <label className="mt-3 block text-xs font-medium text-muted-foreground">Reason for changing access
+          <Textarea value={reason} onChange={(event) => setReason(event.target.value)} maxLength={2000} rows={2} className="mt-1" />
+        </label>
         <DialogFooter>
-          <Button onClick={save} disabled={saving || !tenants} className="bg-primary text-primary-foreground">
+          <Button onClick={save} disabled={saving || !tenants || reason.trim().length < 3} className="bg-primary text-primary-foreground">
             {saving && <Loader2 className="w-4 h-4 mr-1 animate-spin" />} Save access
           </Button>
         </DialogFooter>

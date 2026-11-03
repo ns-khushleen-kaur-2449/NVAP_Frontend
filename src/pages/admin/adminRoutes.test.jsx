@@ -9,6 +9,7 @@ jest.mock('@/components/admin/ToolsManager', () => () => <div>tools-manager</div
 jest.mock('@/components/shared/ThemeToggle', () => () => null);
 jest.mock('@/pages/admin/Tenants', () => () => <div>tenants-page</div>);
 jest.mock('@/pages/admin/Users', () => () => <div>users-page</div>);
+jest.mock('@/pages/admin/PlatformUsers', () => () => <div>platform-users-page</div>);
 jest.mock('@/pages/admin/AgentImport', () => () => <div>agents-page</div>);
 jest.mock('@/pages/admin/Agents', () => () => <div>agents-list-page</div>);
 
@@ -61,10 +62,10 @@ describe('SuperAdminRoute', () => {
 });
 
 describe('AdminLayout', () => {
-  test('the sidebar has Overview, Tenants, Users, Agents and Tools, and Tools shows the tools manager', () => {
+  test('the sidebar has Overview, Tenants, Users, Audit Logs, Agents and Tools, and Tools shows the tools manager', () => {
     renderAdmin('/admin/tools', USERS.super_admin);
     const nav = screen.getByRole('navigation', { name: 'Platform admin' });
-    expect(within(nav).getAllByRole('link').map((link) => link.textContent)).toEqual(['Overview', 'Tenants', 'Users', 'Agents', 'Tools']);
+    expect(within(nav).getAllByRole('link').map((link) => link.textContent)).toEqual(['Overview', 'Tenants', 'Platform users', 'Tenant users', 'Audit Logs', 'Agents', 'Tools']);
     expect(screen.getByText('tools-manager')).toBeInTheDocument();
     expect(screen.getAllByRole('link', { name: /back to app/i })[0]).toHaveAttribute('href', '/dashboard');
   });
@@ -100,24 +101,24 @@ describe('Overview page', () => {
 });
 
 describe('Tenants and Users in the platform area', () => {
-  test.each([['/admin/tenants', 'tenants-page'], ['/admin/users', 'users-page'], ['/admin/agents/import', 'agents-page'],
+  test.each([['/admin/tenants', 'tenants-page'], ['/admin/users', 'platform-users-page'], ['/admin/tenant-users', 'users-page'], ['/admin/agents/import', 'agents-page'],
     ['/admin/agents', 'agents-list-page']])('%s opens for a Super Admin', (path, page) => {
     renderAdmin(path, USERS.super_admin);
     expect(screen.getByText(page)).toBeInTheDocument();
   });
 
-  test.each(['tenant_admin', 'manager', 'rep'])('a %s cannot open /admin/tenants, /admin/users or /admin/agents/import', (role) => {
-    ['/admin/tenants', '/admin/users', '/admin/agents/import'].forEach((path) => {
+  test.each(['tenant_admin', 'manager', 'rep'])('a %s cannot open any platform admin page', (role) => {
+    ['/admin/tenants', '/admin/users', '/admin/tenant-users', '/admin/audit-logs', '/admin/agents/import'].forEach((path) => {
       const { unmount } = renderAdmin(path, USERS[role]);
       expect(screen.getByText('forbidden-page')).toBeInTheDocument();
-      expect(screen.queryByText(/tenants-page|users-page|agents-page/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/tenants-page|users-page|platform-users-page|agents-page/)).not.toBeInTheDocument();
       unmount();
     });
   });
 
-  test('the old Settings → Users link sends a Super Admin to /admin/users and keeps everyone else in Settings', () => {
-    const ui = <SuperAdminGoesTo to="/admin/users"><div>settings-users</div></SuperAdminGoesTo>;
-    const routes = [<Route key="u" path="/admin/users" element={<div>admin-users</div>} />];
+  test('the old Settings → Users link sends a Super Admin to /admin/tenant-users and keeps everyone else in Settings', () => {
+    const ui = <SuperAdminGoesTo to="/admin/tenant-users"><div>settings-users</div></SuperAdminGoesTo>;
+    const routes = [<Route key="u" path="/admin/tenant-users" element={<div>admin-users</div>} />];
     const { unmount } = renderWithAuth(ui, { user: USERS.super_admin, path: '/settings/users', routes });
     expect(screen.getByText('admin-users')).toBeInTheDocument();
     unmount();

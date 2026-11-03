@@ -119,9 +119,9 @@ function AppShell() {
       {/* Appointments, callbacks, do-not-call and intent review (old /appointments, /callbacks and /do-not-call redirect). */}
       {operationsRoutes()}
       <Route path="/403" element={<ForbiddenPage />} />
-      {/* A Super Admin manages users and tenants in the platform area (/admin/users, /admin/tenants). */}
+      {/* A Super Admin manages tenants and their users in the platform area (/admin/tenants, /admin/tenant-users). */}
       <Route path="/settings/users" element={
-        <SuperAdminGoesTo to="/admin/users"><RequirePermission perm={PERMISSIONS.USERS_VIEW}><UsersAdminPage /></RequirePermission></SuperAdminGoesTo>
+        <SuperAdminGoesTo to="/admin/tenant-users"><RequirePermission perm={PERMISSIONS.USERS_VIEW}><UsersAdminPage /></RequirePermission></SuperAdminGoesTo>
       } />
       <Route path="/settings/teams" element={<RequirePermission perm={PERMISSIONS.TEAMS_MANAGE}><TeamsAdminPage /></RequirePermission>} />
       <Route path="/settings/tenants" element={<Navigate to="/admin/tenants" replace />} />

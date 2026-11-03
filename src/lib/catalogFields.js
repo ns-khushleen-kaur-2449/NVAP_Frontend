@@ -40,13 +40,14 @@ export const IMPORTANCE = [
 export const importanceLabel = (weight) =>
   IMPORTANCE.find((i) => i.value === Number(weight))?.label || `Custom (${weight})`;
 
-export const LANGUAGES = [
-  { code: 'en', name: 'English' },
-  { code: 'hi', name: 'Hindi' },
-  { code: 'ar', name: 'Arabic' },
-  { code: 'fr', name: 'French' },
-  { code: 'es', name: 'Spanish' },
-];
+// The language a plain-string word or label is written in (the backend's ``label`` and plain ``words`` are English).
+// The one allowed mention of a language code (src/test/noLanguageBranches.test.js). Which languages words may be
+// written in comes from GET /api/v1/catalog/settings (``options.language_names``), never a list here.
+export const PLAIN_WORD_LANGUAGE = 'en';
+
+/** [{code, name}] from the settings response's ``options.language_names``. */
+export const wordLanguages = (settings) => Object.entries(settings?.options?.language_names || {})
+  .map(([code, name]) => ({ code, name }));
 
 // The tenant's fields: every column but the fixed name, category and price.
 export const fieldColumns = (columns) => columns.filter((c) => !['name', 'category', 'price'].includes(c.key));
@@ -73,6 +74,12 @@ export function republishMessage(agents) {
     parts.push(`Not updated because ${agents.drafts.length === 1 ? 'it has' : 'they have'} unpublished changes: `
       + `${agents.drafts.join(', ')}. Publish ${agents.drafts.length === 1 ? 'it' : 'them'} to give `
       + `${agents.drafts.length === 1 ? 'it' : 'them'} this change.`);
+  }
+  for (const agent of agents.missing_words || []) {
+    // The agent speaks a language whose pack needs these catalog words in that language; this change left it without.
+    const words = (agent.words || []).map((w) => (w.startsWith('field:') ? `the ${w.slice(6)} field's name` : w.replace(/_/g, ' ')));
+    parts.push(`${agent.name} was not updated: it says or reads ${words.join(', ')}, which now ${words.length === 1 ? 'has' : 'have'} `
+      + 'no text in its language. Add them in Catalog settings (words, demo label) or the field settings, then publish it.');
   }
   return parts.length ? parts.join(' ') : null;
 }
@@ -120,19 +127,20 @@ export const WORD_LABELS = {
 /** A word as one language reads it: a plain string is every language's, else {language: text} with English as fallback. */
 export function wordIn(value, language) {
   if (value && typeof value === 'object') return value[language] ?? '';
-  return language === 'en' ? (value ?? '') : '';
+  return language === PLAIN_WORD_LANGUAGE ? (value ?? '') : '';
 }
 
 /** A word with one language's text changed: a plain string while only English is set, else {language: text}. */
 export function withWord(value, language, text) {
-  const current = value && typeof value === 'object' ? { ...value } : (value ? { en: value } : {});
+  const current = value && typeof value === 'object' ? { ...value } : (value ? { [PLAIN_WORD_LANGUAGE]: value } : {});
   if (text.trim()) current[language] = text; else delete current[language];
   const languages = Object.keys(current);
   if (!languages.length) return null;
-  return languages.length === 1 && languages[0] === 'en' ? current.en : current;
+  return languages.length === 1 && languages[0] === PLAIN_WORD_LANGUAGE ? current[PLAIN_WORD_LANGUAGE] : current;
 }
 
-export const wordText = (value) => (value && typeof value === 'object' ? (value.en || Object.values(value)[0] || '') : (value || ''));
+export const wordText = (value) => (value && typeof value === 'object'
+  ? (value[PLAIN_WORD_LANGUAGE] || Object.values(value)[0] || '') : (value || ''));
 
 export const percent = (fraction) => Math.round(Number(fraction || 0) * 1000) / 10;
 

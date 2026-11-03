@@ -735,6 +735,12 @@ export default function CreateAgent() {
   };
 
   const handleEdit = (assistant) => {
+    if (assistant.status === 'imported') {
+      toast.info('Assigned to you by the admin', {
+        description: 'Contact your admin for changes to this agent.',
+      });
+      return;
+    }
     setEditingId(assistant.id);
     setAgentName(assistant.name || '');
     setAgentRole(assistant.role || '');
@@ -1061,15 +1067,17 @@ export default function CreateAgent() {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {existingAssistants.map((agent) => (
+                {existingAssistants.map((agent) => {
+                  const assignedByAdmin = agent.status === 'imported';
+                  return (
                   <Card key={agent.id} className="group hover:border-blue-500/50 transition-all cursor-pointer" onClick={() => handleEdit(agent)}>
                     <CardContent className="p-6">
                       <div className="flex items-start justify-between mb-4">
                         <div className="w-12 h-12 rounded-xl bg-muted border border-border flex items-center justify-center text-2xl shadow-sm">
                           {VOICES.find(v => v.id === agent.voice_id)?.avatar || '🤖'}
                         </div>
-                        <Badge variant="outline" className={`${agent.is_live ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/25' : 'bg-muted text-muted-foreground border-border'}`}>
-                          {agent.is_live ? 'Live' : 'Draft'}
+                        <Badge variant="outline" className={`${assignedByAdmin ? 'bg-blue-500/15 text-blue-400 border-blue-500/25' : agent.is_live ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/25' : 'bg-muted text-muted-foreground border-border'}`}>
+                          {assignedByAdmin ? 'Assigned by admin' : agent.is_live ? 'Live' : 'Draft'}
                         </Badge>
                       </div>
                       <h4 className="font-bold text-foreground leading-none">{agent.name}</h4>
@@ -1080,7 +1088,9 @@ export default function CreateAgent() {
                            <Mic className="w-3 h-3" />
                            {VOICES.find(v => v.id === agent.voice_id)?.name || 'Default'} Voice
                         </div>
-                        <div className="flex items-center gap-2">
+                        {assignedByAdmin ? (
+                          <p className="text-xs text-muted-foreground text-right">Contact admin for changes</p>
+                        ) : <div className="flex items-center gap-2">
                           <Button
                             variant="ghost"
                             size="sm"
@@ -1098,11 +1108,11 @@ export default function CreateAgent() {
                              <FileEdit className="w-3 h-3 mr-1.5" />
                              Edit
                           </Button>
-                        </div>
+                        </div>}
                       </div>
                     </CardContent>
                   </Card>
-                ))}
+                );})}
               </div>
             )}
           </ScrollArea>

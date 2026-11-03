@@ -13,13 +13,13 @@ export const USAGES = [
 
 export const MASK_LABELS = {
   none: 'Full value',
-  email_hint: 'How it ends ("…gmail dot com")',
+  email_hint: 'Full value, spelled out', // saved before: the agent now always gets the full email
   last4: 'Last 4 digits',
 };
 
-// Masked by default: the agent only knows how an email or number ends (it asks for the full
-// email when it books). The backend's own default for email is unmasked; the UI chooses safer.
-const SAFE_MASKS = { email: 'email_hint', phone: 'last4' };
+// A phone number is masked by default (the agent only knows how it ends). An email is always the full address,
+// which the agent reads back spelled out: a partial hint was once passed to a tool as the address.
+const SAFE_MASKS = { phone: 'last4' };
 const SAFE_USAGES = { first_name: 'greet', last_name: 'greet', email: 'confirm_only', phone: 'confirm_only' };
 
 /** New agents start by greeting leads by first name, and nothing else. */

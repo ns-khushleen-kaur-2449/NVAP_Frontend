@@ -2,12 +2,12 @@ import {
   allProblems, defaultSelection, placeholdersFor, problemsFrom, registryGroups, splitProtected,
 } from './builderPersonalization';
 
-const email = { key: 'email', label: 'Email on file', usages: ['confirm_only', 'never_say'], masks: ['none', 'email_hint'], default_mask: 'none' };
+const email = { key: 'email', label: 'Email on file', usages: ['confirm_only', 'never_say'], masks: ['none'], default_mask: 'none' };
 const phone = { key: 'phone', label: 'Phone', usages: ['confirm_only', 'never_say'], masks: ['none', 'last4'], default_mask: 'last4' };
 const city = { key: 'city', label: 'Their city', usages: ['greet', 'context', 'confirm_only', 'never_say'], masks: ['none'], default_mask: 'none' };
 
-it('ticks contact details as confirm-only and masked, and others with a usage they allow', () => {
-  expect(defaultSelection(email)).toEqual({ key: 'email', usage: 'confirm_only', mask: 'email_hint', label: '' });
+it('ticks contact details as confirm-only (the email in full, the phone masked), and others with a usage they allow', () => {
+  expect(defaultSelection(email)).toEqual({ key: 'email', usage: 'confirm_only', mask: 'none', label: '' });
   expect(defaultSelection(phone)).toEqual({ key: 'phone', usage: 'confirm_only', mask: 'last4', label: '' });
   expect(defaultSelection(city)).toMatchObject({ usage: 'context', mask: 'none' });
   expect(defaultSelection({ ...city, key: 'first_name' }).usage).toBe('greet');

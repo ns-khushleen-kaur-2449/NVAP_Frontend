@@ -90,8 +90,9 @@ export const moveUserToTeam = (id, managerUserId) => api.put(`/api/users/${id}/t
 export const listTeams = () => api.get('/api/teams');
 export const listTenants = () => api.get('/api/tenants');
 export const createTenantWithAdmin = (data) => api.post('/api/tenants/with-admin', data);
-export const suspendTenant = (id) => api.post(`/api/tenants/${id}/suspend`);
-export const activateTenant = (id) => api.post(`/api/tenants/${id}/activate`);
+// A reason is required; it is kept in the admin audit trail.
+export const suspendTenant = (id, reason) => api.post(`/api/tenants/${id}/suspend`, { reason });
+export const activateTenant = (id, reason) => api.post(`/api/tenants/${id}/activate`, { reason });
 export const getRoleDashboard = () => api.get('/api/v1/dashboard');
 // Users the caller may see (was /api/auth/users, which never existed).
 export const listUsers = () => authApi.get('/api/users', { params: { page_size: 100 } });
@@ -99,6 +100,14 @@ export const listUsers = () => authApi.get('/api/users', { params: { page_size: 
 // ── Dashboard & Admin ──
 export const getDashboardStats = () => api.get('/api/dashboard/stats');
 export const getSystemHealth = () => api.get('/api/admin/system-health');
+
+// ── Platform control area (/api/admin, Super Admin only) ──
+export const getAdminOverview = () => api.get('/api/admin/overview');
+// Agent Fetch: a safe preview by Vapi id or this platform's numeric id; assign ties it to one tenant (reason required).
+export const lookupAgent = (ref) => api.post('/api/admin/agents/lookup',
+  /^\d+$/.test(ref) ? { assistant_id: Number(ref) } : { vapi_assistant_id: ref });
+export const assignAgent = (ref, tenantId, reason) =>
+  api.post(`/api/admin/agents/${encodeURIComponent(ref)}/assign`, { tenant_id: tenantId, reason });
 
 // ── Prospects (the only person record; "leads" are prospects with leads_only=true) ──
 export const getProspects = (params) => api.get('/api/v1/prospects', { params });

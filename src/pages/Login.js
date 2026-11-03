@@ -10,6 +10,7 @@ import HeroWave3D from '@/components/marketing/HeroWave3D';
 import ThemeToggle from '@/components/shared/ThemeToggle';
 import { NetsmartzLogo, SmartSDRWordmark } from '@/components/shared/BrandLockup';
 import { cn } from '@/lib/utils';
+import { homePath } from '@/lib/rbac';
 
 // "Remember me" keeps the email address on this device so the field is filled
 // in next time. Sign-in itself always persists (see AuthContext), so this
@@ -82,17 +83,17 @@ export default function LoginPage() {
   const [showResetHelp, setShowResetHelp] = useState(false);
   const [reducedMotion] = useState(() => Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches));
 
-  useEffect(() => { if (user || token) navigate('/dashboard', { replace: true }); }, [user, token, navigate]);
+  useEffect(() => { if (user || token) navigate(homePath(user), { replace: true }); }, [user, token, navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!email || !password) { toast.error('Please fill in all fields'); return; }
     setLoading(true);
     try {
-      await login(email, password);
+      const signedIn = await login(email, password);
       writeRememberedEmail(remember ? email.trim() : '');
       toast.success('Welcome back!');
-      navigate('/dashboard');
+      navigate(homePath(signedIn?.user));
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Login failed. Please try again.');
     } finally {

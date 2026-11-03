@@ -7,10 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
-  AlertDialogHeader, AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+import ReasonDialog from '@/components/ops/ReasonDialog';
 import { errorText } from '@/components/admin/userBits';
 import { activateTenant, createTenantWithAdmin, listTenants, suspendTenant } from '@/lib/api';
 import { generateTemporaryPassword } from '@/lib/passwords';
@@ -121,19 +118,21 @@ export default function TenantsPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const toggle = async (tenant) => {
+  // The reason is required by the backend and kept in the admin audit trail.
+  const toggle = async (tenant, reason) => {
     const suspend = tenant.status === 'active';
     setBusyId(tenant.tenant_id);
     try {
-      if (suspend) await suspendTenant(tenant.tenant_id);
-      else await activateTenant(tenant.tenant_id);
+      if (suspend) await suspendTenant(tenant.tenant_id, reason);
+      else await activateTenant(tenant.tenant_id, reason);
       toast.success(suspend ? `${tenant.name} suspended` : `${tenant.name} activated`);
       await load();
+      return true;
     } catch (e) {
       toast.error(errorText(e, 'Could not change the tenant'));
+      return false;
     } finally {
       setBusyId(null);
-      setConfirming(null);
     }
   };
 
@@ -189,22 +188,18 @@ export default function TenantsPage() {
       </Card>
 
       <NewTenantDialog open={creating} onOpenChange={setCreating} onCreated={load} />
-      <AlertDialog open={Boolean(confirming)} onOpenChange={(open) => !open && setConfirming(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{confirming && (confirming.status === 'active' ? `Suspend ${confirming.name}?` : `Activate ${confirming.name}?`)}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {confirming && (confirming.status === 'active'
-                ? 'All of its users are signed out at once and cannot log in until it is activated again. No data is deleted.'
-                : 'Its users will be able to log in again.')}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => toggle(confirming)}>Confirm</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ReasonDialog
+        open={Boolean(confirming)}
+        onOpenChange={(open) => !open && setConfirming(null)}
+        title={confirming ? (confirming.status === 'active' ? `Suspend ${confirming.name}?` : `Activate ${confirming.name}?`) : ''}
+        description={confirming && (confirming.status === 'active'
+          ? 'All of its users are signed out at once and cannot log in until it is activated again. No data is deleted.'
+          : 'Its users will be able to log in again.')}
+        confirmLabel={confirming?.status === 'active' ? 'Suspend' : 'Activate'}
+        danger={confirming?.status === 'active'}
+        reasonPlaceholder="Why? It is kept in the platform audit trail."
+        onConfirm={(reason) => toggle(confirming, reason)}
+      />
     </div>
   );
 }

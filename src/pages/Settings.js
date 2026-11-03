@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Settings as SettingsIcon, Save, ChevronRight } from 'lucide-react';
-import { Link, useLocation, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useLocation, useSearchParams } from 'react-router-dom';
 import { visibleNavItems } from '@/lib/adminNav';
 import { toast } from 'sonner';
 import { Card } from '@/components/ui/card';
@@ -9,23 +9,22 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import CalendarConnections from '@/components/CalendarConnections';
-import ToolsManager from '@/components/admin/ToolsManager';
 import SchedulingSetup from '@/components/admin/SchedulingSetup';
 import OperationsSettings from '@/components/ops/OperationsSettings';
 import LeadScoringSettings from '@/components/ops/LeadScoringSettings';
 import { useAuth } from '@/lib/AuthContext';
-import { canViewOperations } from '@/lib/rbac';
+import { canUseAdmin, canViewOperations } from '@/lib/rbac';
 import { getSettings, updateSettings } from '@/lib/api';
 
 // One tab per area, each only for the roles that use it; the open tab is ?tab= so links can point at one
 // (the calendar connect flow comes back to /settings/calendar). Brochure requests are in the Inbox.
+// Platform tools are not a tenant setting: they live in the Super Admin area (/admin/tools).
 export const SETTINGS_TABS = [
   { value: 'general', label: 'General', show: () => true },
   { value: 'calendar', label: 'Calendar', show: () => true },
   { value: 'scheduling', label: 'Meeting scheduling', show: ({ hasRole }) => hasRole('tenant_admin', 'manager') },
   { value: 'rules', label: 'Calling rules', show: ({ user }) => canViewOperations(user) },
   { value: 'scoring', label: 'Lead scoring', show: ({ user }) => canViewOperations(user) },
-  { value: 'tools', label: 'Tools', show: ({ hasRole }) => hasRole('super_admin') },
 ];
 
 export default function SettingsPage() {
@@ -63,6 +62,9 @@ export default function SettingsPage() {
     }
     setSaving(false);
   };
+
+  // Old links to Settings → Tools.
+  if (asked === 'tools' && canUseAdmin(user)) return <Navigate to="/admin/tools" replace />;
 
   return (
     <div className="space-y-6">
@@ -157,13 +159,6 @@ export default function SettingsPage() {
         <TabsContent value="scoring" className="mt-4">
           <LeadScoringSettings />
         </TabsContent>
-
-        {/* Platform Vapi tools are managed by Super Admins only. */}
-        {hasRole('super_admin') && (
-          <TabsContent value="tools" className="mt-4">
-            <ToolsManager />
-          </TabsContent>
-        )}
       </Tabs>
     </div>
   );

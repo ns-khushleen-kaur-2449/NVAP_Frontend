@@ -1,4 +1,4 @@
-import { Bot, Building2, ClipboardList, LayoutDashboard, Users, UsersRound, Wrench } from 'lucide-react';
+import { Bot, Building2, ClipboardList, LayoutDashboard, PlugZap, Users, UsersRound, Wrench } from 'lucide-react';
 import { PERMISSIONS, canUseAdmin, hasPermission } from '@/lib/rbac';
 
 /**
@@ -16,6 +16,7 @@ export const PLATFORM_NAV = [
   { path: '/admin/tenants', label: 'Tenants', icon: Building2, perm: PERMISSIONS.TENANTS_MANAGE },
   { path: '/admin/users', label: 'Platform users', icon: Users, perm: PERMISSIONS.ADMIN_ACCESS },
   { path: '/admin/tenant-users', label: 'Tenant users', icon: UsersRound, perm: PERMISSIONS.ADMIN_ACCESS },
+  { path: '/admin/integrations', label: 'CRM integrations', icon: PlugZap, perm: PERMISSIONS.TENANTS_MANAGE },
   { path: '/admin/audit-logs', label: 'Audit Logs', icon: ClipboardList, perm: PERMISSIONS.ADMIN_ACCESS },
   { path: '/admin/agents', label: 'Agents', icon: Bot, perm: PERMISSIONS.ADMIN_ACCESS },
   { path: '/admin/tools', label: 'Tools', icon: Wrench, perm: PERMISSIONS.PLATFORM_TOOLS_MANAGE },

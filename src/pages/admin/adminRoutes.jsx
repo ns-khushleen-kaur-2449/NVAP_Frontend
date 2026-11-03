@@ -10,6 +10,7 @@ import TenantsAdminPage from '@/pages/admin/Tenants';
 import PlatformUsersPage from '@/pages/admin/PlatformUsers';
 import TenantUsersPage from '@/pages/admin/Users';
 import AdminAuditLogsPage from '@/pages/admin/AuditLogs';
+import { TenantIntegrationsOverview, TenantZohoIntegration } from '@/pages/admin/Integrations';
 
 /**
  * The platform control area: /admin -> /admin/overview; Super Admin only (SuperAdminRoute). Tenants and Users reuse
@@ -23,6 +24,8 @@ export function adminRoutes() {
       <Route path="tenants" element={<TenantsAdminPage />} />
       <Route path="users" element={<PlatformUsersPage />} />
       <Route path="tenant-users" element={<TenantUsersPage />} />
+      <Route path="integrations" element={<TenantIntegrationsOverview />} />
+      <Route path="tenants/:tenantId/integrations/zoho" element={<TenantZohoIntegration />} />
       <Route path="audit-logs" element={<AdminAuditLogsPage />} />
       <Route path="agents" element={<AgentsPage />} />
       <Route path="agents/import" element={<AgentImportPage />} />

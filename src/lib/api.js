@@ -645,6 +645,27 @@ export function downloadBlob(blob, filename) {
 }
 
 // ── Report Agent: Audio ──
+// Zoho CRM integration (Tenant Admin; Super Admin supplies tenant_id).
+const ZOHO_BASE = '/api/v1/integrations/zoho';
+export const connectZoho = (data = {}) => api.post(`${ZOHO_BASE}/connect`, data);
+export const getZohoConnections = (params) => api.get(`${ZOHO_BASE}/connections`, { params });
+export const getZohoConnection = (id, params) => api.get(`${ZOHO_BASE}/connections/${id}`, { params });
+export const disconnectZoho = (id, params) => api.delete(`${ZOHO_BASE}/connections/${id}`, { params });
+export const getZohoHealth = (id, params) => api.get(`${ZOHO_BASE}/connections/${id}/health`, { params });
+export const getZohoWebhookSetup = (id, params) => api.get(`${ZOHO_BASE}/connections/${id}/webhook-setup`, { params });
+// `secret` is deliberately returned only by these two calls. Never persist it.
+export const provisionZohoWebhookSecret = (id, params) => api.post(`${ZOHO_BASE}/connections/${id}/webhook-secret`, {}, { params });
+export const rotateZohoWebhookSecret = (id, data = {}, params) => api.post(`${ZOHO_BASE}/connections/${id}/webhook-secret/rotate`, data, { params });
+export const getZohoFields = (params) => api.get(`${ZOHO_BASE}/fields`, { params });
+export const getZohoMappings = (params) => api.get(`${ZOHO_BASE}/mappings`, { params });
+export const saveZohoMappings = (connectionId, data, params) => api.put(`${ZOHO_BASE}/mappings`, data, { params: { connection_id: connectionId, ...params } });
+export const importZohoLeads = (connectionId, params) => api.post(`${ZOHO_BASE}/sync/import`, { module: 'Leads' }, { params: { connection_id: connectionId, ...params } });
+export const getZohoJobs = (params) => api.get(`${ZOHO_BASE}/sync/jobs`, { params });
+export const getZohoInboundEvents = (params) => api.get(`${ZOHO_BASE}/sync/inbound-events`, { params });
+export const getZohoDeliveries = (params) => api.get(`${ZOHO_BASE}/sync/deliveries`, { params });
+export const retryZohoDelivery = (id, data = {}, params) => api.post(`${ZOHO_BASE}/sync/retry/${id}`, data, { params });
+export const getZohoTenantOverview = () => api.get(`${ZOHO_BASE}/admin/tenants/crm-overview`);
+
 export const uploadAudioFile = (file, executiveName) => {
   const fd = new FormData();
   fd.append('file', file);

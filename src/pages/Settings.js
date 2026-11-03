@@ -12,6 +12,7 @@ import CalendarConnections from '@/components/CalendarConnections';
 import SchedulingSetup from '@/components/admin/SchedulingSetup';
 import OperationsSettings from '@/components/ops/OperationsSettings';
 import LeadScoringSettings from '@/components/ops/LeadScoringSettings';
+import ZohoIntegration from '@/components/integrations/ZohoIntegration';
 import { useAuth } from '@/lib/AuthContext';
 import { canUseAdmin, canViewOperations } from '@/lib/rbac';
 import { getSettings, updateSettings } from '@/lib/api';
@@ -25,6 +26,7 @@ export const SETTINGS_TABS = [
   { value: 'scheduling', label: 'Meeting scheduling', show: ({ hasRole }) => hasRole('tenant_admin', 'manager') },
   { value: 'rules', label: 'Calling rules', show: ({ user }) => canViewOperations(user) },
   { value: 'scoring', label: 'Lead scoring', show: ({ user }) => canViewOperations(user) },
+  { value: 'integrations', label: 'Integrations', show: ({ hasRole }) => hasRole('tenant_admin') },
 ];
 
 export default function SettingsPage() {
@@ -159,6 +161,12 @@ export default function SettingsPage() {
         <TabsContent value="scoring" className="mt-4">
           <LeadScoringSettings />
         </TabsContent>
+
+        {hasRole('tenant_admin') && (
+          <TabsContent value="integrations" className="mt-4">
+            <ZohoIntegration />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );

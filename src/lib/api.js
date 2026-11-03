@@ -106,6 +106,14 @@ export const getAdminOverview = () => api.get('/api/admin/overview');
 // Agent Fetch: a safe preview by Vapi id or this platform's numeric id; assign ties it to one tenant (reason required).
 export const lookupAgent = (ref) => api.post('/api/admin/agents/lookup',
   /^\d+$/.test(ref) ? { assistant_id: Number(ref) } : { vapi_assistant_id: ref });
+export const fetchAdminAgent = (vapiAssistantId) => api.post('/api/admin/agents/fetch', { vapi_assistant_id: vapiAssistantId });
+export const importAdminAgent = (vapiAssistantId, reason) => api.post('/api/admin/agents/import', { vapi_assistant_id: vapiAssistantId, reason });
+export const listAdminAgents = () => api.get('/api/admin/agents');
+export const getAdminAgent = (id) => api.get(`/api/admin/agents/${id}`);
+export const refreshAdminAgent = (id, reason) => api.post(`/api/admin/agents/${id}/refresh`, { reason });
+export const assignAdminAgent = (id, tenantId, reason) => api.post(`/api/admin/agents/${id}/assign`, { tenant_id: tenantId, reason });
+export const previewAdminAgentTools = (id, selectedTools) => api.post(`/api/admin/agents/${id}/tools/preview`, { selected_tools: selectedTools });
+export const applyAdminAgentTools = (id, selectedTools, reason) => api.post(`/api/admin/agents/${id}/tools/apply`, { selected_tools: selectedTools, reason });
 export const assignAgent = (ref, tenantId, reason) =>
   api.post(`/api/admin/agents/${encodeURIComponent(ref)}/assign`, { tenant_id: tenantId, reason });
 

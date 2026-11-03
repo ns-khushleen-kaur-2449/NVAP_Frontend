@@ -24,6 +24,7 @@ import {
   listBuilderConfigs, getBuilderConfig, createBuilderConfig, updateBuilderConfig,
   previewBuilderConfig, publishBuilderConfig, rollbackBuilderConfig, retryBuilderConfig,
   getKnowledgeFiles, getCatalogItems, getLeadFieldRegistry, getCatalogTable, getCatalogSettings, getBuilderLanguages,
+  getAssistants,
 } from '../../lib/api';
 import { DEFAULT_LEAD_FIELDS, allProblems, problemsFrom } from '../../lib/builderPersonalization';
 import { directionOf, languageOf, needsGender } from '../../lib/builderLanguages';
@@ -269,6 +270,7 @@ function StatusBadge({ status }) {
 export default function AssistantBuilder() {
   const [view, setView] = useState('list'); // 'list' | 'editor'
   const [configs, setConfigs] = useState([]);
+  const [assignedAgents, setAssignedAgents] = useState([]);
   const [loadingList, setLoadingList] = useState(false);
 
   const [config, setConfig] = useState(null); // BuilderConfigResponse of the config being edited
@@ -316,14 +318,13 @@ export default function AssistantBuilder() {
 
   const fetchConfigs = useCallback(async () => {
     setLoadingList(true);
-    try {
-      const res = await listBuilderConfigs();
-      setConfigs(res.data || []);
-    } catch (e) {
-      toast.error(errorDetail(e, 'Failed to load agents'));
-    } finally {
-      setLoadingList(false);
-    }
+    const [configsResult, agentsResult] = await Promise.allSettled([listBuilderConfigs(), getAssistants()]);
+    if (configsResult.status === 'fulfilled') setConfigs(configsResult.value.data || []);
+    else toast.error(errorDetail(configsResult.reason, 'Failed to load agents'));
+    if (agentsResult.status === 'fulfilled') {
+      setAssignedAgents((agentsResult.value.data || []).filter((agent) => agent.status === 'imported'));
+    } else setAssignedAgents([]);
+    setLoadingList(false);
   }, []);
 
   useEffect(() => {
@@ -529,7 +530,7 @@ export default function AssistantBuilder() {
             <div className="flex items-center justify-center py-20">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
             </div>
-          ) : configs.length === 0 ? (
+          ) : configs.length === 0 && assignedAgents.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-center border-2 border-dashed border-border rounded-xl">
               <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
                 <User className="w-8 h-8 text-muted-foreground" />
@@ -541,7 +542,10 @@ export default function AssistantBuilder() {
               <Button onClick={openNew} variant="outline" className="mt-6">Build your first agent</Button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="space-y-8">
+              {configs.length > 0 && <section aria-labelledby="your-agents-heading" className="space-y-3">
+                {assignedAgents.length > 0 && <h3 id="your-agents-heading" className="text-base font-semibold">Agents you can edit</h3>}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {configs.map((c) => {
                 const p = c.latest?.payload || {};
                 const goal = GOALS.find((g) => g.value === p.assistant?.goal)?.label;
@@ -572,6 +576,29 @@ export default function AssistantBuilder() {
                   </Card>
                 );
               })}
+                </div>
+              </section>}
+              {assignedAgents.length > 0 && <section aria-labelledby="assigned-agents-heading" className="space-y-3">
+                <h3 id="assigned-agents-heading" className="text-base font-semibold">Assigned agents</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {assignedAgents.map((agent) => <Card key={agent.id} role="button" tabIndex={0}
+                    aria-label={`${agent.name} assigned by admin; contact admin for changes`}
+                    className="border-blue-500/30 cursor-pointer" onClick={() => toast.info('Assigned to you by the admin', {
+                      description: 'Contact your admin for changes to this agent.',
+                    })} onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        toast.info('Assigned to you by the admin', { description: 'Contact your admin for changes to this agent.' });
+                      }
+                    }}>
+                    <CardContent className="p-5 space-y-3">
+                      <div className="flex items-start justify-between gap-2"><h4 className="font-bold">{agent.name}</h4><Badge variant="outline" className="text-blue-500 border-blue-500/30">Assigned by admin</Badge></div>
+                      <p className="text-xs text-muted-foreground break-all">{agent.vapi_assistant_id}</p>
+                      <p className="text-sm">Assigned to you by the admin. Contact your admin for changes.</p>
+                    </CardContent>
+                  </Card>)}
+                </div>
+              </section>}
             </div>
           )}
         </ScrollArea>

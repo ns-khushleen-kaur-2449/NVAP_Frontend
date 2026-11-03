@@ -15,7 +15,7 @@ export const PLATFORM_NAV = [
   { path: '/admin/overview', label: 'Overview', icon: LayoutDashboard, perm: PERMISSIONS.PLATFORM_OVERVIEW_VIEW },
   { path: '/admin/tenants', label: 'Tenants', icon: Building2, perm: PERMISSIONS.TENANTS_MANAGE },
   { path: '/admin/users', label: 'Users', icon: Users, perm: PERMISSIONS.ADMIN_ACCESS },
-  { path: '/admin/agents/import', label: 'Agents', icon: Bot, perm: PERMISSIONS.ADMIN_ACCESS },
+  { path: '/admin/agents', label: 'Agents', icon: Bot, perm: PERMISSIONS.ADMIN_ACCESS },
   { path: '/admin/tools', label: 'Tools', icon: Wrench, perm: PERMISSIONS.PLATFORM_TOOLS_MANAGE },
 ];
 

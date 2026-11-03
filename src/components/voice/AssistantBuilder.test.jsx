@@ -14,6 +14,7 @@ jest.mock('../../lib/api', () => ({
   rollbackBuilderConfig: jest.fn(),
   retryBuilderConfig: jest.fn(),
   getKnowledgeFiles: jest.fn(),
+  getAssistants: jest.fn(),
   getCatalogItems: jest.fn(),
   getCatalogTable: jest.fn(),
   getCatalogSettings: jest.fn(),
@@ -21,7 +22,7 @@ jest.mock('../../lib/api', () => ({
   getBuilderLanguages: jest.fn(),
 }));
 jest.mock('./AgentToolsPanel', () => () => null);
-jest.mock('sonner', () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
+jest.mock('sonner', () => ({ toast: { success: jest.fn(), error: jest.fn(), info: jest.fn() } }));
 jest.mock('../ui/select', () => ({
   Select: ({ children }) => <div>{children}</div>,
   SelectTrigger: ({ children }) => <div>{children}</div>,
@@ -54,6 +55,8 @@ const config = (payload) => ({ id: 'c1', name: 'Riya', current_version: 3, publi
 
 // CRA's Jest config resets mocks before each test, so the answers are set here.
 beforeEach(() => {
+  api.listBuilderConfigs.mockResolvedValue({ data: [] });
+  api.getAssistants.mockResolvedValue({ data: [] });
   api.getKnowledgeFiles.mockResolvedValue({ data: [] });
   api.getCatalogItems.mockResolvedValue({ data: { items: [] } });
   api.getCatalogTable.mockResolvedValue({ data: { columns: [] } });
@@ -61,6 +64,21 @@ beforeEach(() => {
   api.getLeadFieldRegistry.mockResolvedValue({ data: { usages: [], standard: [], custom: [], unusable: [] } });
   api.previewBuilderConfig.mockResolvedValue({ data: { prompt: 'p', generated_prompt: 'p', first_message: 'Hi!', tools: [] } });
   api.getBuilderLanguages.mockResolvedValue({ data: LANGUAGES_API });
+});
+
+it('shows admin-assigned agents in the tenant list without edit actions', async () => {
+  api.getAssistants.mockResolvedValue({ data: [{
+    id: 77, name: 'Imported Riya', vapi_assistant_id: 'vapi-assigned-77', status: 'imported', is_live: true,
+  }] });
+  render(<AssistantBuilder />);
+  expect(await screen.findByRole('heading', { name: 'Assigned agents' })).toBeInTheDocument();
+  const card = await screen.findByRole('button', { name: /Imported Riya assigned by admin/ });
+  expect(card).toHaveTextContent('Contact your admin for changes');
+  expect(within(card).queryByText('Edit')).not.toBeInTheDocument();
+  fireEvent.click(card);
+  expect(require('sonner').toast.info).toHaveBeenCalledWith('Assigned to you by the admin', {
+    description: 'Contact your admin for changes to this agent.',
+  });
 });
 
 it('loads a legacy config untouched: customer details off, nothing to save, null lead_fields sent', async () => {

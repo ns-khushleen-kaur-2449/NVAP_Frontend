@@ -10,6 +10,7 @@ jest.mock('@/components/shared/ThemeToggle', () => () => null);
 jest.mock('@/pages/admin/Tenants', () => () => <div>tenants-page</div>);
 jest.mock('@/pages/admin/Users', () => () => <div>users-page</div>);
 jest.mock('@/pages/admin/AgentImport', () => () => <div>agents-page</div>);
+jest.mock('@/pages/admin/Agents', () => () => <div>agents-list-page</div>);
 
 const api = require('@/lib/api');
 
@@ -100,7 +101,7 @@ describe('Overview page', () => {
 
 describe('Tenants and Users in the platform area', () => {
   test.each([['/admin/tenants', 'tenants-page'], ['/admin/users', 'users-page'], ['/admin/agents/import', 'agents-page'],
-    ['/admin/agents', 'agents-page']])('%s opens for a Super Admin', (path, page) => {
+    ['/admin/agents', 'agents-list-page']])('%s opens for a Super Admin', (path, page) => {
     renderAdmin(path, USERS.super_admin);
     expect(screen.getByText(page)).toBeInTheDocument();
   });

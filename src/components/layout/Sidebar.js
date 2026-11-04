@@ -2,7 +2,7 @@ import { Link, NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Users, Sparkles,  PhoneCall, Inbox as InboxIcon, CalendarClock, Package,
   Layers, Phone, Mic, BookOpen, UploadCloud, Megaphone, ClipboardCheck,
-  ChevronDown, ChevronLeft, ChevronRight, Settings, LogOut, GitCompareArrows, ShieldCheck,
+  ChevronDown, ChevronLeft, ChevronRight, Settings, LogOut, GitCompareArrows, ShieldCheck, Crown, BarChart3,
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
@@ -11,10 +11,11 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useAuth } from '@/lib/AuthContext';
 import ThemeToggle from '@/components/shared/ThemeToggle';
 import BrandLockup, { NetsmartzMark } from '@/components/shared/BrandLockup';
-import { canUseAdmin, canViewAssistants } from '@/lib/rbac';
+import { canManageBilling, canUseAdmin, canViewAssistants } from '@/lib/rbac';
 
 const APP_NAV = [
   { path: '/dashboard',   label: 'Dashboard',    icon: LayoutDashboard },
+  { path: '/reports',     label: 'Reports & Analytics', icon: BarChart3 },
 ];
 
 // Secondary surfaces, listed below Voice Agent.
@@ -253,6 +254,24 @@ export function Sidebar() {
             {!collapsed && user?.email && <span className="text-xs text-[var(--mist)] truncate">{user.email}</span>}
             <ThemeToggle className="h-8 w-8 shrink-0" />
           </div>
+          {/* Upgrade Plan — the organisation's subscription; only its Tenant Admin sees it. Sits just above Logout. */}
+          {canManageBilling(user) && (
+            <NavLink
+              to="/billing"
+              aria-label={collapsed ? 'Upgrade Plan' : undefined}
+              title={collapsed ? 'Upgrade Plan' : undefined}
+              className={({ isActive }) => cn(
+                'group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-all duration-200 hover:translate-x-0.5',
+                isActive
+                  ? 'bg-[var(--pine)] text-white shadow-[0_10px_24px_-12px_rgba(248,114,23,0.6)]'
+                  : 'text-[var(--pine)] hover:bg-[rgba(248,114,23,0.12)]',
+                collapsed && 'justify-center px-2 hover:translate-x-0'
+              )}
+            >
+              <Crown className="h-4 w-4 shrink-0 transition-transform duration-200 group-hover:-rotate-12 group-hover:scale-110" />
+              {!collapsed && <span>Upgrade Plan</span>}
+            </NavLink>
+          )}
           <button
             type="button"
             aria-label={collapsed ? 'Logout' : undefined}

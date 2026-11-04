@@ -740,5 +740,15 @@ export const scrapeKbUrl = (url, kbName) => reportApi.post('/scrape', { url, kb_
 export const askChatbot = (query, kbName, history = [], provider = 'groq') =>
   reportApi.post(provider === 'ollama' ? '/askus' : '/askgroq', { query, kb_name: kbName, history });
 
+// ── Billing (Stripe; Tenant Admin only, always for their own tenant) ──
+export const getBillingPlans = () => api.get('/api/v1/billing/plans');
+export const getBillingSubscription = () => api.get('/api/v1/billing/subscription');
+export const getBillingInvoices = () => api.get('/api/v1/billing/invoices');
+export const createCheckoutSession = (plan, interval = 'month') => api.post('/api/v1/billing/checkout-session', { plan, interval });
+export const createPortalSession = () => api.post('/api/v1/billing/portal-session');
+export const changeBillingPlan = (plan, interval = 'month') => api.post('/api/v1/billing/change-plan', { plan, interval });
+export const cancelBillingSubscription = () => api.post('/api/v1/billing/cancel');
+export const resumeBillingSubscription = () => api.post('/api/v1/billing/resume');
+
 export { authApi, reportApi, voiceApi, http, API_BASE };
 export default voiceApi;

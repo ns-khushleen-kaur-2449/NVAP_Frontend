@@ -43,6 +43,13 @@ const paragraph = (text) => (_, element) => element.tagName === 'P'
   && (text instanceof RegExp ? text.test(element.textContent) : element.textContent.trim() === text);
 const explorer = () => screen.getByRole('complementary', { name: 'Prospect explorer' });
 
+it('shows the number of decisions needing review', async () => {
+  api.getConversionWorkspace.mockResolvedValue(workspace([MAYA], { awaiting_approvals: 1, needs_review: 2 }));
+  renderPage();
+  const kpis = await screen.findByRole('region', { name: 'Conversion summary' });
+  expect(kpis).toHaveTextContent('Needs review2');
+});
+
 it('shows the summary numbers the backend returned and does not invent any', async () => {
   api.getConversionWorkspace.mockResolvedValue(workspace([MAYA], { awaiting_approvals: 3, evidence_to_verify: 7, qualified_prospects: 11, converted_prospects: 2 }));
   renderPage();
@@ -164,6 +171,68 @@ describe('Approval desk', () => {
     expect(desk.getByText('Pia Rao')).toBeInTheDocument();
     expect(desk.getByText(/read-only access/)).toBeInTheDocument();
     expect(desk.queryByRole('button', { name: /Approve|Reject/ })).not.toBeInTheDocument();
+  });
+
+  const REVIEW = prospect('p-5', 'Rhea Sen', 'CONTACTED', {
+    review_decision_id: 'd-5',
+    review_reason_codes: ['INTENT_MISSING', 'LEAD_SCORE_GATE_SKIPPED_RECALCULATION_DUE',
+      'LEAD_SCORE_RECALCULATION_RECOMMENDED', 'LEAD_SCORE_GATE_NOT_EVALUATED'],
+    review_score_gate: { evaluated: false, situation: 'recalculation_due', recommended_action: 'recalculate_score' },
+  });
+
+  it('shows decisions waiting for review, with why and what to do, but nothing to approve', async () => {
+    api.getConversionWorkspace.mockResolvedValue(workspace([MAYA, REVIEW], { needs_review: 1 }));
+    renderPage();
+    const desk = within(await openDesk());
+    const card = within(desk.getByTestId('review-p-5'));
+    expect(card.getByText('Needs review')).toBeInTheDocument();
+    expect(card.getByText(/due for recalculation/)).toBeInTheDocument();
+    expect(card.getByText(/minimum could not be checked/)).toBeInTheDocument();
+    expect(card.getByText(/Recalculate the lead.s score/)).toBeInTheDocument();
+    expect(card.queryByRole('button', { name: /Approve/ })).not.toBeInTheDocument();
+    expect(card.getByText(/nothing to approve/)).toBeInTheDocument();
+  });
+
+  it('lets a reviewer recalculate, reassess or dismiss it', async () => {
+    api.getConversionWorkspace.mockResolvedValue(workspace([MAYA, REVIEW], { needs_review: 1 }));
+    api.calculateLeadScore.mockResolvedValue({ data: {} });
+    api.reassessConversion.mockResolvedValue({ data: { decision_status: 'PENDING_APPROVAL' } });
+    renderPage();
+    let card = within((within(await openDesk())).getByTestId('review-p-5'));
+    fireEvent.click(card.getByRole('button', { name: 'Recalculate score' }));
+    await waitFor(() => expect(api.calculateLeadScore).toHaveBeenCalledWith('p-5'));
+    card = within(screen.getByTestId('review-p-5'));
+    fireEvent.click(card.getByRole('button', { name: /Reassess/ }));
+    await waitFor(() => expect(api.reassessConversion).toHaveBeenCalledWith('p-5', expect.objectContaining({
+      idempotency_key: expect.any(String) })));
+    fireEvent.click(within(screen.getByTestId('review-p-5')).getByRole('button', { name: 'Dismiss' }));
+    expect(await screen.findByText('Dismiss review')).toBeInTheDocument();
+  });
+
+  it('offers no review actions to someone who may not review', async () => {
+    api.getConversionWorkspace.mockResolvedValue(workspace([MAYA, REVIEW], { needs_review: 1 }));
+    renderPage(USERS.manager);
+    const card = within(within(await openDesk()).getByTestId('review-p-5'));
+    expect(card.queryByRole('button', { name: /Reassess|Dismiss|Recalculate/ })).not.toBeInTheDocument();
+    expect(card.getByRole('button', { name: 'View prospect' })).toBeInTheDocument();
+  });
+
+  it('warns on a pending approval whose score is no longer usable, and still offers approval', async () => {
+    const warned = { ...PENDING, pending_score_warning: { situation: 'provisional', recommended_action: 'obtain_assessed_conversation' } };
+    api.getConversionWorkspace.mockResolvedValue(workspace([MAYA, warned], { awaiting_approvals: 1 }));
+    renderPage();
+    const desk = within(await openDesk());
+    const warning = desk.getByTestId('score-warning');
+    expect(warning).toHaveTextContent('The score used for this proposal is no longer usable.');
+    expect(warning).toHaveTextContent('The score is provisional');
+    expect(warning).toHaveTextContent('You can still approve it.');
+    expect(desk.getByRole('button', { name: /Approve/ })).toBeEnabled();
+  });
+
+  it('shows no warning on a pending approval whose score is usable', async () => {
+    api.getConversionWorkspace.mockResolvedValue(workspace([MAYA, PENDING], { awaiting_approvals: 1 }));
+    renderPage();
+    expect(within(await openDesk()).queryByTestId('score-warning')).not.toBeInTheDocument();
   });
 
   it('warns when more decisions are waiting than the loaded list shows', async () => {

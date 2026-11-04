@@ -1,8 +1,9 @@
-import { CheckCircle2, Clock3, FileCheck2, Sparkles } from 'lucide-react';
+import { CheckCircle2, CircleHelp, Clock3, FileCheck2, Sparkles } from 'lucide-react';
 
 // Values come straight from the backend summary; nothing is computed or hardcoded here.
 const CARDS = [
-  { key: 'awaiting_approvals', label: 'Pending approvals', detail: 'Decisions waiting for review', icon: Clock3, tone: 'warn' },
+  { key: 'awaiting_approvals', label: 'Pending approvals', detail: 'Proposals waiting for approval', icon: Clock3, tone: 'warn' },
+  { key: 'needs_review', label: 'Needs review', detail: 'Evaluations a person must look at', icon: CircleHelp, tone: 'info' },
   { key: 'evidence_to_verify', label: 'Evidence review', detail: 'Candidates awaiting verification', icon: Sparkles, tone: 'info' },
   { key: 'qualified_prospects', label: 'Qualified prospects', detail: 'At the qualified stage', icon: CheckCircle2, tone: 'good' },
   { key: 'converted_prospects', label: 'Converted prospects', detail: 'Approved transitions', icon: FileCheck2, tone: 'accent' },
@@ -10,7 +11,7 @@ const CARDS = [
 
 export default function KpiCards({ summary }) {
   return (
-    <section aria-label="Conversion summary" className="grid grid-cols-1 gap-3 min-[480px]:grid-cols-2 xl:grid-cols-4">
+    <section aria-label="Conversion summary" className="grid grid-cols-1 gap-3 min-[480px]:grid-cols-2 xl:grid-cols-5">
       {CARDS.map(({ key, label, detail, icon: Icon, tone }) => (
         <div key={key} className="ops-card flex h-full min-w-0 items-start justify-between gap-3 p-4">
           <div className="min-w-0">

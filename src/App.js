@@ -10,7 +10,7 @@ import SidebarTopBar from "@/components/layout/SidebarTopBar";
 import DashboardPage from "@/pages/Dashboard";
 import LeadsPage from "@/pages/Leads";
 import ResearchPage from "@/pages/Research";
-import ReportsPage from "@/pages/Reports";
+import LegacyReportsPage from "@/pages/Reports";
 // import CallsPage from "@/pages/Calls";
 import PropertiesPage from "@/pages/Properties";
 import SettingsPage from "@/pages/Settings";
@@ -34,9 +34,9 @@ import KnowledgeBasePage from "@/pages/KnowledgeBase";
 // import ChatWidget from "@/components/shared/ChatWidget";
 import ProspectingPage from "@/pages/Prospecting";
 import ConversionWorkspace from "@/pages/ConversionWorkspace";
+import BillingPage from "@/pages/Billing";
 import StrategistPage from "@/pages/Strategist";
 import ForbiddenPage from "@/pages/Forbidden";
-import RoleDashboard from "@/pages/RoleDashboard";
 import UsersAdminPage from "@/pages/admin/Users";
 import TeamsAdminPage from "@/pages/admin/Teams";
 import RequirePermission from "@/components/auth/RequirePermission";
@@ -44,6 +44,7 @@ import { PERMISSIONS, homePath } from "@/lib/rbac";
 import AuthGate from "@/components/auth/AuthGate";
 import InboxPage from "@/pages/Inbox";
 import CatalogPage from "@/pages/Catalog";
+import { DashboardPage as RoleDashboardPage, ReportsPage } from "@/pages/RoleAnalytics";
 import MeetingsPage from "@/pages/Meetings";
 import { operationsRoutes } from "@/pages/Operations";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
@@ -71,7 +72,7 @@ function SmartRoot() {
 // Pages that get the persistent left Sidebar instead of the TopBar. Everything
 // else in AppShell keeps the TopBar exactly as before.
 const SIDEBAR_SECTION_PATHS = ['/dashboard', '/prospecting', '/conversion', '/strategist', '/inbox', '/catalog', '/meetings', '/settings',
-  '/operations', '/leads'];
+  '/operations', '/leads', '/billing', '/reports'];
 
 function AppShell() {
   const { user, token, loading } = useAuth();
@@ -95,14 +96,16 @@ function AppShell() {
 
   const routes = (
     <Routes>
-      <Route path="/dashboard" element={<RoleDashboard />} />
+      <Route path="/dashboard" element={<RoleDashboardPage />} />
       <Route path="/welcome" element={<DashboardPage />} />
       <Route path="/leads" element={<LeadsPage />} />
       <Route path="/research" element={
         <ProtectedRoute roles={ADMINS_AND_MANAGERS}><ResearchPage /></ProtectedRoute>
       } />
-      <Route path="/reports" element={
-        <ProtectedRoute roles={ADMINS_AND_MANAGERS}><ReportsPage /></ProtectedRoute>
+      {/* Reports & Analytics for every role; the backend scopes the data. The previous Reports page is kept at /reports/legacy. */}
+      <Route path="/reports" element={<ReportsPage />} />
+      <Route path="/reports/legacy" element={
+        <ProtectedRoute roles={ADMINS_AND_MANAGERS}><LegacyReportsPage /></ProtectedRoute>
       } />
       <Route path="/properties" element={<PropertiesPage />} />
       <Route path="/agent-runs" element={
@@ -110,6 +113,7 @@ function AppShell() {
       } />
       <Route path="/prospecting" element={<ProspectingPage />} />
       <Route path="/conversion" element={<ConversionWorkspace />} />
+      <Route path="/billing" element={<ProtectedRoute roles={['tenant_admin']}><BillingPage /></ProtectedRoute>} />
       <Route path="/strategist" element={<StrategistPage />} />
       {/* The SDR Campaigns pages are hidden for now; Voice Campaigns is the campaign page. */}
       <Route path="/campaigns/*" element={<Navigate to="/voice-campaigns" replace />} />

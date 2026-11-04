@@ -52,7 +52,6 @@ export default function SettingsPage() {
     try {
       const r = await updateSettings({
         stale_lead_days: Number(settings.stale_lead_days),
-        hot_lead_score: Number(settings.hot_lead_score),
         engagement_tone: settings.engagement_tone,
         default_sequence_days: Number(settings.default_sequence_days),
         preferred_language: settings.preferred_language,
@@ -113,10 +112,6 @@ export default function SettingsPage() {
                 <div>
                   <label className="text-xs text-muted-foreground">Stale after (days)</label>
                   <Input type="number" value={settings.stale_lead_days} onChange={(e) => setSettings({ ...settings, stale_lead_days: e.target.value })} className="mt-1 bg-[hsl(var(--surface-2))] border-border" />
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground">Hot-lead score threshold</label>
-                  <Input type="number" value={settings.hot_lead_score} onChange={(e) => setSettings({ ...settings, hot_lead_score: e.target.value })} className="mt-1 bg-[hsl(var(--surface-2))] border-border" />
                 </div>
                 <div>
                   <label className="text-xs text-muted-foreground">Default sequence length (days)</label>

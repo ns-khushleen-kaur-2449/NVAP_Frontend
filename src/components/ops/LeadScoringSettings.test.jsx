@@ -1,5 +1,5 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
-import LeadScoringSettings from './LeadScoringSettings';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import LeadScoringSettings, { rescoreMessage, saveMessage } from './LeadScoringSettings';
 import { USERS, renderWithAuth } from '@/test/renderWithAuth';
 
 jest.mock('@/lib/api');
@@ -26,14 +26,144 @@ const config = (disabled = []) => ({
   },
 });
 
+// The overview of 20 prospects: every panel reconciles (5 + 9 categories = 20; current 14 = 9 + 5).
+const OVERVIEW = {
+  tenant_id: 't1', as_of: '2026-11-03T08:00:00Z', population: 20,
+  classification: { classified: 9, provisional: 5, stale: 2, pending_calculation: 3, no_score_recorded: 1,
+    classified_by_temperature: { HOT: 2, WARM: 4, COLD: 3 } },
+  score_freshness: { current: 14, stale: 2, stale_recalculable: 1,
+    recalculation_due: { total: 4, settings_changed: 3, methodology_changed: 0, new_intent: 1, intent_aged: 1,
+      details_changed: 0, demo_score: 0 } },
+  assessment: { total: 20,
+    categories: { assessed: 6, aged: 2, outdated: 1, assessed_unknown: 1, not_contacted: 5, pending: 2,
+      no_result_recorded: 1, failed: 1, not_assessed: 1 },
+    pending_breakdown: { being_assessed: 1, waiting_for_review: 1 },
+    of_which_latest_call: { pending: 0, no_result_recorded: 1, failed: 1, rejected: 0, skipped: 0,
+      unrecognized: 0 },
+    of_which_earlier_assessment: { outdated: 1, unknown: 0, unrecognized: 0 } },
+  data_completeness: { high: 4, medium: 6, low: 2, not_recorded: 2 },
+  thresholds: { pending_timeout_minutes: 15, pending_timeout_final: false },
+  automatic_refresh_enabled: false,
+};
+
 beforeEach(() => {
   jest.clearAllMocks();
   api.getLeadScoringConfig.mockResolvedValue(config());
   api.getLeadScoringConfigHistory.mockResolvedValue({ data: { items: [] } });
+  api.getLeadScoringOverview.mockResolvedValue({ data: OVERVIEW });
 });
 
 const box = (name) => screen.getByRole('checkbox', { name });
 const open = async (user) => { renderWithAuth(<LeadScoringSettings />, { user, path: '/settings' }); await screen.findByText('Seniority'); };
+
+describe('Lead overview', () => {
+  const count = (testId) => screen.getByTestId(testId).lastChild.textContent;
+
+  it('shows the four panels with their totals, each counting every prospect once', async () => {
+    await open(USERS.tenant_admin);
+    await screen.findByTestId('lead-overview');
+    expect(api.getLeadScoringOverview).toHaveBeenCalledWith({});
+    expect(screen.getByTestId('panel-classification-total')).toHaveTextContent('5 categories = 20 prospects');
+    expect(count('classification-classified')).toBe('9');
+    expect(count('classification-pending_calculation')).toBe('3');
+    expect(count('classification-no_score_recorded')).toBe('1');
+    expect(screen.getByTestId('panel-classification')).toHaveTextContent('of which HOT2');
+    expect(count('freshness-current')).toBe('14');
+    expect(count('freshness-due')).toBe('4');
+    expect(screen.getByTestId('panel-freshness')).toHaveTextContent('scoring settings changed3');
+    expect(screen.getByTestId('panel-freshness')).toHaveTextContent('A lead can have several reasons.');
+    expect(screen.getByTestId('panel-freshness')).toHaveTextContent('they are not current scores');
+    expect(screen.getByTestId('panel-assessment-total')).toHaveTextContent('9 categories = 20 prospects');
+    expect(count('assessment-no_result_recorded')).toBe('1');
+    expect(count('assessment-failed')).toBe('1');
+    expect(screen.getByTestId('assessment-no_result_recorded')).toHaveTextContent('No result recorded yet');
+    expect(screen.getByTestId('panel-completeness-total')).toHaveTextContent('= 14 current scores');
+    expect(count('completeness-not_recorded')).toBe('2');
+  });
+
+  it('shows sub-counts as "of which", never as categories', async () => {
+    await open(USERS.tenant_admin);
+    await screen.findByTestId('lead-overview');
+    expect(screen.getByTestId('of-which-latest-failed')).toHaveTextContent('of which latest call Failed');
+    expect(screen.getByTestId('of-which-earlier-outdated')).toHaveTextContent('of which earlier assessment Outdated');
+    expect(screen.queryByTestId('of-which-latest-rejected')).not.toBeInTheDocument();
+    expect(screen.getByTestId('panel-assessment')).toHaveTextContent('of which waiting for review1');
+  });
+
+  it('explains No result recorded yet as not a failure', async () => {
+    await open(USERS.tenant_admin);
+    await screen.findByTestId('lead-overview');
+    expect(screen.getByTestId('assessment-no_result_recorded').getAttribute('title'))
+      .toMatch(/more than 15 minutes ago .* not a confirmed failure/);
+    expect(screen.getByTestId('assessment-failed').getAttribute('title')).toMatch(/failure was recorded/);
+  });
+
+  it('says when the assessment status is not available', async () => {
+    api.getLeadScoringOverview.mockResolvedValue({ data: { ...OVERVIEW, assessment: null } });
+    await open(USERS.tenant_admin);
+    expect(await screen.findByText('The assessment status is not available.')).toBeInTheDocument();
+  });
+
+  it('keeps the settings usable when the overview cannot load', async () => {
+    api.getLeadScoringOverview.mockRejectedValue({ response: { status: 500, data: { detail: 'Overview failed' } } });
+    await open(USERS.tenant_admin);
+    expect(await screen.findByText(/Overview failed/)).toBeInTheDocument();
+    expect(box('Seniority')).toBeChecked();
+  });
+});
+
+describe('Recalculating scores', () => {
+  it('runs one pass for a Tenant Admin and says what happened', async () => {
+    api.rescoreLeadScores.mockResolvedValue({ data: { tenant_id: 't1', scored: 3, fresh: 1, no_fit_data: 2, missing: 0, failed: 0 } });
+    await open(USERS.tenant_admin);
+    fireEvent.click(await screen.findByRole('button', { name: 'Recalculate scores' }));
+    expect(await screen.findByTestId('rescore-result')).toHaveTextContent(
+      "Recalculated 3 scores. 1 score was already up to date. 2 leads can't be scored until seniority, department or company size is added.");
+    expect(api.rescoreLeadScores).toHaveBeenCalledWith({ limit: 100 });
+    await waitFor(() => expect(api.getLeadScoringOverview).toHaveBeenCalledTimes(2)); // counts refreshed
+  });
+
+  it('is not offered to a Manager', async () => {
+    await open(USERS.manager);
+    await screen.findByTestId('lead-overview');
+    expect(screen.queryByRole('button', { name: 'Recalculate scores' })).not.toBeInTheDocument();
+  });
+
+  it('says when it failed, and that nothing changed', async () => {
+    api.rescoreLeadScores.mockRejectedValue({ response: { status: 503, data: { detail: 'Lead scoring is not available' } } });
+    await open(USERS.tenant_admin);
+    fireEvent.click(await screen.findByRole('button', { name: 'Recalculate scores' }));
+    expect(await screen.findByTestId('rescore-result')).toHaveTextContent('Lead scoring is not available');
+  });
+
+  it('words every result honestly', () => {
+    expect(rescoreMessage({ scored: 0, fresh: 0, no_fit_data: 0, missing: 0, failed: 0 }))
+      .toBe('Every score is up to date. Nothing to recalculate.');
+    expect(rescoreMessage({ scored: 1, fresh: 0, no_fit_data: 0, missing: 0, failed: 2 }))
+      .toBe('Recalculated 1 score. 2 leads could not be scored; nothing was changed for them.');
+    expect(rescoreMessage({ scored: 100, fresh: 0, no_fit_data: 0, missing: 0, failed: 0 }))
+      .toMatch(/More may be waiting: run it again\.$/);
+  });
+});
+
+describe('Honest texts', () => {
+  it('shows the thresholds as fixed text and explains PROVISIONAL', async () => {
+    await open(USERS.tenant_admin);
+    const thresholds = screen.getByTestId('thresholds');
+    expect(thresholds).toHaveTextContent('Temperature thresholds (fixed)');
+    expect(thresholds).toHaveTextContent('HOT 70–100 · WARM 40–69 · COLD 0–39');
+    expect(thresholds).toHaveTextContent('It is not a score range.');
+    expect(within(thresholds).queryByRole('textbox')).not.toBeInTheDocument();
+    expect(within(thresholds).queryByRole('spinbutton')).not.toBeInTheDocument();
+  });
+
+  it('says what a save does to scores, by whether automatic refresh is on', () => {
+    expect(saveMessage(true)).toMatch(/recalculated in the background/);
+    expect(saveMessage(false)).toMatch(/until they are recalculated: use "Recalculate scores"/);
+    expect(saveMessage(undefined)).not.toMatch(/background/);
+    [true, false, undefined].forEach((automatic) => expect(saveMessage(automatic)).not.toMatch(/are being refreshed/));
+  });
+});
 
 it('shows parameters, weights and thresholds', async () => {
   await open(USERS.tenant_admin);

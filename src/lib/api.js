@@ -554,6 +554,9 @@ export const getIntentReviewQueue = (params) => api.get('/api/intent-assessment/
 export const getIntentAssessment = (id, params) => api.get(`/api/intent-assessment/${id}`, { params });
 // One call log's assessment (database or Vapi id): { assessment | null, review | null }; anyone who may see it.
 export const getCallIntentAssessment = (callId) => api.get(`/api/intent-assessment/calls/${callId}`);
+// A prospect's assessment status (latest call, accepted intent, label, secondary badge), with or without a score.
+export const getProspectAssessmentStatus = (prospectId) =>
+  api.get(`/api/intent-assessment/prospects/${prospectId}/status`);
 // decision: approved | rejected; 409 when someone already reviewed it.
 // edits (optional, with approved): the reviewer's corrections - primary_intent, secondary_intents,
 // buying_signals, rationale, confidence (0-100), opt_out_confirmed. Omitted fields keep the AI value.
@@ -574,12 +577,19 @@ export const approveConversionDecision = (decisionId, data) =>
   api.post(`/api/ai/conversion/decisions/${decisionId}/approve`, data);
 export const rejectConversionDecision = (decisionId, data) =>
   api.post(`/api/ai/conversion/decisions/${decisionId}/reject`, data);
+// Evaluate a prospect again now (a new decision); data: { tenant_id?, idempotency_key }.
+export const reassessConversion = (prospectId, data) =>
+  api.post(`/api/ai/conversion/prospects/${prospectId}/reassess`, data);
 
 // ── Lead scoring parameters (Tenant Admin / Super Admin edit with a reason; Manager views; Super Admin passes tenant_id) ──
 // update body: { disabled: [parameter], reason, expected_config_hash } — 409 when the hash is out of date.
 export const getLeadScoringConfig = (params) => api.get('/api/lead-scoring/config', { params });
 export const updateLeadScoringConfig = (data, params) => api.put('/api/lead-scoring/config', data, { params });
 export const getLeadScoringConfigHistory = (params) => api.get('/api/lead-scoring/config/history', { params });
+// Counts of the tenant's prospects by classification, freshness, assessment and Data Completeness (read only).
+export const getLeadScoringOverview = (params) => api.get('/api/lead-scoring/overview', { params });
+// One pass of the score refresh for the tenant (Tenant Admin / Super Admin): { scored, fresh, no_fit_data, missing, failed }.
+export const rescoreLeadScores = (params) => api.post('/api/lead-scores/rescore', null, { params });
 
 // ── Tenant rules (Tenant Admin edits with a reason; Manager views; Super Admin passes tenant_id) ──
 export const getContactRules = (params) => api.get('/api/v1/contact-rules', { params });
@@ -729,6 +739,16 @@ export const scrapeKbUrl = (url, kbName) => reportApi.post('/scrape', { url, kb_
 // ── Chatbot: Chat ──
 export const askChatbot = (query, kbName, history = [], provider = 'groq') =>
   reportApi.post(provider === 'ollama' ? '/askus' : '/askgroq', { query, kb_name: kbName, history });
+
+// ── Billing (Stripe; Tenant Admin only, always for their own tenant) ──
+export const getBillingPlans = () => api.get('/api/v1/billing/plans');
+export const getBillingSubscription = () => api.get('/api/v1/billing/subscription');
+export const getBillingInvoices = () => api.get('/api/v1/billing/invoices');
+export const createCheckoutSession = (plan, interval = 'month') => api.post('/api/v1/billing/checkout-session', { plan, interval });
+export const createPortalSession = () => api.post('/api/v1/billing/portal-session');
+export const changeBillingPlan = (plan, interval = 'month') => api.post('/api/v1/billing/change-plan', { plan, interval });
+export const cancelBillingSubscription = () => api.post('/api/v1/billing/cancel');
+export const resumeBillingSubscription = () => api.post('/api/v1/billing/resume');
 
 export { authApi, reportApi, voiceApi, http, API_BASE };
 export default voiceApi;

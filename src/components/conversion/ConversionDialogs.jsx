@@ -4,8 +4,13 @@ import { errorMessage } from '@/hooks/useApiAction';
 import ReasonDialog from '@/components/ops/ReasonDialog';
 import { readable, requestId } from './conversionUi';
 
-/** Approve or reject a conversion decision. `decision` needs `id` and `detail.target_stage`. */
+/**
+ * Approve, reject or dismiss a conversion decision. `decision` needs `id` and `detail.target_stage`.
+ * `dismiss` closes a decision that waits for human review (no stage change was proposed);
+ * it is recorded like a rejection.
+ */
 export function DecisionDialog({ action, decision, scope, onClose, onDone }) {
+  if (action === 'dismiss') return <DismissDialog decision={decision} scope={scope} onClose={onClose} onDone={onDone} />;
   const rejecting = action === 'reject';
   const submit = async (reason) => {
     const body = { ...scope, reason: reason || undefined, idempotency_key: requestId() };
@@ -33,6 +38,29 @@ export function DecisionDialog({ action, decision, scope, onClose, onDone }) {
       requireReason={rejecting} reasonLabel={rejecting ? 'Rejection reason' : 'Approval note'}
       reasonPlaceholder={rejecting ? 'Why should this conversion not proceed?' : 'Optional audit note'}
       onConfirm={submit}
+    />
+  );
+}
+
+function DismissDialog({ decision, scope, onClose, onDone }) {
+  const submit = async (reason) => {
+    try {
+      await rejectConversionDecision(decision.id, { ...scope, reason, idempotency_key: requestId() });
+      toast.success('Review dismissed');
+      await onDone();
+      return true;
+    } catch (error) {
+      toast.error(errorMessage(error, 'The review could not be dismissed. Refresh and try again.'));
+      return false;
+    }
+  };
+  return (
+    <ReasonDialog open onOpenChange={(open) => { if (!open) onClose(); }}
+      title="Dismiss review"
+      description="Closes this review without changing the prospect. Reassess later to evaluate the prospect again."
+      changes={['The review will be recorded as dismissed, with your reason.', 'The prospect\u2019s current stage will remain unchanged.']}
+      confirmLabel="Dismiss review" requireReason reasonLabel="Reason"
+      reasonPlaceholder="Why is no action needed now?" onConfirm={submit}
     />
   );
 }

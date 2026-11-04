@@ -179,6 +179,11 @@ export function canReviewConversions(actor) {
   return Boolean(actor) && ['tenant_admin', 'super_admin'].includes(actor.role);
 }
 
+/** The subscription belongs to the organisation, so only its Tenant Admin may buy, change or cancel a plan. */
+export function canManageBilling(actor) {
+  return Boolean(actor) && actor.role === 'tenant_admin';
+}
+
 /** Managers and Sales Reps can inspect only the prospects the backend exposes to them. */
 export function canViewConversions(actor) {
   return Boolean(actor) && ['super_admin', 'tenant_admin', 'manager', 'rep'].includes(actor.role);

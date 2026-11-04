@@ -66,6 +66,36 @@ it('selects every callable prospect on a page at once', async () => {
   expect(onConfirm).toHaveBeenCalledWith(['a', 'd']);
 });
 
+it('shows the score chips but never lets them block selecting a lead for a campaign', async () => {
+  const chipped = (id, score, temperature, freshness, label) => ({
+    ...lead(id), score, score_status: freshness === 'out_of_date' ? 'stale' : 'current',
+    temperature_display: { label: temperature, provisional: temperature === 'PROVISIONAL', reason: null },
+    freshness_indicator: freshness,
+    assessment: { engagement_label: label, latest_attempt_state: 'none', latest_attempt_confirmed: null,
+      latest_attempt_reason: null, age_band: null, secondary_badge: null },
+  });
+  searchProspectsByFilter.mockResolvedValueOnce(page(1, [
+    chipped('a', 85, 'PROVISIONAL', 'recalculation_due', 'not_contacted'),
+    chipped('s', 64, null, 'out_of_date', 'not_assessed'),
+  ]));
+  const onConfirm = renderPicker();
+  await searchFirstPage();
+  expect(screen.getAllByTestId('temperature-chip').map((chip) => chip.textContent)).toEqual(['PROVISIONAL']);
+  expect(screen.getAllByTestId('freshness-chip').map((chip) => chip.textContent)).toEqual(['RECALCULATION DUE', 'OUT OF DATE']);
+  // Provisional and out-of-date leads are selectable like any other.
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select Lead a' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select Lead s' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Use 2 prospects' }));
+  expect(onConfirm).toHaveBeenCalledWith(['a', 's']);
+  // The search request is as before: the chips add no filter or sort of their own.
+  const [filter, options] = searchProspectsByFilter.mock.calls[0];
+  expect(filter).toEqual({ version: 1, match: 'all', conditions: [] });
+  ['temperature_display', 'freshness_indicator', 'assessment', 'score_status'].forEach((key) => {
+    expect(options).not.toHaveProperty(key);
+    expect(JSON.stringify(filter)).not.toContain(key);
+  });
+});
+
 it('cannot confirm an empty selection', async () => {
   searchProspectsByFilter.mockResolvedValueOnce(page(1, [lead('a')]));
   renderPicker();

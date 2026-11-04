@@ -27,7 +27,7 @@ const STATS = [
   { v: '3.4×', k: 'more qualified conversations' },
   { v: '100%', k: 'of your lead list called' },
   { v: '24/7', k: 'autonomous lead calling' },
-  { v: 'HOT · WARM · COLD', k: 'every lead scored automatically' },
+  { v: 'HOT · WARM · COLD', k: 'or Provisional until there\u2019s enough evidence' },
 ];
 
 const STEPS = [
@@ -110,13 +110,13 @@ const PLANS = [
 
 const WHAT = [
   { n: '01', icon: Target, t: 'Call every lead, not just the easy ones', d: 'The Voice Agent works your entire list autonomously — no lead goes cold because a rep ran out of hours.' },
-  { n: '02', icon: FileSearch, t: 'Know which leads are ready', d: 'Every lead gets a score from fit and engagement, labelled HOT, WARM or COLD, with the reasons behind it.' },
+  { n: '02', icon: FileSearch, t: 'Know which leads are ready', d: 'Leads are scored from fit and engagement and labelled HOT, WARM or COLD, or PROVISIONAL when there isn\u2019t enough conversation evidence yet, with the reasons behind it.' },
   { n: '03', icon: Zap, t: 'Follow up while the lead is warm', d: 'Scores update as soon as a lead engages, so your team acts on the right lead at the right time.' },
 ];
 
 const FEATURES = [
   { icon: Layers, t: 'Campaign builder', d: 'Pick a lead list, an agent and a schedule, then launch a calling campaign in a few clicks.' },
-  { icon: Gauge, t: 'Lead scoring', d: 'Every call is scored HOT, WARM or COLD from fit and engagement, with the reasons shown.' },
+  { icon: Gauge, t: 'Lead scoring', d: 'Leads are scored from fit and engagement and labelled HOT, WARM or COLD, or PROVISIONAL until a conversation has been assessed, with the reasons shown.' },
   { icon: BookOpen, t: 'Knowledge base', d: 'Give the agent your projects, pricing and FAQs so it answers the way your team would.' },
   { icon: FileSpreadsheet, t: 'Lead imports & sync', d: 'Upload a list or sync from Google Sheets. No new process to learn.' },
   { icon: BarChart3, t: 'Live dashboard', d: 'Dialed, connected, interested and hot leads, per agent, refreshed as calls happen.' },
@@ -145,7 +145,7 @@ const TESTIMONIALS = [
 const FAQS = [
   { q: 'What exactly is the Voice Agent?', a: 'The Voice Agent autonomously calls and qualifies your leads, books appointments, and scores each lead so your team knows who to follow up with first.' },
   { q: 'Do I need to change my current tools?', a: 'No. Import a lead list, drop in recordings, or sync from Google Sheets. SmartSDR fits around the way your brokerage already works.' },
-  { q: 'How is a lead scored?', a: 'Each lead gets a score out of 100 from how well they fit your ideal customer and how engaged they are, labelled HOT, WARM or COLD. You can see the reasons behind every score.' },
+  { q: 'How is a lead scored?', a: 'Each lead gets a score out of 100 from how well they fit your ideal customer and how engaged they are, labelled HOT, WARM or COLD. When we don\u2019t yet have reliable conversation information (for example, the lead hasn\u2019t been reached or a call couldn\u2019t be assessed), the lead is marked PROVISIONAL instead of being guessed. You can see the reasons behind every score.' },
   { q: 'Is my data secure?', a: 'Enterprise plans include SSO and role-based access. Your call data stays yours and is never used to train shared models.' },
   { q: 'Can I tune how the agent talks to leads?', a: 'Yes. You set the script, the questions it asks and the knowledge it draws on, so it reflects how your brokerage actually sells.' },
 ];

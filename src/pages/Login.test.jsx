@@ -1,4 +1,5 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { Route } from 'react-router-dom';
 import { renderWithAuth } from '@/test/renderWithAuth';
 import LoginPage from './Login';
 
@@ -32,4 +33,20 @@ it('signs in with what the person typed', async () => {
   fireEvent.change(screen.getByTestId('login-password-input'), { target: { value: 'typed-by-the-person' } });
   fireEvent.click(screen.getByTestId('login-submit-btn'));
   await waitFor(() => expect(login).toHaveBeenCalledWith('person@company.com', 'typed-by-the-person'));
+});
+
+it.each([
+  ['super_admin', 'admin-overview'],
+  ['tenant_admin', 'dashboard'],
+])('after signing in, a %s lands on the %s page', async (role, page) => {
+  const login = jest.fn().mockResolvedValue({ user: { id: 9, role } });
+  const routes = [
+    <Route key="admin" path="/admin/overview" element={<div>admin-overview</div>} />,
+    <Route key="dashboard" path="/dashboard" element={<div>dashboard</div>} />,
+  ];
+  renderWithAuth(<LoginPage />, { path: '/login', auth: { login }, routes });
+  fireEvent.change(screen.getByTestId('login-email-input'), { target: { value: 'person@company.com' } });
+  fireEvent.change(screen.getByTestId('login-password-input'), { target: { value: 'typed-by-the-person' } });
+  fireEvent.click(screen.getByTestId('login-submit-btn'));
+  expect(await screen.findByText(page)).toBeInTheDocument();
 });

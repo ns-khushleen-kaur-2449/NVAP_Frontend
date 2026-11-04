@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Building2, Copy, Loader2, Plus, RefreshCw } from 'lucide-react';
 import { Card } from '@/components/ui/card';
@@ -7,12 +8,11 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
-  AlertDialogHeader, AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+import ReasonDialog from '@/components/ops/ReasonDialog';
 import { errorText } from '@/components/admin/userBits';
-import { activateTenant, createTenantWithAdmin, listTenants, suspendTenant } from '@/lib/api';
+import {
+  activateTenant, cancelTenantOffboarding, createTenantWithAdmin, initiateTenantOffboarding, listAdminTenants, suspendTenant,
+} from '@/lib/api';
 import { generateTemporaryPassword } from '@/lib/passwords';
 
 function NewTenantDialog({ open, onOpenChange, onCreated }) {
@@ -108,32 +108,59 @@ export default function TenantsPage() {
   const [tenants, setTenants] = useState(null);
   const [creating, setCreating] = useState(false);
   const [confirming, setConfirming] = useState(null);
+  const [offboarding, setOffboarding] = useState(null);
+  const [cancelling, setCancelling] = useState(null);
   const [busyId, setBusyId] = useState(null);
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
 
   const load = useCallback(async () => {
     try {
-      setTenants((await listTenants()).data.tenants || []);
+      const response = await listAdminTenants({ page, page_size: 25, q: query || undefined, status: statusFilter || undefined });
+      setTenants(response.data.tenants || []);
+      setTotal(response.data.total || 0);
     } catch (e) {
       toast.error(errorText(e, 'Failed to load tenants'));
       setTenants([]);
     }
-  }, []);
+  }, [page, query, statusFilter]);
 
   useEffect(() => { load(); }, [load]);
 
-  const toggle = async (tenant) => {
+  // The reason is required by the backend and kept in the admin audit trail.
+  const toggle = async (tenant, reason) => {
     const suspend = tenant.status === 'active';
     setBusyId(tenant.tenant_id);
     try {
-      if (suspend) await suspendTenant(tenant.tenant_id);
-      else await activateTenant(tenant.tenant_id);
+      if (suspend) await suspendTenant(tenant.tenant_id, reason);
+      else await activateTenant(tenant.tenant_id, reason);
       toast.success(suspend ? `${tenant.name} suspended` : `${tenant.name} activated`);
       await load();
+      return true;
     } catch (e) {
       toast.error(errorText(e, 'Could not change the tenant'));
+      return false;
     } finally {
       setBusyId(null);
-      setConfirming(null);
+    }
+  };
+
+  // Start (or, with cancel, undo) offboarding; both need a reason kept in the platform audit trail.
+  const changeOffboarding = async (tenant, reason, cancel = false) => {
+    setBusyId(tenant.tenant_id);
+    try {
+      if (cancel) await cancelTenantOffboarding(tenant.tenant_id, reason);
+      else await initiateTenantOffboarding(tenant.tenant_id, reason);
+      toast.success(cancel ? `Offboarding cancelled for ${tenant.name}` : `Offboarding initiated for ${tenant.name}`);
+      await load();
+      return true;
+    } catch (e) {
+      toast.error(errorText(e, cancel ? 'Could not cancel offboarding' : 'Could not initiate offboarding'));
+      return false;
+    } finally {
+      setBusyId(null);
     }
   };
 
@@ -148,6 +175,11 @@ export default function TenantsPage() {
       </div>
 
       <Card className="card-base p-4">
+        <div className="flex flex-wrap gap-3 mb-4">
+          <Input aria-label="Search tenants" placeholder="Search tenant name or ID" value={query} onChange={(e) => { setQuery(e.target.value); setPage(1); }} className="max-w-sm" />
+          <select aria-label="Tenant status filter" className="h-9 rounded-md border border-input bg-background px-3 text-sm" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}><option value="">All statuses</option><option value="active">Active</option><option value="suspended">Suspended</option></select>
+          <Button variant="outline" size="sm" onClick={load}>Refresh</Button>
+        </div>
         {!tenants ? (
           <div className="flex justify-center py-10"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div>
         ) : tenants.length === 0 ? (
@@ -158,7 +190,7 @@ export default function TenantsPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Tenant</TableHead><TableHead>Status</TableHead><TableHead>Users</TableHead>
-                  <TableHead>Admins</TableHead><TableHead>Created</TableHead><TableHead className="text-right">Actions</TableHead>
+                  <TableHead>Admins</TableHead><TableHead>Active agents</TableHead><TableHead>Calls</TableHead><TableHead>Plan</TableHead><TableHead>Created</TableHead><TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -171,11 +203,19 @@ export default function TenantsPage() {
                         : 'text-[11px] bg-red-500/10 text-red-600 border-red-500/25'}>
                         {tenant.status === 'active' ? 'Active' : 'Suspended'}
                       </Badge>
+                      {tenant.offboarding_started_at && <div className="mt-1 text-xs text-amber-700">Offboarding · {new Date(tenant.offboarding_started_at).toLocaleDateString()}</div>}
                     </TableCell>
                     <TableCell className="text-sm">{tenant.active_user_count} active / {tenant.user_count}</TableCell>
                     <TableCell className="text-sm">{tenant.admin_count}</TableCell>
+                    <TableCell className="text-sm">{tenant.active_assistant_count}</TableCell>
+                    <TableCell className="text-sm">{tenant.call_count}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">Not configured</TableCell>
                     <TableCell className="text-sm">{new Date(tenant.created_at).toLocaleDateString()}</TableCell>
                     <TableCell className="text-right">
+                      <Button asChild variant="ghost" size="sm"><Link to={`/admin/tenant-users?tenant_id=${tenant.tenant_id}`}>Users</Link></Button>
+                      {tenant.offboarding_started_at
+                        ? <Button variant="ghost" size="sm" disabled={busyId === tenant.tenant_id} onClick={() => setCancelling(tenant)}>Cancel offboarding</Button>
+                        : <Button variant="ghost" size="sm" disabled={busyId === tenant.tenant_id} onClick={() => setOffboarding(tenant)}>Offboard</Button>}
                       <Button variant="outline" size="sm" disabled={busyId === tenant.tenant_id} onClick={() => setConfirming(tenant)}>
                         {tenant.status === 'active' ? 'Suspend' : 'Activate'}
                       </Button>
@@ -186,25 +226,41 @@ export default function TenantsPage() {
             </Table>
           </div>
         )}
+        <div className="mt-3 flex items-center justify-between text-sm text-muted-foreground"><span>{total} tenants</span><div className="flex items-center gap-2"><Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>Previous</Button><span>Page {page} of {Math.max(1, Math.ceil(total / 25))}</span><Button size="sm" variant="outline" disabled={page >= Math.max(1, Math.ceil(total / 25))} onClick={() => setPage((value) => value + 1)}>Next</Button></div></div>
       </Card>
 
       <NewTenantDialog open={creating} onOpenChange={setCreating} onCreated={load} />
-      <AlertDialog open={Boolean(confirming)} onOpenChange={(open) => !open && setConfirming(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{confirming && (confirming.status === 'active' ? `Suspend ${confirming.name}?` : `Activate ${confirming.name}?`)}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {confirming && (confirming.status === 'active'
-                ? 'All of its users are signed out at once and cannot log in until it is activated again. No data is deleted.'
-                : 'Its users will be able to log in again.')}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => toggle(confirming)}>Confirm</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ReasonDialog
+        open={Boolean(confirming)}
+        onOpenChange={(open) => !open && setConfirming(null)}
+        title={confirming ? (confirming.status === 'active' ? `Suspend ${confirming.name}?` : `Activate ${confirming.name}?`) : ''}
+        description={confirming && (confirming.status === 'active'
+          ? 'All of its users are signed out at once and cannot log in until it is activated again. No data is deleted.'
+          : 'Its users will be able to log in again.')}
+        confirmLabel={confirming?.status === 'active' ? 'Suspend' : 'Activate'}
+        danger={confirming?.status === 'active'}
+        reasonPlaceholder="Why? It is kept in the platform audit trail."
+        onConfirm={(reason) => toggle(confirming, reason)}
+      />
+      <ReasonDialog
+        open={Boolean(offboarding)}
+        onOpenChange={(open) => !open && setOffboarding(null)}
+        title={offboarding ? `Initiate offboarding for ${offboarding.name}?` : ''}
+        description="This records an offboarding request and timestamp, and agents can no longer be assigned to the tenant. It does not suspend the tenant or delete data."
+        confirmLabel="Initiate offboarding"
+        danger
+        reasonPlaceholder="Why is this tenant being offboarded?"
+        onConfirm={(reason) => changeOffboarding(offboarding, reason)}
+      />
+      <ReasonDialog
+        open={Boolean(cancelling)}
+        onOpenChange={(open) => !open && setCancelling(null)}
+        title={cancelling ? `Cancel offboarding for ${cancelling.name}?` : ''}
+        description="Clears the offboarding marker; agents can be assigned to the tenant again."
+        confirmLabel="Cancel offboarding"
+        reasonPlaceholder="Why is offboarding being cancelled?"
+        onConfirm={(reason) => changeOffboarding(cancelling, reason, true)}
+      />
     </div>
   );
 }

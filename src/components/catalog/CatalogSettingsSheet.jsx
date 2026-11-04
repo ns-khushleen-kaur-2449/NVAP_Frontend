@@ -6,7 +6,9 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '
 import ReasonDialog from '@/components/ops/ReasonDialog';
 import TenantPicker from '@/components/ops/TenantPicker';
 import { getCatalogPricePreview, getCatalogSettings, getCatalogSettingsHistory, updateCatalogSettings } from '@/lib/api';
-import { LANGUAGES, WORD_LABELS, percent, refusalText, wordIn, wordText, withWord } from '@/lib/catalogFields';
+import {
+  PLAIN_WORD_LANGUAGE, WORD_LABELS, percent, refusalText, wordIn, wordLanguages, wordText, withWord,
+} from '@/lib/catalogFields';
 
 const EXAMPLE_PRICE = 1250000;
 const FORMATS = { indian: 'Indian (lakh, crore)', international: 'International (thousand, million)' };
@@ -121,7 +123,7 @@ export default function CatalogSettingsSheet({ open, onOpenChange, user, onSaved
   const [tenantId, setTenantId] = useState('');
   const [settings, setSettings] = useState(null);
   const [form, setForm] = useState(null);
-  const [language, setLanguage] = useState('en');
+  const [language, setLanguage] = useState(PLAIN_WORD_LANGUAGE);
   const [spoken, setSpoken] = useState('');
   const [loadError, setLoadError] = useState('');
   const [saveError, setSaveError] = useState('');
@@ -276,7 +278,7 @@ export default function CatalogSettingsSheet({ open, onOpenChange, user, onSaved
               <section className="space-y-3">
                 <h3 className="text-sm font-semibold">Words the agent uses</h3>
                 <div className="flex flex-wrap gap-1" role="group" aria-label="Language">
-                  {LANGUAGES.map((l) => (
+                  {wordLanguages(settings).map((l) => (
                     <button key={l.code} type="button" aria-pressed={language === l.code} onClick={() => setLanguage(l.code)}
                       className={`rounded-full border px-2.5 py-0.5 text-xs ${language === l.code ? 'border-primary bg-primary/10' : 'border-border'}`}>
                       {l.name}
@@ -284,14 +286,15 @@ export default function CatalogSettingsSheet({ open, onOpenChange, user, onSaved
                   ))}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {language === 'en' ? 'Leave one empty to use the default.' : 'Empty: the agent uses the English word.'}
+                  {language === PLAIN_WORD_LANGUAGE ? 'Leave one empty to use the default.'
+                    : 'Empty: the agent uses the English word, unless its language needs its own (then saving the agent asks for it).'}
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {TEXTS.map((item) => (
                     <Row key={item.key} label={item.label} hint={item.hint}>
                       <Input dir="auto" aria-label={item.label} maxLength={item.setting ? 60 : 300}
                         value={wordIn(item.setting ? form[item.key] : form.words[item.key], language)}
-                        placeholder={language === 'en' ? '' : wordText(item.setting ? form[item.key] : form.words[item.key])}
+                        placeholder={language === PLAIN_WORD_LANGUAGE ? '' : wordText(item.setting ? form[item.key] : form.words[item.key])}
                         onChange={(e) => setText(item, e.target.value)} />
                     </Row>
                   ))}

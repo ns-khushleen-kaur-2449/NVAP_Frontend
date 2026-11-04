@@ -5,15 +5,15 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { TagInput } from '@/components/voice/builder/BuilderFields';
-import { setCatalogVisibility, updateCatalogField } from '@/lib/api';
+import { getCatalogSettings, setCatalogVisibility, updateCatalogField } from '@/lib/api';
 import {
-  FIELD_TYPE_OPTIONS, IMPORTANCE, LANGUAGES, MODE_LABELS, MODES_BY_TYPE, fieldChanges, hasOptions, importanceLabel,
-  modeFor, refusalText, takesSynonyms,
+  FIELD_TYPE_OPTIONS, IMPORTANCE, MODE_LABELS, MODES_BY_TYPE, PLAIN_WORD_LANGUAGE, fieldChanges, hasOptions,
+  importanceLabel, modeFor, refusalText, takesSynonyms, wordLanguages,
 } from '@/lib/catalogFields';
 
 const formFrom = (column) => ({
   label: column.label || '',
-  labels: Object.fromEntries(LANGUAGES.filter((l) => l.code !== 'en').map((l) => [l.code, column.labels?.[l.code] || ''])),
+  labels: { ...(column.labels || {}) },  // per language; ``label`` is the plain (English) name
   type: column.type,
   matchable: Boolean(column.matchable),
   match_mode: column.match_mode || 'exact',
@@ -59,6 +59,14 @@ export default function FieldSettingsDialog({ open, onOpenChange, column, onSave
   const [showLanguages, setShowLanguages] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // Languages a field name may be given in (GET /api/v1/catalog/settings ``options.language_names``).
+  const [languages, setLanguages] = useState([]);
+  useEffect(() => {
+    if (!open) return;
+    Promise.resolve(getCatalogSettings())
+      .then((res) => setLanguages(wordLanguages(res?.data).filter((l) => l.code !== PLAIN_WORD_LANGUAGE)))
+      .catch(() => setLanguages([]));  // Sales Reps may not read settings: no other-language names then
+  }, [open]);
   useEffect(() => {
     if (open && column) {
       setForm(formFrom(column));
@@ -111,9 +119,9 @@ export default function FieldSettingsDialog({ open, onOpenChange, column, onSave
             </button>
             {showLanguages && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {LANGUAGES.filter((l) => l.code !== 'en').map((l) => (
+                {languages.map((l) => (
                   <Input key={l.code} dir="auto" aria-label={`Name in ${l.name}`} placeholder={l.name} maxLength={100}
-                    value={form.labels[l.code]} onChange={(e) => set('labels', { ...form.labels, [l.code]: e.target.value })} />
+                    value={form.labels[l.code] || ''} onChange={(e) => set('labels', { ...form.labels, [l.code]: e.target.value })} />
                 ))}
               </div>
             )}

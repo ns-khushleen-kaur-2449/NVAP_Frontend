@@ -33,3 +33,16 @@ it('shows errors and warnings against the field', () => {
   expect(screen.getByRole('alert')).toHaveTextContent('unknown placeholder {name}');
   expect(screen.getByText('first_message asks no question')).toBeInTheDocument();
 });
+
+
+it('writes the opening line in the pack\'s direction, even when it starts with a placeholder or a Latin name', () => {
+  const { rerender } = render(<OpenerSection personalized={false} firstMessage="{agent_name} معكم من Apex Motors"
+    onFirstMessage={() => {}} leadFields={[]} dir="rtl" />);
+  expect(screen.getByLabelText('Custom opening line')).toHaveAttribute('dir', 'rtl');
+  rerender(<OpenerSection personalized={false} firstMessage="" onFirstMessage={() => {}} leadFields={[]} dir="rtl"
+    generated="Riya معكم من Apex Motors، عندكم دقيقتين؟" />);
+  expect(screen.getByTestId('will-say')).toHaveAttribute('dir', 'rtl');
+  rerender(<OpenerSection personalized={false} firstMessage="Hi" onFirstMessage={() => {}} leadFields={[]} />);
+  expect(screen.getByLabelText('Custom opening line')).toHaveAttribute('dir', 'ltr');  // no pack yet: left to right
+});
+

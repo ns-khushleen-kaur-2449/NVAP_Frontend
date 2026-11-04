@@ -40,6 +40,10 @@ export const PERMISSIONS = Object.freeze({
   DASHBOARD_TENANT: 'dashboard.tenant',
   DASHBOARD_TEAM: 'dashboard.team',
   DASHBOARD_OWN: 'dashboard.own',
+  // The platform control area (/admin). Super Admin only (backend SUPER_ADMIN_PERMISSIONS).
+  ADMIN_ACCESS: 'admin.access',
+  PLATFORM_OVERVIEW_VIEW: 'platform.overview.view',
+  PLATFORM_TOOLS_MANAGE: 'platform.tools.manage',
 });
 
 /** Who may create whom. Managing (edit, deactivate, reactivate) follows the same map, narrowed by scope. */
@@ -52,7 +56,8 @@ export const CAN_CREATE = Object.freeze({
 
 const P = PERMISSIONS;
 export const ROLE_PERMISSIONS = Object.freeze({
-  super_admin: Object.freeze([P.TENANTS_MANAGE, P.USERS_VIEW, P.USERS_CREATE, P.USERS_MANAGE, P.DASHBOARD_PLATFORM]),
+  super_admin: Object.freeze([P.TENANTS_MANAGE, P.USERS_VIEW, P.USERS_CREATE, P.USERS_MANAGE, P.DASHBOARD_PLATFORM,
+    P.ADMIN_ACCESS, P.PLATFORM_OVERVIEW_VIEW, P.PLATFORM_TOOLS_MANAGE]),
   tenant_admin: Object.freeze([P.USERS_VIEW, P.USERS_CREATE, P.USERS_MANAGE, P.TEAMS_VIEW, P.TEAMS_MANAGE, P.DASHBOARD_TENANT]),
   manager: Object.freeze([P.USERS_VIEW, P.USERS_CREATE, P.USERS_MANAGE, P.TEAMS_VIEW, P.DASHBOARD_TEAM]),
   rep: Object.freeze([P.DASHBOARD_OWN]),
@@ -181,6 +186,16 @@ export function canViewConversions(actor) {
 
 export function isSuperAdmin(actor) {
   return actor?.role === ROLES.SUPER_ADMIN;
+}
+
+/** May open the platform control area (/admin). The backend's require_super_admin enforces it. */
+export function canUseAdmin(actor) {
+  return hasPermission(actor, PERMISSIONS.ADMIN_ACCESS);
+}
+
+/** Where a user lands after signing in: the control area for a Super Admin, the dashboard for everyone else. */
+export function homePath(actor) {
+  return canUseAdmin(actor) ? '/admin/overview' : '/dashboard';
 }
 
 /** May edit tenant settings (contact and appointment rules); a Super Admin only views them. */

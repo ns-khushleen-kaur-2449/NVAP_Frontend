@@ -52,6 +52,14 @@ describe('Lead status', () => {
 });
 
 describe('Call log intent assessment', () => {
+  it('does not invent a lead status when the backend did not provide one', async () => {
+    api.getCallIntentAssessment.mockResolvedValue({ data: { assessment: null, review: null } });
+    renderAs(USERS.manager);
+    await screen.findByText(/This call has no intent assessment/);
+    expect(screen.queryByText('WARM')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Warm Lead/i)).not.toBeInTheDocument();
+  });
+
   it("shows the call's assessment and sends a manager to review it", async () => {
     api.getCallIntentAssessment.mockResolvedValue({ data: { assessment, review } });
     renderAs(USERS.manager);

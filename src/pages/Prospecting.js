@@ -3,6 +3,7 @@ import { Search } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import AiFilterSearch from '@/components/prospecting/AiFilterSearch';
 import ApolloPreview from '@/components/prospecting/ApolloPreview';
+import ProspectQuickSearch from '@/components/prospecting/ProspectQuickSearch';
 import SavedSearches from '@/components/prospecting/SavedSearches';
 import { useAuth } from '@/lib/AuthContext';
 
@@ -40,6 +41,8 @@ export default function ProspectingPage() {
         </h1>
         <p className="text-sm text-muted-foreground mt-1">Search and filter the prospects you already have. Describe who you are looking for in plain English, or reuse your saved searches.</p>
       </div>
+
+      <ProspectQuickSearch />
 
       <Tabs value={tab} onValueChange={changeTab}>
         <TabsList>

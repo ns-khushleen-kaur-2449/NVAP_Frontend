@@ -149,6 +149,8 @@ function StatusBadge({ status }) {
   );
 }
 
+// A call's lead status, only when the call log carries a known one: the call log API does not
+// send it today, so nothing is shown (never a "Warm" default).
 function LeadStatusBadge({ status }) {
   const map = {
     hot: 'bg-rose-500/15 text-rose-500 border-rose-500/25',
@@ -160,8 +162,9 @@ function LeadStatusBadge({ status }) {
     cold: '❄️ Cold Lead',
     warm: '🌤️ Warm Lead',
   };
-  const s = map[status] || map.warm;
-  const label = labelMap[status] || '🌤️ Warm Lead';
+  const s = map[status];
+  const label = labelMap[status];
+  if (!s) return null;
   return (
     <Badge variant="outline" className={`${s} gap-1 text-xs font-semibold uppercase tracking-wider`}>
       {label}
@@ -480,7 +483,7 @@ export default function CallLogDetail({ callId, onBack }) {
               <MetaRow icon={AlertCircle} label="End Reason" value={d.end_reason} />
               <MetaRow icon={FileText} label="Source" value={d.source_type} />
               <MetaRow icon={CheckCircle2} label="Appointment" value={d.appointment_booked ? 'Yes ✓' : 'No'} />
-              <MetaRow icon={BarChart3} label="Lead Status" value={d.lead_status ? d.lead_status.toUpperCase() : "WARM"} />
+              {d.lead_status && <MetaRow icon={BarChart3} label="Lead Status" value={d.lead_status.toUpperCase()} />}
             </CardContent>
           </Card>
 

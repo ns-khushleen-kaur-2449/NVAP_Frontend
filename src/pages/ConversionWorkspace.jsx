@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ClipboardCheck, RefreshCw } from 'lucide-react';
+import { toast } from 'sonner';
 import {
-  getConversionEvidenceCandidates, getConversionTimeline, getConversionWorkspace,
+  calculateLeadScore, getConversionEvidenceCandidates, getConversionTimeline, getConversionWorkspace,
+  reassessConversion,
 } from '@/lib/api';
 import { useAuth } from '@/lib/AuthContext';
 import { canReviewConversions, isSuperAdmin } from '@/lib/rbac';
@@ -17,7 +19,9 @@ import KpiCards from '@/components/conversion/KpiCards';
 import PipelineStrip from '@/components/conversion/PipelineStrip';
 import ProspectDetails from '@/components/conversion/ProspectDetails';
 import ProspectExplorer from '@/components/conversion/ProspectExplorer';
-import { SIDE_STAGES, STAGE_FLOW, needsAttention, readable, refineProspects } from '@/components/conversion/conversionUi';
+import {
+  SIDE_STAGES, STAGE_FLOW, needsAttention, readable, refineProspects, requestId,
+} from '@/components/conversion/conversionUi';
 
 const REFRESH_MS = 15000;
 const PAGE_SIZE = 50;
@@ -116,6 +120,8 @@ export default function ConversionWorkspace() {
   const selected = prospects.find((prospect) => String(prospect.prospect_id) === String(selectedId));
   const visible = useMemo(() => refineProspects(prospects, stageFilter, sort), [prospects, stageFilter, sort]);
   const pending = useMemo(() => prospects.filter((prospect) => prospect.pending_decision_id), [prospects]);
+  const reviews = useMemo(() => prospects.filter((prospect) => prospect.review_decision_id), [prospects]);
+  const waiting = (workspace?.summary.awaiting_approvals || 0) + (workspace?.summary.needs_review || 0);
 
   // Filter choices are the stages actually present, so a choice can never lead to an empty result by itself.
   const stageCounts = useMemo(() => prospects.reduce((counts, prospect) => ({ ...counts, [prospect.current_stage]: (counts[prospect.current_stage] || 0) + 1 }), {}), [prospects]);
@@ -164,7 +170,27 @@ export default function ConversionWorkspace() {
     setDetailOpen(true);
   };
 
+  // Evaluate again now, or recalculate the score first: direct actions with their own message.
+  const runNow = async (type, prospect) => {
+    try {
+      if (type === 'recalculate') {
+        await calculateLeadScore(prospect.prospect_id);
+        toast.success('Score recalculated. Reassess to use it.');
+      } else {
+        const result = await reassessConversion(prospect.prospect_id, { ...scope, idempotency_key: requestId() });
+        toast.success(`Reassessed: ${readable(result.data.decision_status)}`);
+      }
+      await Promise.all([loadWorkspace(), loadDetail()]);
+    } catch (error) {
+      toast.error(errorMessage(error, type === 'recalculate' ? 'The score could not be recalculated.' : 'The prospect could not be reassessed.'));
+    }
+  };
+
   const openDialog = (type, payload, fromDesk = false) => {
+    if (type === 'reassess' || type === 'recalculate') {
+      runNow(type, payload);
+      return;
+    }
     if (fromDesk) setDeskOpen(false);
     if (type === 'verify') setDialog({ type, candidate: payload, fromDesk });
     else setDialog({ type, decision: payload, fromDesk });
@@ -180,8 +206,9 @@ export default function ConversionWorkspace() {
         {superAdmin && <TenantPicker value={tenantId} onChange={setTenantId} />}
         <OpsButton onClick={() => setDeskOpen(true)} disabled={!ready || !workspace}>
           <ClipboardCheck className="h-4 w-4" /> Approval desk
-          {workspace?.summary.awaiting_approvals > 0 && (
-            <span className="ops-num ml-1 rounded-full bg-[var(--ops-accent)] px-1.5 text-xs font-bold text-white">{workspace.summary.awaiting_approvals}</span>
+          {waiting > 0 && (
+            <span className="ops-num ml-1 rounded-full bg-[var(--ops-accent)] px-1.5 text-xs font-bold text-white"
+              title={`${workspace.summary.awaiting_approvals} to approve, ${workspace.summary.needs_review || 0} to review`}>{waiting}</span>
           )}
         </OpsButton>
         <OpsButton onClick={handleRefresh} busy={refreshing || (ready && !workspace && !workspaceError)}>
@@ -212,10 +239,11 @@ export default function ConversionWorkspace() {
       </section>
     </>}
   </main>
-    <ApprovalDesk open={deskOpen} onOpenChange={setDeskOpen} pending={pending} awaiting={workspace?.summary.awaiting_approvals}
+    <ApprovalDesk open={deskOpen} onOpenChange={setDeskOpen} pending={pending} reviews={reviews} awaiting={workspace?.summary.awaiting_approvals}
       reviewer={reviewer} onView={(id) => { chooseProspect(id); setDeskOpen(false); }} onAction={(type, payload) => openDialog(type, payload, true)} />
     {dialog?.type === 'verify' && <VerifyDialog candidate={dialog.candidate} prospectId={selectedId} scope={scope} onClose={closeDialog} onDone={afterAction} />}
     {dialog?.type === 'approve' && <DecisionDialog action="approve" decision={dialog.decision} scope={scope} onClose={closeDialog} onDone={afterAction} />}
     {dialog?.type === 'reject' && <DecisionDialog action="reject" decision={dialog.decision} scope={scope} onClose={closeDialog} onDone={afterAction} />}
+    {dialog?.type === 'dismiss' && <DecisionDialog action="dismiss" decision={dialog.decision} scope={scope} onClose={closeDialog} onDone={afterAction} />}
   </>;
 }

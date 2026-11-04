@@ -1,4 +1,4 @@
-import { fireEvent, screen, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import SettingsPage from './Settings';
 import { USERS, renderWithAuth } from '@/test/renderWithAuth';
 
@@ -14,6 +14,19 @@ const api = require('@/lib/api');
 beforeEach(() => { api.getSettings.mockResolvedValue({ data: null }); });
 
 const tabNames = () => screen.getAllByRole('tab').map((t) => t.textContent);
+
+it('has no lead-score threshold input and never sends one', async () => {
+  api.getSettings.mockResolvedValue({ data: {
+    stale_lead_days: 14, hot_lead_score: 70, engagement_tone: 'friendly', default_sequence_days: 7, preferred_language: 'en',
+  } });
+  api.updateSettings.mockResolvedValue({ data: { stale_lead_days: 14 } });
+  renderWithAuth(<SettingsPage />, { user: USERS.tenant_admin, path: '/settings' });
+  fireEvent.click(await screen.findByRole('button', { name: /Save settings/ }));
+  expect(screen.queryByText(/Hot-lead score threshold/)).not.toBeInTheDocument();
+  await waitFor(() => expect(api.updateSettings).toHaveBeenCalledTimes(1));
+  expect(api.updateSettings.mock.calls[0][0]).not.toHaveProperty('hot_lead_score');
+  expect(api.updateSettings.mock.calls[0][0]).toMatchObject({ stale_lead_days: 14, default_sequence_days: 7 });
+});
 
 it('shows one tab per area for a Tenant Admin, General first', () => {
   renderWithAuth(<SettingsPage />, { user: USERS.tenant_admin, path: '/settings' });

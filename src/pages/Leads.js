@@ -18,9 +18,36 @@ import {
   exportLeadsCSV, downloadBlob
 } from '@/lib/api';
 import { formatCurrency, STAGE_OPTIONS } from '@/lib/utils';
-import { toLeadRow } from '@/lib/prospects';
+import { LIST_INCLUDE, toLeadRow } from '@/lib/prospects';
 import { StageBadge, PriorityBadge, StatusBadge } from '@/components/shared/StatusBadges';
 import LeadScorePanel from '@/components/leads/LeadScorePanel';
+import TemperatureChip from '@/components/leads/TemperatureChip';
+import EngagementBadge from '@/components/leads/EngagementBadge';
+import ScoreFreshnessChip from '@/components/leads/ScoreFreshnessChip';
+
+// The Score column: the number with its temperature, assessment and freshness, each from the
+// backend's summaries (no cut-offs here).  A stale score keeps its number, marked OUT OF DATE.
+function ScoreCell({ lead }) {
+  const summary = lead.lead_score_summary;
+  const assessment = lead.intent_assessment_status;
+  return (
+    <div className="flex flex-col items-end gap-1" data-testid={`score-cell-${lead.id}`}>
+      {lead.ai_score != null ? (
+        <span className={`text-sm font-medium tabular-nums ${summary?.status === 'stale' ? 'text-muted-foreground' : ''}`}>
+          {lead.ai_score}
+        </span>
+      ) : <span className="text-xs text-muted-foreground">--</span>}
+      <div className="flex flex-wrap justify-end gap-1">
+        <TemperatureChip display={summary?.temperature_display} />
+        <ScoreFreshnessChip indicator={summary?.freshness_indicator} />
+      </div>
+      {assessment && (
+        <EngagementBadge compact label={assessment.engagement_label} latestAttempt={assessment.latest_attempt}
+          secondaryBadge={assessment.secondary_badge} />
+      )}
+    </div>
+  );
+}
 
 export default function LeadsPage() {
   const [leads, setLeads] = useState([]);
@@ -43,7 +70,7 @@ export default function LeadsPage() {
   const fetchLeads = useCallback(async () => {
     try {
       // Leads are prospects with a lead mapping or at QUALIFIED/CONVERTED.
-      const params = { leads_only: true, limit: 500 };
+      const params = { leads_only: true, limit: 500, include: LIST_INCLUDE };
       if (search) params.search = search;
       if (stageFilter && stageFilter !== 'all') params.stage = stageFilter;
       const r = await getProspects(params);
@@ -283,12 +310,8 @@ export default function LeadsPage() {
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="text-right tabular-nums" onClick={() => selectLead(lead)}>
-                      {lead.ai_score !== null && lead.ai_score !== undefined ? (
-                        <span className="text-sm font-medium" style={{ color: lead.ai_score >= 70 ? 'hsl(173,80%,36%)' : lead.ai_score >= 40 ? 'hsl(38,55%,62%)' : 'hsl(0,72%,52%)' }}>
-                          {lead.ai_score}
-                        </span>
-                      ) : <span className="text-xs text-muted-foreground">--</span>}
+                    <TableCell className="text-right" onClick={() => selectLead(lead)}>
+                      <ScoreCell lead={lead} />
                     </TableCell>
                     <TableCell className="text-sm" onClick={() => selectLead(lead)}>
                       {lead.budget_max ? formatCurrency(lead.budget_max) : '--'}
@@ -350,7 +373,14 @@ export default function LeadsPage() {
                 <LeadScorePanel
                   key={selectedLead.id}
                   prospectId={selectedLead.id}
-                  onScored={(s) => setLeads((rows) => rows.map((r) => (r.id === selectedLead.id ? { ...r, ai_score: Math.round(s.lead_score) } : r)))}
+                  onScored={(s) => setLeads((rows) => rows.map((r) => (r.id === selectedLead.id ? {
+                    ...r,
+                    ai_score: Math.round(s.lead_score),
+                    lead_score_summary: {
+                      ...(r.lead_score_summary || {}), lead_score: s.lead_score, status: s.status,
+                      temperature_display: s.temperature_display, freshness_indicator: s.freshness_indicator,
+                    },
+                  } : r)))}
                 >
                     {/* Only the details this lead has: an empty one is left out rather than shown as N/A. */}
                     <div className="grid grid-cols-2 gap-2 text-sm">

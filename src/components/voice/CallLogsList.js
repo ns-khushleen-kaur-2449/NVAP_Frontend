@@ -30,6 +30,8 @@ function StatusBadge({ status, label }) {
   );
 }
 
+// A call's lead status, only when the call log carries a known one: the call log API does not
+// send it today, so nothing is shown (never a "Warm" default).
 function LeadStatusBadge({ status }) {
   const map = {
     hot: 'bg-rose-500/15 text-rose-500 border-rose-500/25',
@@ -41,8 +43,9 @@ function LeadStatusBadge({ status }) {
     cold: '❄️ Cold Lead',
     warm: '🌤️ Warm Lead',
   };
-  const s = map[status] || map.warm;
-  const label = labelMap[status] || '🌤️ Warm Lead';
+  const s = map[status];
+  const label = labelMap[status];
+  if (!s) return null;
   return (
     <Badge variant="outline" className={`${s} gap-1 text-[10px] font-semibold uppercase tracking-wider shrink-0`}>
       {label}

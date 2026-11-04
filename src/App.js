@@ -42,6 +42,7 @@ import TeamsAdminPage from "@/pages/admin/Teams";
 import RequirePermission from "@/components/auth/RequirePermission";
 import { PERMISSIONS, homePath } from "@/lib/rbac";
 import AuthGate from "@/components/auth/AuthGate";
+import StepUpDialog from "@/components/auth/StepUpDialog";
 import InboxPage from "@/pages/Inbox";
 import CatalogPage from "@/pages/Catalog";
 import { DashboardPage as RoleDashboardPage, ReportsPage } from "@/pages/RoleAnalytics";
@@ -253,6 +254,7 @@ function App() {
         {/* <AuthedChatWidget /> */}
       </AuthProvider>
 
+      <StepUpDialog />
       <Toaster position="bottom-right" />
     </BrowserRouter>
     </ThemeProvider>

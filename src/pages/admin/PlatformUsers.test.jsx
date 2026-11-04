@@ -15,9 +15,8 @@ beforeEach(() => {
 test('shows Super Admin security state and current accounts', async () => {
   renderWithAuth(<PlatformUsersPage />, { user: USERS.super_admin, path: '/admin/users' });
   expect(await screen.findByText('admin@example.test')).toBeInTheDocument();
-  expect(screen.getByText('Not supported')).toBeInTheDocument();
-  expect(screen.getByText('Not tracked')).toBeInTheDocument();
-  expect(screen.getByText(/no per-session records or MFA support/i)).toBeInTheDocument();
+  expect(screen.getByText('Not set up')).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'Security' })).toHaveAttribute('href', '/admin/security');
 });
 
 test('creates a Super Admin with a required reason and temporary password', async () => {

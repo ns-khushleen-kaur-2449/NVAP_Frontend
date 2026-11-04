@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { STEP_UP_REQUIRED, requestStepUp } from '@/lib/stepUp';
 
 /**
  * All domains are served by the unified backend at REACT_APP_BACKEND_URL.
@@ -46,16 +47,21 @@ const _addAuthInterceptor = (instance) => {
     const isLogin = config.url?.includes('/auth/login');
     if (!isLogin && isValidToken(token)) {
       config.headers.Authorization = `Bearer ${token}`;
-    } else if (config.headers.Authorization) {
+    } else if (config.headers.Authorization && (isLogin || !config._explicitToken)) {
       delete config.headers.Authorization;
     }
     return config;
   });
   instance.interceptors.response.use(
     (response) => response,
-    (error) => {
-      // A 403 the user must act on (temporary password, suspended organisation): AuthContext shows the screen.
+    async (error) => {
       const action = error.response?.headers?.['x-auth-required-action'];
+      // A high-risk action without a fresh step-up: ask for a code, then send the same request once more.
+      if (error.response?.status === 403 && action === STEP_UP_REQUIRED && error.config && !error.config._steppedUp) {
+        if (await requestStepUp()) return instance({ ...error.config, _steppedUp: true });
+        return Promise.reject(error);
+      }
+      // A 403 the user must act on (temporary password, suspended organisation, MFA setup): AuthContext shows the screen.
       if (error.response?.status === 403 && action) {
         window.dispatchEvent(new CustomEvent('auth:required-action', { detail: action }));
       }
@@ -80,6 +86,22 @@ export const authRegister = (data) => authApi.post('/api/auth/register', data);
 export const getMe = () => authApi.get('/api/auth/me');
 export const changePassword = (currentPassword, newPassword) =>
   authApi.post('/api/auth/change-password', { current_password: currentPassword, new_password: newPassword });
+// Super Admin two-factor sign-in, setup and step-up (app/features/auth/mfa.py).
+export const authLoginMfa = (mfaToken, { code, recoveryCode } = {}) => authApi.post('/api/auth/login/mfa',
+  recoveryCode ? { mfa_token: mfaToken, recovery_code: recoveryCode } : { mfa_token: mfaToken, code });
+// Sent with the token being signed out explicitly: the stored copy is removed at the same moment.
+export const authLogout = (token) => authApi.post('/api/auth/logout', null,
+  { headers: { Authorization: `Bearer ${token}` }, _explicitToken: true });
+export const getMfaStatus = () => authApi.get('/api/auth/mfa');
+export const startMfaEnrollment = () => authApi.post('/api/auth/mfa/enroll');
+export const verifyMfaEnrollment = (code) => authApi.post('/api/auth/mfa/enroll/verify', { code });
+export const regenerateRecoveryCodes = () => authApi.post('/api/auth/mfa/recovery-codes');
+export const verifyStepUp = (code) => authApi.post('/api/auth/step-up', { code });
+export const listOwnSessions = () => api.get('/api/admin/security/sessions');
+export const listUserSessions = (userId) => api.get(`/api/admin/users/${userId}/sessions`);
+export const revokeSession = (sessionId, reason) => api.post(`/api/admin/security/sessions/${sessionId}/revoke`,
+  reason ? { reason } : {});
+export const resetUserMfa = (userId, reason) => api.post(`/api/admin/users/${userId}/mfa/reset`, { reason });
 
 // ── Admin: users, teams, tenants, role dashboard ──
 export const listAdminUsers = (params) => api.get('/api/users', { params });

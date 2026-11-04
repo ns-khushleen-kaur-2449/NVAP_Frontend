@@ -31,7 +31,7 @@ it('has no lead-score threshold input and never sends one', async () => {
 
 it('shows one tab per area for a Tenant Admin, General first', () => {
   renderWithAuth(<SettingsPage />, { user: USERS.tenant_admin, path: '/settings' });
-  expect(tabNames()).toEqual(['General', 'Calendar', 'Meeting scheduling', 'Calling rules', 'Lead scoring']);
+  expect(tabNames()).toEqual(['General', 'Calendar', 'Meeting scheduling', 'Calling rules', 'Lead scoring', 'Integrations']);
   expect(screen.queryByText('scheduling-setup')).not.toBeInTheDocument();
   fireEvent.mouseDown(screen.getByRole('tab', { name: 'Meeting scheduling' }));
   expect(screen.getByText('scheduling-setup')).toBeInTheDocument();

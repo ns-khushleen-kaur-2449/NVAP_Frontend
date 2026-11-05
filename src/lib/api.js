@@ -96,6 +96,8 @@ export const suspendTenant = (id, reason) => api.post(`/api/tenants/${id}/suspen
 export const activateTenant = (id, reason) => api.post(`/api/tenants/${id}/activate`, { reason });
 export const initiateTenantOffboarding = (id, reason) => api.post(`/api/admin/tenants/${id}/offboarding`, { reason });
 export const cancelTenantOffboarding = (id, reason) => api.post(`/api/admin/tenants/${id}/offboarding/cancel`, { reason });
+// Grant (true) or revoke (false) a tenant's Apollo Preview access → the tenant, with apollo_access_enabled.
+export const setTenantApolloAccess = (id, enabled, reason) => api.put(`/api/admin/tenants/${id}/apollo-access`, { enabled, reason });
 export const getRoleDashboard = () => api.get('/api/v1/dashboard');
 // Users the caller may see (was /api/auth/users, which never existed).
 export const listUsers = () => authApi.get('/api/users', { params: { page_size: 100 } });
@@ -217,9 +219,12 @@ export const runSavedFilter = (filterId, { page = 1, pageSize = 25, sort = 'scor
 
 // ── Apollo Preview: a temporary, live look at Apollo's free search (/api/apollo) ──
 // Demo only. Results are masked and are never saved or imported. The backend decides
-// who may use it: Tenant Admins, Managers and Sales Reps of tenants it is enabled for.
-// → { enabled, reason } — reason is null when enabled, otherwise one of
-//   integration_disabled | not_configured | role_not_allowed | tenant_not_allowed
+// who may use it: Tenant Admins, Managers and Sales Reps of tenants a Super Admin has granted
+// access in Platform Admin → Tenants.
+// → { enabled, access_granted, service_ready, reason }. access_granted: the tenant's grant and the role allow
+//   it (decides whether Apollo Preview is offered); service_ready: an API key is configured (null without
+//   access); enabled: both. reason is null when enabled, otherwise role_not_allowed | tenant_not_allowed |
+//   access_check_failed (no access) or not_configured (access granted, service not set up).
 export const getApolloStatus = () => api.get('/api/apollo/status');
 // filter: the same { version, match, conditions } format as AI Filtering.
 // pageSize 1-25, page 1-20.

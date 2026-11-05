@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Search } from 'lucide-react';
+import { toast } from 'sonner';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import AiFilterSearch from '@/components/prospecting/AiFilterSearch';
 import ApolloPreview from '@/components/prospecting/ApolloPreview';
 import SavedSearches from '@/components/prospecting/SavedSearches';
+import { getApolloStatus } from '@/lib/api';
 import { useAuth } from '@/lib/AuthContext';
 
 export default function ProspectingPage() {
@@ -21,6 +23,34 @@ export default function ProspectingPage() {
   const [savedVersion, setSavedVersion] = useState(0);
   // A saved search to load into Search leads; a new object each time, so the same one can be loaded twice.
   const [loadRequest, setLoadRequest] = useState(null);
+  // The Apollo Preview tab is offered when a Super Admin has granted this user's tenant access and their role
+  // may use it: GET /api/apollo/status → access_granted (a database check; it never calls Apollo). A service
+  // problem, such as no API key, is shown inside the tab instead. Hiding the tab is display only: the backend
+  // checks the grant on every Apollo request.
+  const [apolloGranted, setApolloGranted] = useState(false);
+  const wasGranted = useRef(false);
+
+  const applyApolloStatus = useCallback((data) => {
+    const granted = data?.access_granted === true;
+    if (wasGranted.current && !granted) {
+      // Revoked while the page was open: leave the tab for Search leads.
+      setTab((current) => (current === 'apollo' ? 'search' : current));
+      toast.info('Apollo Preview is no longer enabled for your organisation.');
+    }
+    wasGranted.current = granted;
+    setApolloGranted(granted);
+  }, []);
+
+  const refreshApolloAccess = useCallback(() => {
+    getApolloStatus().then(({ data }) => applyApolloStatus(data)).catch(() => applyApolloStatus(null));
+  }, [applyApolloStatus]);
+
+  // Checked when the page opens and again whenever the window regains focus.
+  useEffect(() => {
+    refreshApolloAccess();
+    window.addEventListener('focus', refreshApolloAccess);
+    return () => window.removeEventListener('focus', refreshApolloAccess);
+  }, [refreshApolloAccess]);
 
   const changeTab = (next) => {
     setTab(next);
@@ -45,7 +75,7 @@ export default function ProspectingPage() {
         <TabsList>
           <TabsTrigger value="search">Search leads</TabsTrigger>
           {savedSearchesAvailable && <TabsTrigger value="saved">Saved searches</TabsTrigger>}
-          <TabsTrigger value="apollo">Apollo Preview</TabsTrigger>
+          {apolloGranted && <TabsTrigger value="apollo">Apollo Preview</TabsTrigger>}
         </TabsList>
 
         {/* Each tab stays mounted while hidden, so it keeps its own filter and results. */}
@@ -64,9 +94,9 @@ export default function ProspectingPage() {
           </TabsContent>
         )}
 
-        {opened.apollo && (
+        {apolloGranted && opened.apollo && (
           <TabsContent value="apollo" forceMount className="space-y-4 data-[state=inactive]:hidden">
-            <ApolloPreview />
+            <ApolloPreview onStatus={applyApolloStatus} />
           </TabsContent>
         )}
       </Tabs>

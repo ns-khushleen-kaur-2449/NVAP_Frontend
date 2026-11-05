@@ -27,16 +27,40 @@ const addConditionAndSearch = async (user) => {
 };
 
 it.each([
-  ['integration_disabled', 'Apollo Preview is switched off'],
   ['not_configured', 'Apollo Preview is not set up yet'],
   ['role_not_allowed', 'Apollo Preview is not available for your role'],
   ['tenant_not_allowed', 'Apollo Preview is not enabled for your organisation'],
+  ['access_check_failed', 'Apollo Preview is not available right now'],
 ])('explains why it is unavailable (%s)', async (reason, title) => {
   getApolloStatus.mockResolvedValue({ data: { enabled: false, reason } });
   render(<ApolloPreview />);
   expect(await screen.findByText(title)).toBeInTheDocument();
   expect(screen.getByText('Search leads still works as usual.')).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Search Apollo' })).not.toBeInTheDocument();
+});
+
+it('reports each status answer to the page', async () => {
+  const granted = { enabled: true, access_granted: true, service_ready: true, reason: null };
+  getApolloStatus.mockResolvedValue({ data: granted });
+  const onStatus = jest.fn();
+  render(<ApolloPreview onStatus={onStatus} />);
+  expect(await screen.findByRole('button', { name: 'Search Apollo' })).toBeInTheDocument();
+  expect(onStatus).toHaveBeenCalledWith(granted);
+});
+
+it('a search refused after a revoke checks again and reports it, so the page can withdraw the tab', async () => {
+  const user = userEvent.setup();
+  const onStatus = jest.fn();
+  getApolloStatus.mockResolvedValue({ data: { enabled: true, access_granted: true, service_ready: true, reason: null } });
+  searchApolloPreview.mockRejectedValue({ response: { status: 403, data: { detail: 'Apollo Preview is not enabled for your organisation.' } } });
+  render(<ApolloPreview onStatus={onStatus} />);
+  await screen.findByRole('button', { name: 'Search Apollo' });
+
+  const revoked = { enabled: false, access_granted: false, service_ready: null, reason: 'tenant_not_allowed' };
+  getApolloStatus.mockResolvedValue({ data: revoked });
+  await addConditionAndSearch(user);
+  expect(await screen.findByText('Apollo Preview is not enabled for your organisation')).toBeInTheDocument();
+  expect(onStatus).toHaveBeenLastCalledWith(revoked);
 });
 
 it('needs at least one condition before searching', async () => {

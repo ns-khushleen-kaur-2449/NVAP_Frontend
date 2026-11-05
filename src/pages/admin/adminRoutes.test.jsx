@@ -45,6 +45,14 @@ describe('SuperAdminRoute', () => {
     expect(api.getAdminOverview).not.toHaveBeenCalled();
   });
 
+  test.each(['tenant_admin', 'manager', 'rep'])('a %s never reaches the tenant list or its Apollo controls', (role) => {
+    renderAdmin('/admin/tenants', USERS[role]);
+    expect(screen.getByText('forbidden-page')).toBeInTheDocument();
+    expect(screen.queryByTestId('tenants-page')).not.toBeInTheDocument();
+    expect(api.listAdminTenants).not.toHaveBeenCalled();
+    expect(api.setTenantApolloAccess).not.toHaveBeenCalled();
+  });
+
   test('a signed-out visitor is sent to the login page', () => {
     renderAdmin('/admin/tools', null);
     expect(screen.getByText('login-page')).toBeInTheDocument();

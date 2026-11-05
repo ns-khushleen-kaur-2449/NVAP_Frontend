@@ -6,12 +6,14 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import ReasonDialog from '@/components/ops/ReasonDialog';
 import { errorText } from '@/components/admin/userBits';
 import {
-  activateTenant, cancelTenantOffboarding, createTenantWithAdmin, initiateTenantOffboarding, listAdminTenants, suspendTenant,
+  activateTenant, cancelTenantOffboarding, createTenantWithAdmin, initiateTenantOffboarding, listAdminTenants,
+  setTenantApolloAccess, suspendTenant,
 } from '@/lib/api';
 import { generateTemporaryPassword } from '@/lib/passwords';
 
@@ -103,13 +105,14 @@ function NewTenantDialog({ open, onOpenChange, onCreated }) {
   );
 }
 
-/** Super Admin: every tenant, with its users; create, suspend and activate. */
+/** Super Admin: every tenant, with its users; create, suspend and activate, and grant Apollo access. */
 export default function TenantsPage() {
   const [tenants, setTenants] = useState(null);
   const [creating, setCreating] = useState(false);
   const [confirming, setConfirming] = useState(null);
   const [offboarding, setOffboarding] = useState(null);
   const [cancelling, setCancelling] = useState(null);
+  const [apolloChange, setApolloChange] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -164,6 +167,24 @@ export default function TenantsPage() {
     }
   };
 
+  // Grant or revoke Apollo access; the backend applies it to the tenant's next Apollo request and audits it.
+  // The switch shows the saved value only, so it changes after the reload.
+  const changeApolloAccess = async (tenant, reason) => {
+    const grant = !tenant.apollo_access_enabled;
+    setBusyId(tenant.tenant_id);
+    try {
+      await setTenantApolloAccess(tenant.tenant_id, grant, reason);
+      toast.success(grant ? `Apollo access granted to ${tenant.name}` : `Apollo access revoked for ${tenant.name}`);
+      await load();
+      return true;
+    } catch (e) {
+      toast.error(errorText(e, 'Could not change Apollo access'));
+      return false;
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   return (
     <div className="max-w-6xl mx-auto space-y-6" data-testid="tenants-page">
       <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -189,7 +210,7 @@ export default function TenantsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Tenant</TableHead><TableHead>Status</TableHead><TableHead>Users</TableHead>
+                  <TableHead>Tenant</TableHead><TableHead>Status</TableHead><TableHead>Apollo</TableHead><TableHead>Users</TableHead>
                   <TableHead>Admins</TableHead><TableHead>Active agents</TableHead><TableHead>Calls</TableHead><TableHead>Plan</TableHead><TableHead>Created</TableHead><TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -204,6 +225,13 @@ export default function TenantsPage() {
                         {tenant.status === 'active' ? 'Active' : 'Suspended'}
                       </Badge>
                       {tenant.offboarding_started_at && <div className="mt-1 text-xs text-amber-700">Offboarding · {new Date(tenant.offboarding_started_at).toLocaleDateString()}</div>}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Switch checked={tenant.apollo_access_enabled === true} disabled={busyId === tenant.tenant_id}
+                          aria-label={`Apollo access for ${tenant.name}`} onCheckedChange={() => setApolloChange(tenant)} />
+                        <span className="text-xs text-muted-foreground">{tenant.apollo_access_enabled ? 'Enabled' : 'Disabled'}</span>
+                      </div>
                     </TableCell>
                     <TableCell className="text-sm">{tenant.active_user_count} active / {tenant.user_count}</TableCell>
                     <TableCell className="text-sm">{tenant.admin_count}</TableCell>
@@ -260,6 +288,19 @@ export default function TenantsPage() {
         confirmLabel="Cancel offboarding"
         reasonPlaceholder="Why is offboarding being cancelled?"
         onConfirm={(reason) => changeOffboarding(cancelling, reason, true)}
+      />
+      <ReasonDialog
+        open={Boolean(apolloChange)}
+        onOpenChange={(open) => !open && setApolloChange(null)}
+        title={apolloChange ? (apolloChange.apollo_access_enabled
+          ? `Revoke Apollo access for ${apolloChange.name}?` : `Grant Apollo access to ${apolloChange.name}?`) : ''}
+        description={apolloChange && (apolloChange.apollo_access_enabled
+          ? 'Apollo Preview stops working for its users from their next request. Nothing else changes.'
+          : 'Its Tenant Admins, Managers and Sales Reps can use Apollo Preview from their next request. Searches use the platform Apollo account.')}
+        confirmLabel={apolloChange?.apollo_access_enabled ? 'Revoke access' : 'Grant access'}
+        danger={apolloChange?.apollo_access_enabled}
+        reasonPlaceholder="Why? At least 3 characters; it is kept in the platform audit trail."
+        onConfirm={(reason) => changeApolloAccess(apolloChange, reason)}
       />
     </div>
   );

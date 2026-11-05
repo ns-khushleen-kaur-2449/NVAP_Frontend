@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import AiFilterSearch from '@/components/prospecting/AiFilterSearch';
@@ -6,11 +7,23 @@ import ApolloPreview from '@/components/prospecting/ApolloPreview';
 import ProspectQuickSearch from '@/components/prospecting/ProspectQuickSearch';
 import SavedSearches from '@/components/prospecting/SavedSearches';
 import { useAuth } from '@/lib/AuthContext';
+import { canCreateCampaigns } from '@/lib/rbac';
+
+// Where "Add to Lead-to-Campaign Builder" lands; VoiceAgent reads `fromProspecting` from the history state.
+export const CAMPAIGN_BUILDER_PATH = '/voice_agent?tab=builder';
 
 export default function ProspectingPage() {
   // Roles as the backend sends them at login. They only decide what is offered on screen;
   // the backend enforces who may use, share and edit saved searches.
-  const role = useAuth().user?.role;
+  const { user } = useAuth();
+  const role = user?.role;
+  const navigate = useNavigate();
+  // Only campaign creators are offered the hand-off; POST /api/campaigns enforces it.
+  const sendToBuilder = canCreateCampaigns(user)
+    ? (picked) => navigate(CAMPAIGN_BUILDER_PATH, {
+      state: { fromProspecting: picked },
+    })
+    : null;
   const savedSearchesAvailable = role !== 'super_admin';
   const canShare = role === 'tenant_admin' || role === 'manager';
 
@@ -39,7 +52,7 @@ export default function ProspectingPage() {
         <h1 className="font-display text-2xl font-semibold flex items-center gap-2">
           <Search className="w-5 h-5 text-primary" /> Prospecting
         </h1>
-        <p className="text-sm text-muted-foreground mt-1">Search and filter the prospects you already have. Describe who you are looking for in plain English, or reuse your saved searches.</p>
+        <p className="text-sm text-muted-foreground mt-1">Every prospect you have is listed below. Narrow it with a filter in plain English or a saved search, tick the ones to call, and add them to the Lead-to-Campaign Builder.</p>
       </div>
 
       <ProspectQuickSearch />
@@ -58,6 +71,8 @@ export default function ProspectingPage() {
             canShare={canShare}
             loadRequest={loadRequest}
             onSaved={() => setSavedVersion((version) => version + 1)}
+            onUseSelected={sendToBuilder}
+            canShareProspects={canShare}
           />
         </TabsContent>
 

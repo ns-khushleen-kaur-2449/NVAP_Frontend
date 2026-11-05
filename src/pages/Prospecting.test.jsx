@@ -1,6 +1,7 @@
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { getApolloStatus, getFilterFields, listSavedFilters } from '@/lib/api';
+import { Route, useLocation } from 'react-router-dom';
+import { getApolloStatus, getFilterFields, listSavedFilters, searchProspectsByFilter } from '@/lib/api';
 import { USERS, renderWithAuth } from '@/test/renderWithAuth';
 import ProspectingPage from './Prospecting';
 
@@ -29,6 +30,31 @@ beforeEach(() => {
   ] } });
   listSavedFilters.mockResolvedValue({ data: { items: [SAVED] } });
   getApolloStatus.mockResolvedValue({ data: { enabled: false, reason: 'tenant_not_allowed' } });
+  searchProspectsByFilter.mockResolvedValue({ data: {
+    items: [{ prospect_id: 'p-1', full_name: 'Asha Rao', phone: '+919800000001' }],
+    total: 1, page: 1, page_size: 25, total_pages: 1, rules_applied: [],
+  } });
+});
+
+it('sends the ticked prospects to the Lead-to-Campaign Builder', async () => {
+  const user = userEvent.setup();
+  let seen = null;
+  const Builder = () => { seen = useLocation(); return <p>Builder page</p>; };
+  renderWithAuth(<ProspectingPage />, {
+    user: USERS.rep, path: '/prospecting', routes: <Route path="/voice_agent" element={<Builder />} />,
+  });
+
+  await user.click(await screen.findByRole('checkbox', { name: 'Select Asha Rao' }));
+  await user.click(screen.getByRole('button', { name: /add to lead-to-campaign builder/i }));
+  expect(await screen.findByText('Builder page')).toBeInTheDocument();
+  expect(seen.search).toBe('?tab=builder');
+  expect(seen.state).toEqual({ fromProspecting: [expect.objectContaining({ id: 'p-1', name: 'Asha Rao', phone: '+919800000001' })] });
+});
+
+it('a Super Admin cannot send prospects to a campaign', async () => {
+  renderWithAuth(<ProspectingPage />, { user: USERS.super_admin, path: '/prospecting' });
+  await screen.findByText('Asha Rao');
+  expect(screen.queryByRole('button', { name: /add to lead-to-campaign builder/i })).not.toBeInTheDocument();
 });
 
 it.each(['tenant_admin', 'manager', 'rep'])('%s gets all three tabs', async (role) => {

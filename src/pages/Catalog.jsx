@@ -11,6 +11,7 @@ import CatalogBrochures, { CompanyBrochure } from '@/components/catalog/CatalogB
 import { BrochureControl } from '@/components/admin/brochureControls';
 import ChangeNotice from '@/components/catalog/ChangeNotice';
 import ImportReport from '@/components/catalog/ImportReport';
+import ImportMappingDialog from '@/components/catalog/ImportMappingDialog';
 import FieldMenu from '@/components/catalog/FieldMenu';
 import FieldSettingsDialog from '@/components/catalog/FieldSettingsDialog';
 import MatchingOrderSheet from '@/components/catalog/MatchingOrderSheet';
@@ -18,7 +19,7 @@ import PresetPicker from '@/components/catalog/PresetPicker';
 import CatalogSettingsSheet from '@/components/catalog/CatalogSettingsSheet';
 import { matchingNote } from '@/lib/catalogFields';
 import {
-  addCatalogField, addCatalogItem, deleteCatalogField, getCatalogTable, importCatalog, renameCatalogField,
+  addCatalogField, addCatalogItem, deleteCatalogField, getCatalogTable, importCatalog, previewCatalogImport, renameCatalogField,
   setCatalogVisibility, updateCatalogField, updateCatalogItem, uploadCatalogItemBrochure,
 } from '@/lib/api';
 
@@ -346,19 +347,35 @@ export default function CatalogPage() {
     }
   };
 
+  // A chosen file is read first (nothing saved), then the user matches its columns and imports.
+  const [pending, setPending] = useState(null); // { file, preview }
   const upload = async (file) => {
     if (!file) return;
     setImporting(true);
     try {
-      const res = await importCatalog(file);
+      const res = await previewCatalogImport(file);
+      setPending({ file, preview: res.data });
+    } catch (e) {
+      toast.error(errorText(e, 'Could not read that file'));
+    } finally {
+      setImporting(false);
+      if (fileInput.current) fileInput.current.value = '';
+    }
+  };
+  const importMapped = async (mapping) => {
+    if (!pending) return;
+    setImporting(true);
+    try {
+      const res = await importCatalog(pending.file, mapping);
       setReport(res.data);
-      toast.success('Catalog imported');
+      setPending(null);
+      if (res.data?.imported || res.data?.updated) toast.success('Catalog imported');
+      else toast.error('Nothing was imported; see the report.');
       await load();
     } catch (e) {
       toast.error(errorText(e, 'Failed to import the catalog'));
     } finally {
       setImporting(false);
-      if (fileInput.current) fileInput.current.value = '';
     }
   };
 
@@ -415,6 +432,15 @@ export default function CatalogPage() {
       </div>
 
       {report && <ImportReport report={report} onFieldSettings={setSettingsKey} />}
+
+      <ImportMappingDialog
+        open={Boolean(pending)}
+        onOpenChange={(open) => { if (!open) setPending(null); }}
+        fileName={pending?.file?.name}
+        preview={pending?.preview}
+        importing={importing}
+        onImport={importMapped}
+      />
 
       {change && <ChangeNotice notes={change.notes} agents={change.agents} onDismiss={() => setChange(null)} />}
 

@@ -24,8 +24,17 @@ const openFieldMenu = async (label) => {
 const nexon = { id: 'i-1', name: 'Nexon EV', category: 'suv', price: 1450000, attrs: { fuel_type: 'electric' },
   extra: { mileage: '312 km range' }, active: true, source: 'import', stock: [{ location: 'Solan', units: 3 }] };
 
+const NAME_PREVIEW = { data: { row_count: 1, columns: [{ column: 'name', samples: [], filled: 0, suggested: 'name' }],
+  fields: [], targets: [], looks_like_people: false, message: null } };
+// Choosing a file opens the column-matching step; accept its suggestions.
+const acceptMapping = async () => {
+  const dialog = within(await screen.findByRole('dialog', { name: 'Match your columns' }));
+  fireEvent.click(dialog.getByRole('button', { name: 'Import' }));
+};
+
 beforeEach(() => {
   jest.resetAllMocks();
+  api.previewCatalogImport.mockResolvedValue(NAME_PREVIEW);
   api.getCatalogTable.mockResolvedValue({ data: { columns, stock, rows: [nexon] } });
   // The brochures section (CatalogBrochures, BrochureProducts).
   api.listBrochures.mockResolvedValue({ data: [{ id: 'b-1', meeting_type_id: null, is_default: true, filename: 'Apex.pdf',
@@ -88,10 +97,12 @@ it('imports a CSV and shows what happened', async () => {
   await screen.findByTestId('catalog-row-i-1');
   const file = new File(['name,price\n'], 'cars.csv', { type: 'text/csv' });
   fireEvent.change(screen.getByLabelText('Catalog CSV file'), { target: { files: [file] } });
+  await acceptMapping();
   const result = await screen.findByRole('status', { name: 'Import result' });
   expect(result).toHaveTextContent('2 added, 1 updated, 0 no longer in the file (deactivated), 1 rejected.');
   expect(result).toHaveTextContent('Row 4: name is required');
-  expect(api.importCatalog).toHaveBeenCalledWith(file);
+  expect(api.previewCatalogImport).toHaveBeenCalledWith(file);
+  expect(api.importCatalog).toHaveBeenCalledWith(file, { name: 'name' });
 });
 
 it('lets a Sales Rep look but not edit', async () => {
@@ -186,6 +197,7 @@ it('shows which cells were left empty and how each column was read', async () =>
   await screen.findByTestId('catalog-row-i-1');
   const file = new File(['Name,Units\n'], 'fabric.csv', { type: 'text/csv' });
   fireEvent.change(screen.getByLabelText('Catalog CSV file'), { target: { files: [file] } });
+  await acceptMapping();
   const result = await screen.findByRole('status', { name: 'Import result' });
   expect(result).toHaveTextContent("Row 3, Price: 'on request' is not a price; left empty");
   expect(result).toHaveTextContent('How your 2 columns were read');
@@ -234,4 +246,64 @@ it('gives a Manager the same field actions and a Sales Rep none', async () => {
   renderWithAuth(<CatalogPage />, { user: USERS.rep });
   await screen.findByTestId('catalog-row-i-1');
   expect(screen.queryByRole('button', { name: /Field actions|Rename|Remove/ })).not.toBeInTheDocument();
+});
+
+describe('matching columns before an import', () => {
+  const PRODUCTS_PREVIEW = { data: { row_count: 2, blocked: false, looks_like_people: false, message: null, targets: [],
+    fields: [{ key: 'fabric', label: 'Fabric', type: 'text' }],
+    general_fields: [{ key: 'brand', label: 'Brand', type: 'text' }, { key: 'color', label: 'Color', type: 'text' }],
+    columns: [
+      { column: 'Title', samples: ['Chair'], filled: 2, suggested: 'new' },
+      { column: 'Make', samples: ['ComfortSeat'], filled: 2, suggested: 'general:brand' },
+      { column: 'Cost', samples: ['8500'], filled: 2, suggested: 'new' },
+    ] } };
+
+  const choose = async (dialog, column, option) => {
+    fireEvent.click(dialog.getByRole('combobox', { name: `Use of column ${column}` }));
+    fireEvent.click(await screen.findByRole('option', { name: option }));
+  };
+  const openWith = async (preview, name = 'f.csv') => {
+    api.previewCatalogImport.mockResolvedValue(preview);
+    renderWithAuth(<CatalogPage />, { user: USERS.tenant_admin });
+    await screen.findByTestId('catalog-row-i-1');
+    const file = new File(['x'], name, { type: 'text/csv' });
+    fireEvent.change(screen.getByLabelText('Catalog CSV file'), { target: { files: [file] } });
+    return file;
+  };
+
+  it('refuses a list of people: no mapping, no import', async () => {
+    await openWith({ data: { row_count: 1, blocked: true, looks_like_people: true, targets: [], fields: [], general_fields: [],
+      message: 'This file is a list of people (leads), not products, so it can’t go into the Catalog.',
+      columns: [{ column: 'First Name', samples: [], filled: 0, suggested: 'ignore' }] } }, 'leads.csv');
+    const dialog = within(await screen.findByRole('dialog', { name: 'This file can’t go into the Catalog' }));
+    expect(dialog.getByRole('alert')).toHaveTextContent('list of people');
+    expect(dialog.queryByRole('combobox')).not.toBeInTheDocument();
+    expect(dialog.queryByRole('button', { name: 'Import' })).not.toBeInTheDocument();
+    expect(api.importCatalog).not.toHaveBeenCalled();
+  });
+
+  it('maps columns to catalog fields, general ones included, and needs a product name', async () => {
+    api.importCatalog.mockResolvedValue({ data: { imported: 2, updated: 0, deactivated: 0, rejected: 0, errors: [] } });
+    const file = await openWith(PRODUCTS_PREVIEW);
+    const dialog = within(await screen.findByRole('dialog', { name: 'Match your columns' }));
+    expect(dialog.getByText('e.g. ComfortSeat')).toBeInTheDocument();
+    expect(dialog.getByRole('button', { name: 'Import' })).toBeDisabled();
+    fireEvent.click(dialog.getByRole('combobox', { name: 'Use of column Cost' }));
+    expect(await screen.findByText('General catalog fields')).toBeInTheDocument();
+    expect(screen.getByText('Your fields')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('option', { name: 'Price' }));
+    await choose(dialog, 'Title', 'Product name (required)');
+    fireEvent.click(dialog.getByRole('button', { name: 'Import' }));
+    await waitFor(() => expect(api.importCatalog).toHaveBeenCalledWith(file,
+      { Title: 'name', Make: 'general:brand', Cost: 'price' }));
+  });
+
+  it('refuses two columns for the same field', async () => {
+    await openWith(PRODUCTS_PREVIEW);
+    const dialog = within(await screen.findByRole('dialog', { name: 'Match your columns' }));
+    await choose(dialog, 'Title', 'Product name (required)');
+    await choose(dialog, 'Cost', 'Brand');
+    expect(dialog.getByText(/Make and Cost are all set to “Brand”/)).toBeInTheDocument();
+    expect(dialog.getByRole('button', { name: 'Import' })).toBeDisabled();
+  });
 });

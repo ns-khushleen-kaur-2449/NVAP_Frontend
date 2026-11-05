@@ -152,12 +152,32 @@ export const getProspect = (id) => api.get(`/api/v1/prospects/${id}`);
 export const createProspect = (data, params) => api.post('/api/v1/prospects', data, { params });
 export const updateProspect = (id, data) => api.patch(`/api/v1/prospects/${id}`, data);
 export const deleteProspect = (id) => api.delete(`/api/v1/prospects/${id}`);
+// Import leads from a CSV (features/prospects/csv_import.py): read first, then import with { column: use }.
+export const previewLeadImport = (file) => {
+  const form = new FormData();
+  form.append('file', file);
+  return api.post('/api/v1/prospects/import/preview', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+};
+// `stageValues` (optional): { value in the file: STAGE } for the column mapped to "stage".
+export const importLeads = (file, mapping, stageValues) => {
+  const form = new FormData();
+  form.append('file', file);
+  form.append('mapping', JSON.stringify(mapping));
+  if (stageValues) form.append('stage_values', JSON.stringify(stageValues));
+  return api.post('/api/v1/prospects/import', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+};
 export const getLeadScore = (id) => api.get(`/api/lead-scores/${id}`);
 export const getLeadScoreHistory = (id, params) => api.get(`/api/lead-scores/${id}/history`, { params });
 export const calculateLeadScore = (id) => api.post(`/api/lead-scores/${id}`);
 export const changeProspectStage = (id, stage, reason) =>
   api.post(`/api/v1/prospects/${id}/stage`, { stage: String(stage).toUpperCase(), reason });
 export const getProspectStageEvents = (id) => api.get(`/api/v1/prospects/${id}/stage-events`);
+// Sharing prospects with people on your team (Tenant Admin: Managers and Sales Reps; Manager: own team).
+export const getShareTargets = () => api.get('/api/v1/prospects/share-targets');
+export const shareProspects = (prospectIds, userIds) =>
+  api.post('/api/v1/prospects/shares', { prospect_ids: prospectIds, user_ids: userIds });
+export const getProspectShares = (id) => api.get(`/api/v1/prospects/${id}/shares`);
+export const revokeProspectShare = (id, userId) => api.delete(`/api/v1/prospects/${id}/shares/${userId}`);
 export const createLeadEvent = (data) => api.post('/api/lead-events', data);
 
 // ── Properties ──
@@ -287,6 +307,8 @@ export const summarizeCall = (id) => api.post(`/api/agents/call-summarize/${id}`
 //         calling_config, start: 'now'|'scheduled'|'draft', scheduled_at,
 //         prospect_ids | contacts, source_filename }
 export const createVoiceCampaign = (data) => api.post('/api/campaigns', data);
+// "What the agent will tell leads": the form's unsaved offer values (voice_campaigns/offer.py; nothing is saved).
+export const previewCampaignOffer = (data) => api.post('/api/campaigns/offer-preview', data);
 // Parses a CSV/XLSX without storing anything; returns { filename, total, skipped_rows, contacts }.
 export const previewCampaignCsv = (file) => {
   const formData = new FormData();
@@ -422,10 +444,20 @@ export const getCatalogSettingsHistory = (params) => api.get('/api/v1/catalog/se
 export const getCatalogPricePreview = (params) => api.get('/api/v1/catalog/settings/price-preview', { params });
 export const getCatalogPresets = () => api.get('/api/v1/catalog/presets');
 export const applyCatalogPreset = (name) => api.post(`/api/v1/catalog/presets/${name}/apply`);
-export const importCatalog = (file) => {
+// A CSV import template for a preset: its columns plus example products (anyone who views the Catalog).
+export const downloadCatalogPresetTemplate = (name) =>
+  api.get(`/api/v1/catalog/presets/${name}/template`, { responseType: 'blob' });
+// `mapping` (optional): { column: use } from the column-matching step (catalog/import_mapping.py).
+export const importCatalog = (file, mapping) => {
   const form = new FormData();
   form.append('file', file);
+  if (mapping) form.append('mapping', JSON.stringify(mapping));
   return api.post('/api/v1/catalog/import', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+};
+export const previewCatalogImport = (file) => {
+  const form = new FormData();
+  form.append('file', file);
+  return api.post('/api/v1/catalog/import/preview', form, { headers: { 'Content-Type': 'multipart/form-data' } });
 };
 export const addCatalogItem = (data) => api.post('/api/v1/catalog/items', data);
 export const updateCatalogItem = (id, data) => api.patch(`/api/v1/catalog/items/${id}`, data);

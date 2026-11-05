@@ -73,7 +73,7 @@ function ScoringConfig({ scope, scopeKey, editable }) {
     } catch (err) {
       setError(err?.response?.status === 403 ? "You don't have permission" : errorMessage(err, 'Check your connection and try again.'));
     }
-  }, [scope]);
+  }, [scope, fetchOverview]);
   useEffect(() => { setData(null); setOverview(null); setRescoreResult(null); fetchAll(); }, [fetchAll, scopeKey]);
 
   const { run } = useApiAction(

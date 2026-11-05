@@ -15,7 +15,6 @@ import { canManageBilling, canUseAdmin, canViewAssistants } from '@/lib/rbac';
 
 const APP_NAV = [
   { path: '/dashboard',   label: 'Dashboard',    icon: LayoutDashboard },
-  { path: '/reports',     label: 'Reports & Analytics', icon: BarChart3 },
 ];
 
 // Secondary surfaces, listed below Voice Agent.
@@ -30,6 +29,7 @@ const PENDING_NAV = [
   { path: '/inbox',       label: 'Inbox',        icon: InboxIcon },
   { path: '/catalog',     label: 'Catalog',      icon: Package },
   { path: '/meetings',    label: 'Meetings',     icon: CalendarClock },
+  { path: '/reports',     label: 'Reports & Analytics', icon: BarChart3 },
 ];
 
 // Voice Agent's own internal views — reached as /voice_agent?tab=<id>, read by

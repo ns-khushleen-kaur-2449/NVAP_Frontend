@@ -44,7 +44,8 @@ import { PERMISSIONS, homePath } from "@/lib/rbac";
 import AuthGate from "@/components/auth/AuthGate";
 import InboxPage from "@/pages/Inbox";
 import CatalogPage from "@/pages/Catalog";
-import { DashboardPage as RoleDashboardPage, ReportsPage } from "@/pages/RoleAnalytics";
+import RoleDashboard from "@/pages/RoleDashboard";
+import { ReportsPage } from "@/pages/RoleAnalytics";
 import MeetingsPage from "@/pages/Meetings";
 import { operationsRoutes } from "@/pages/Operations";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
@@ -96,7 +97,7 @@ function AppShell() {
 
   const routes = (
     <Routes>
-      <Route path="/dashboard" element={<RoleDashboardPage />} />
+      <Route path="/dashboard" element={<RoleDashboard />} />
       <Route path="/welcome" element={<DashboardPage />} />
       <Route path="/leads" element={<LeadsPage />} />
       <Route path="/research" element={

@@ -32,7 +32,7 @@ export function planAction(plan, subscription, plans, interval) {
     : { kind: 'downgrade', label: `Downgrade to ${plan.name}`, disabled: false };
 }
 
-function PlanCard({ plan, plans, subscription, interval, busy, selected, onSelect, onChoose }) {
+function PlanCard({ plan, plans, subscription, interval, currency, busy, selected, onSelect, onChoose }) {
   const action = planAction(plan, subscription, plans, interval);
   const current = action.kind === 'current';
   const popular = plan.key === MOST_POPULAR;
@@ -44,10 +44,14 @@ function PlanCard({ plan, plans, subscription, interval, busy, selected, onSelec
       'ops-card relative flex cursor-pointer flex-col overflow-visible rounded-[1.25rem] xl:row-span-6 xl:grid xl:grid-rows-subgrid xl:gap-y-0 transition-[transform,box-shadow] duration-300 motion-reduce:transition-none',
       'hover:-translate-y-1 hover:shadow-[0_24px_48px_-28px_rgba(248,114,23,0.55)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ops-accent)]',
       popular && 'bg-[radial-gradient(120%_40%_at_50%_0%,color-mix(in_srgb,var(--ops-accent)_14%,transparent),transparent_70%)]',
-      (selected || current) && 'ring-2 ring-[var(--ops-accent)]',
+      current ? 'ring-2 ring-[var(--ops-good)]' : selected && 'ring-2 ring-[var(--ops-accent)]',
       selected && '-translate-y-1 shadow-[0_24px_48px_-28px_rgba(248,114,23,0.55)]',
     )}>
-      {popular && (
+      {current ? (
+        <span className="absolute -top-3 left-1/2 inline-flex -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-full bg-[var(--ops-good)] px-3 py-1 text-[0.65rem] font-bold uppercase tracking-wider text-white dark:text-[#0b1a10]">
+          <Check className="h-3 w-3" aria-hidden="true" /> Your current plan
+        </span>
+      ) : popular && (
         <span className="absolute -top-3 left-1/2 inline-flex -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-full bg-[var(--ops-accent)] px-3 py-1 text-[0.65rem] font-bold uppercase tracking-wider text-white">
           <Zap className="h-3 w-3" aria-hidden="true" /> Most popular
         </span>
@@ -59,12 +63,15 @@ function PlanCard({ plan, plans, subscription, interval, busy, selected, onSelec
         <p className="mt-4 flex items-baseline gap-1">
           {interval === 'month' ? (
             <>
-              <span className="ops-num text-[2.5rem] font-semibold leading-none tracking-tight">{formatPrice(plan.monthly_amount_usd)}</span>
+              <span className="ops-num text-[2.5rem] font-semibold leading-none tracking-tight">{formatPrice(plan.monthly_amount_usd, currency)}</span>
               <span className="text-base text-muted-foreground">/mo</span>
             </>
           ) : <span className="text-lg font-semibold">Billed annually</span>}
         </p>
-        <p className="mt-2 text-xs text-muted-foreground">{interval === 'month' ? 'billed monthly' : 'the annual price is shown at checkout'}</p>
+        <p className="mt-2 text-xs text-muted-foreground">
+          {interval === 'month' ? 'billed monthly' : 'the annual price is shown at checkout'}
+          {currency === 'inr' && ` · about ${formatPrice(plan.monthly_amount_usd)} USD, charged in USD`}
+        </p>
       </div>
 
       <div className={SECTION}>
@@ -117,7 +124,7 @@ function PlanCard({ plan, plans, subscription, interval, busy, selected, onSelec
                   <Plus className="h-3.5 w-3.5" aria-hidden="true" />
                 </span>
                 <span className="flex-1">{addon.label}</span>
-                <span className="whitespace-nowrap"><span className="ops-num font-semibold text-[color:var(--ops-accent-ink)]">{formatPrice(addon.monthly_amount_usd)}</span><span className="text-xs text-muted-foreground">/month</span></span>
+                <span className="whitespace-nowrap"><span className="ops-num font-semibold text-[color:var(--ops-accent-ink)]">{formatPrice(addon.monthly_amount_usd, currency)}</span><span className="text-xs text-muted-foreground">/month</span></span>
               </li>
             ))}
           </ul>
@@ -139,12 +146,12 @@ function PlanCard({ plan, plans, subscription, interval, busy, selected, onSelec
   );
 }
 
-export default function PlanCards({ plans, subscription, interval, busyPlan, onChoose }) {
+export default function PlanCards({ plans, subscription, interval, currency = 'usd', busyPlan, onChoose }) {
   const [selected, setSelected] = useState(null);
   return (
     <div className="grid gap-5 pt-3 md:grid-cols-2 xl:grid-cols-3 xl:grid-rows-[repeat(6,auto)] xl:gap-y-0">
       {plans.map((plan) => (
-        <PlanCard key={plan.key} plan={plan} plans={plans} subscription={subscription} interval={interval}
+        <PlanCard key={plan.key} plan={plan} plans={plans} subscription={subscription} interval={interval} currency={currency}
           busy={busyPlan === plan.key} selected={selected === plan.key} onSelect={setSelected} onChoose={onChoose} />
       ))}
     </div>

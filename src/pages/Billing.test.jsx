@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import Billing from './Billing';
 import * as api from '@/lib/api';
-import { redirectTo } from '@/components/billing/billingUi';
+import { BILLING_CHANGED, USD_TO_INR, redirectTo } from '@/components/billing/billingUi';
 import { USERS, renderWithAuth } from '@/test/renderWithAuth';
 
 jest.mock('@/lib/api');
@@ -28,6 +28,7 @@ const PRO = { ...FREE, plan: 'pro', plan_name: 'Pro', plan_details: PLANS[1], st
 const respond = (subscription, extra = {}) => {
   api.getBillingPlans.mockResolvedValue({ data: { plans: PLANS, billing_configured: true } });
   api.getBillingSubscription.mockResolvedValue({ data: subscription });
+  api.syncBillingSubscription.mockResolvedValue({ data: subscription });
   api.getBillingInvoices.mockResolvedValue({ data: { invoices: [], ...extra } });
 };
 
@@ -80,18 +81,28 @@ it('marks the current plan and offers upgrade and downgrade on the others', asyn
   expect(within(screen.getByRole('region', { name: 'Current plan' })).getByText('Active')).toBeInTheDocument();
 });
 
-it('upgrades after confirmation and says the new plan is charged pro rata', async () => {
+it('sends every upgrade to Stripe\'s payment page after confirmation', async () => {
   respond(PRO);
-  api.changeBillingPlan.mockResolvedValue({ data: { result: 'changed', subscription: { ...PRO, plan: 'pro_plus', plan_name: 'Pro+', plan_details: PLANS[2] } } });
+  api.changeBillingPlan.mockResolvedValue({ data: { result: 'payment_required', payment_url: 'https://billing.stripe.test/p/up', subscription: PRO } });
   renderPage();
   fireEvent.click(await screen.findByRole('button', { name: 'Upgrade to Pro+' }));
   const dialog = within(await screen.findByRole('dialog'));
-  expect(dialog.getByText(/prorated difference/)).toBeInTheDocument();
-  fireEvent.click(dialog.getByRole('button', { name: 'Upgrade to Pro+' }));
-  expect(await screen.findByText(/You are now on Pro\+/)).toBeInTheDocument();
+  expect(dialog.getByText(/secure payment page/)).toBeInTheDocument();
+  fireEvent.click(dialog.getByRole('button', { name: 'Continue to payment' }));
+  await waitFor(() => expect(redirectTo).toHaveBeenCalledWith('https://billing.stripe.test/p/up'));
   expect(api.changeBillingPlan).toHaveBeenCalledWith('pro_plus', 'month');
-  expect(await plan('Pro+').findByRole('button', { name: 'Current plan' })).toBeInTheDocument();
+  // Nothing changes here before Stripe has taken the payment.
+  expect(plan('Pro').getByRole('button', { name: 'Current plan' })).toBeInTheDocument();
 });
+
+it('shows the new plan once Stripe confirms the paid upgrade', async () => {
+  respond(PRO);
+  let calls = 0;
+  api.syncBillingSubscription.mockImplementation(async () => ({ data: ++calls < 2 ? PRO : { ...PRO, plan: 'pro_plus', plan_name: 'Pro+', plan_details: PLANS[2] } }));
+  renderPage('/billing?upgrade=pro_plus');
+  expect(await screen.findByText(/Payment confirmed. Your Pro\+ plan is now active./, {}, { timeout: 8000 })).toBeInTheDocument();
+  expect(plan('Pro+').getByText('Your current plan')).toBeInTheDocument();
+}, 15000);
 
 it('keeps the current plan until the next billing date on a downgrade, and says when', async () => {
   respond(PRO);
@@ -146,22 +157,27 @@ it('warns when the last payment failed', async () => {
   expect(await screen.findByRole('alert')).toHaveTextContent('Your last payment failed.');
 });
 
-it('lists invoices with a download link', async () => {
-  respond(PRO, { invoices: [{ id: 'in_1', number: 'A-0001', created: '2030-01-01T00:00:00Z', amount: 149900, currency: 'usd', status: 'paid',
-    hosted_invoice_url: 'https://inv.stripe.test/1', invoice_pdf: 'https://inv.stripe.test/1.pdf' }] });
+it('has no billing history section and never asks for invoices', async () => {
+  respond(PRO);
   renderPage();
-  const row = within(await screen.findByRole('row', { name: /A-0001/ }));
-  expect(row.getByText('$1,499.00')).toBeInTheDocument();
-  expect(row.getByText('Paid')).toBeInTheDocument();
-  expect(row.getByRole('link', { name: 'Download invoice A-0001' })).toHaveAttribute('href', 'https://inv.stripe.test/1.pdf');
+  expect(await screen.findByRole('heading', { name: 'Pro', level: 2 })).toBeInTheDocument();
+  expect(screen.queryByRole('region', { name: 'Billing history' })).not.toBeInTheDocument();
+  expect(api.getBillingInvoices).not.toHaveBeenCalled();
 });
 
-it('does not break the page when only the invoices fail', async () => {
-  respond(PRO);
-  api.getBillingInvoices.mockRejectedValue({ response: { data: { detail: 'Stripe could not load your invoices. Please try again.' } } });
+it('switches the plan prices between USD and INR', async () => {
   renderPage();
-  expect(await screen.findByText(/Billing history could not be loaded/)).toBeInTheDocument();
-  expect(screen.getByRole('heading', { name: 'Pro', level: 2 })).toBeInTheDocument();
+  const toggle = within(await screen.findByRole('group', { name: 'Currency' }));
+  expect(toggle.getByRole('button', { name: 'USD' })).toHaveAttribute('aria-pressed', 'true');
+  expect(plan('Plus').getByText('$249')).toBeInTheDocument();
+
+  fireEvent.click(toggle.getByRole('button', { name: 'INR' }));
+  expect(toggle.getByRole('button', { name: 'INR' })).toHaveAttribute('aria-pressed', 'true');
+  expect(plan('Plus').getByText(`₹${Math.round(249 * USD_TO_INR).toLocaleString('en-IN')}`)).toBeInTheDocument();
+  expect(plan('Plus').getByText(/charged in USD/)).toBeInTheDocument();
+
+  fireEvent.click(toggle.getByRole('button', { name: 'USD' }));
+  expect(plan('Plus').getByText('$249')).toBeInTheDocument();
 });
 
 it('says so when billing is not configured on the server', async () => {
@@ -178,10 +194,35 @@ it('shows the error and lets the visitor retry', async () => {
   expect(await screen.findByRole('heading', { name: 'Available plans' })).toBeInTheDocument();
 });
 
+it('shows no Current plan box on Free even with a billing account', async () => {
+  respond({ ...FREE, has_billing_account: true });
+  renderPage();
+  expect(await screen.findByRole('heading', { name: 'Available plans' })).toBeInTheDocument();
+  expect(screen.queryByRole('region', { name: 'Current plan' })).not.toBeInTheDocument();
+});
+
+it('re-reads the plan from Stripe on load, so a missed webhook still shows the paid plan', async () => {
+  respond({ ...FREE, has_billing_account: true });
+  api.syncBillingSubscription.mockResolvedValue({ data: PRO });
+  renderPage();
+  expect(await screen.findByRole('heading', { name: 'Pro', level: 2 })).toBeInTheDocument();
+  expect(plan('Pro').getByText('Your current plan')).toBeInTheDocument();
+  expect(plan('Plus').queryByText('Your current plan')).not.toBeInTheDocument();
+});
+
+it('tells the sidebar which plan the organisation is on', async () => {
+  respond(PRO);
+  const heard = jest.fn();
+  window.addEventListener(BILLING_CHANGED, heard);
+  renderPage();
+  await waitFor(() => expect(heard.mock.calls.at(-1)?.[0].detail).toEqual({ key: 'pro', name: 'Pro' }));
+  window.removeEventListener(BILLING_CHANGED, heard);
+});
+
 describe('coming back from Stripe Checkout', () => {
   it('does not activate anything itself: the plan appears once the backend reports it', async () => {
     let calls = 0;
-    api.getBillingSubscription.mockImplementation(async () => ({ data: ++calls < 3 ? FREE : PRO }));
+    api.syncBillingSubscription.mockImplementation(async () => ({ data: ++calls < 3 ? FREE : PRO }));
     renderPage('/billing?checkout=success&session_id=cs_1');
     expect(await screen.findByText('Confirming your payment with Stripe…')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Available plans' })).toBeInTheDocument();

@@ -16,7 +16,6 @@ import { ErrorState, SkeletonRows } from '@/components/ops/States';
 import ApprovalDesk from '@/components/conversion/ApprovalDesk';
 import { DecisionDialog, VerifyDialog } from '@/components/conversion/ConversionDialogs';
 import KpiCards from '@/components/conversion/KpiCards';
-import PipelineStrip from '@/components/conversion/PipelineStrip';
 import ProspectDetails from '@/components/conversion/ProspectDetails';
 import ProspectExplorer from '@/components/conversion/ProspectExplorer';
 import {
@@ -133,9 +132,6 @@ export default function ConversionWorkspace() {
   useEffect(() => {
     if (stageFilter !== 'all' && stageFilter !== 'attention' && !stageCounts[stageFilter]) setStageFilter('all');
   }, [stageCounts, stageFilter]);
-  // Stage counts are exact only when the loaded page is the whole result.
-  const pipelineExact = Boolean(workspace) && !query && workspace.total === prospects.length && prospects.length > 0;
-
   // A dialog opened from the Approval desk closes the drawer (two stacked modals fight over focus)
   // and brings it back once the dialog is done, so the remaining decisions are right there.
   const closeDialog = () => {
@@ -224,7 +220,6 @@ export default function ConversionWorkspace() {
 
     {ready && workspace && <>
       <KpiCards summary={workspace.summary} />
-      {pipelineExact && <PipelineStrip counts={stageCounts} active={stageFilter} onSelect={setStageFilter} />}
 
       <section ref={panesRef} className="grid scroll-mt-4 gap-4 lg:h-[clamp(560px,calc(100vh-15rem),820px)] lg:grid-cols-[270px_minmax(0,1fr)] lg:grid-rows-1">
         <ProspectExplorer className={detailOpen ? 'hidden lg:flex' : 'flex'}

@@ -1,6 +1,9 @@
 import { AudioLines, CalendarSync, Headset, Mail, PhoneCall, UserCog, Users } from 'lucide-react';
 import { DEFAULT_TIME_ZONE } from '@/lib/ops';
 
+/** Window event the Billing page sends when the organisation's plan is known or changes; the sidebar listens. */
+export const BILLING_CHANGED = 'smartsdr:billing-changed';
+
 /** Sends the browser to a Stripe-hosted page (Checkout, Customer Portal, an invoice). A function so tests can replace it. */
 export const redirectTo = (url) => window.location.assign(url);
 
@@ -65,4 +68,10 @@ export function formatMoney(minorUnits, currency = 'usd') {
   }
 }
 
-export const formatPrice = (amount) => `$${amount.toLocaleString('en-US')}`;
+// Indicative display rate only: Stripe always charges in USD. Override with REACT_APP_USD_INR_RATE.
+export const USD_TO_INR = Number(process.env.REACT_APP_USD_INR_RATE) || 88;
+
+export function formatPrice(amount, currency = 'usd') {
+  if (currency === 'inr') return `₹${Math.round(amount * USD_TO_INR).toLocaleString('en-IN')}`;
+  return `$${amount.toLocaleString('en-US')}`;
+}

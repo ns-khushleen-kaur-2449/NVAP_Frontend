@@ -43,7 +43,7 @@ export default function CurrentPlan({ subscription, busy, onPortal, onCancel, on
           </div>
         )}
         {!paid && subscription.has_billing_account && (
-          <OpsButton onClick={onPortal} busy={busy === 'portal'}><ExternalLink className="h-4 w-4" aria-hidden="true" /> View billing history</OpsButton>
+          <OpsButton onClick={onPortal} busy={busy === 'portal'}><ExternalLink className="h-4 w-4" aria-hidden="true" /> Manage billing details</OpsButton>
         )}
       </div>
 

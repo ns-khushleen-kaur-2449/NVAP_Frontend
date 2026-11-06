@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { updateProspect } from '@/lib/api';
 import { DETAIL_FIELDS, detailFieldsFor } from '@/lib/leadDetails';
+import { DEPARTMENTS } from '@/lib/prospects';
 
 export { DETAIL_FIELDS };
 
@@ -16,6 +17,8 @@ export const COLUMN_FIELDS = [
   { key: 'email', label: 'Email', type: 'email' },
   { key: 'phone', label: 'Phone', placeholder: '+91 98765 43210' },
   { key: 'job_title', label: 'Job title' },
+  // Empty: the backend reads it from the job title.  Chosen here, a title change never replaces it.
+  { key: 'department', label: 'Department', options: DEPARTMENTS },
   { key: 'source', label: 'Source' },
   { key: 'city', label: 'City' },
   { key: 'state', label: 'State' },
@@ -92,9 +95,17 @@ export default function EditLeadDialog({ open, onOpenChange, lead, onSaved }) {
   const field = (f) => (
     <label key={f.key} className={`block text-xs font-medium text-muted-foreground ${f.wide ? 'col-span-2' : ''}`}>
       {f.label}{f.required ? ' *' : ''}
-      <Input dir="auto" type={f.type === 'email' ? 'email' : 'text'} inputMode={f.type === 'number' ? 'decimal' : undefined}
-        value={form[f.key]} placeholder={f.placeholder} onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
-        className="mt-1 bg-[hsl(var(--surface-2))] border-border" aria-label={f.label} />
+      {f.options ? (
+        <select value={form[f.key]} onChange={(e) => setForm({ ...form, [f.key]: e.target.value })} aria-label={f.label}
+          className="mt-1 h-9 w-full rounded-md border border-border bg-[hsl(var(--surface-2))] px-3 text-sm text-foreground">
+          <option value="">From job title</option>
+          {f.options.map((o) => <option key={o} value={o}>{o}</option>)}
+        </select>
+      ) : (
+        <Input dir="auto" type={f.type === 'email' ? 'email' : 'text'} inputMode={f.type === 'number' ? 'decimal' : undefined}
+          value={form[f.key]} placeholder={f.placeholder} onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
+          className="mt-1 bg-[hsl(var(--surface-2))] border-border" aria-label={f.label} />
+      )}
     </label>
   );
 

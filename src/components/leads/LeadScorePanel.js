@@ -178,7 +178,8 @@ const LeadScorePanel = ({ prospectId, onScored, children }) => {
                 <TemperatureChip display={shown} />
                 <span className="text-xs text-muted-foreground">out of 100</span>
                 <span className="text-xs text-muted-foreground" data-testid="score-status">
-                  · {score.status === 'stale' ? 'Stale' : 'Current'}
+                  · {score.status === 'stale' ? 'Stale'
+                    : score.freshness_indicator === 'recalculation_due' ? 'Recalculation due' : 'Current'}
                 </span>
                 <ScoreFreshnessChip indicator={score.freshness_indicator} />
               </div>

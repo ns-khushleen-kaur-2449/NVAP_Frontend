@@ -6,6 +6,7 @@ import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { ChevronDown, ChevronUp, Loader2, UserPlus } from 'lucide-react';
 import { createProspect } from '../../lib/api';
+import { DEPARTMENTS } from '../../lib/prospects';
 import { toast } from 'sonner';
 
 // Dial codes, most-used first. `value` is the id Select needs; `dial` is what
@@ -42,6 +43,8 @@ const EMPTY_FORM = {
   countryCode: 'IN',
   phone: '',
   email: '',
+  job_title: '',
+  department: '',
   city: '',
   project: '',
   budget_range: '',
@@ -109,6 +112,9 @@ export default function AddLeadDialog({ open, onOpenChange, onCreated }) {
       };
       const filled = (value) => value && value.trim();
       if (filled(form.email)) payload.email = form.email.trim();
+      // Columns the lead score reads (seniority comes from the job title), never custom_fields.
+      if (filled(form.job_title)) payload.job_title = form.job_title.trim();
+      if (form.department) payload.department = form.department;
       if (filled(form.lead_owner)) payload.lead_owner = form.lead_owner.trim();
       // Details with no prospect column go to custom_fields, only when filled.
       Object.entries({ city: form.city, project: form.project, budget_range: form.budget_range, timeline: form.timeline })
@@ -209,6 +215,30 @@ export default function AddLeadDialog({ open, onOpenChange, onCreated }) {
               className={errors.email ? 'border-red-400 focus-visible:ring-red-200' : ''}
             />
             {errors.email && <p className="text-[11px] text-red-600">{errors.email}</p>}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="lead-job-title">Job Title</Label>
+              <Input
+                id="lead-job-title"
+                placeholder="e.g. Sales Manager"
+                value={form.job_title}
+                onChange={(e) => setField('job_title', e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="lead-department">Department</Label>
+              <select
+                id="lead-department"
+                value={form.department}
+                onChange={(e) => setField('department', e.target.value)}
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                <option value="">From job title</option>
+                {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </div>
           </div>
 
           <button

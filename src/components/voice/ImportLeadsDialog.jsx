@@ -13,6 +13,7 @@ export const LEAD_USES = [
   { value: 'phone', label: 'Phone number (required)' },
   { value: 'email', label: 'Email' },
   { value: 'job_title', label: 'Job title' },
+  { value: 'department', label: 'Department (Sales, Marketing, Operations, IT, Engineering, Finance or HR)' },
   { value: 'city', label: 'City' },
   { value: 'state', label: 'State' },
   { value: 'country', label: 'Country' },

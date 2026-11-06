@@ -14,6 +14,7 @@ import { USERS, authValue, renderWithAuth } from '@/test/renderWithAuth';
 
 jest.mock('@/lib/api', () => ({
   getUserSeats: jest.fn(() => Promise.resolve({ data: null })),
+  getBillingSubscription: jest.fn(() => Promise.resolve({ data: {} })),
   authRegister: jest.fn(),
   listTenants: jest.fn(),
   listTeams: jest.fn(),

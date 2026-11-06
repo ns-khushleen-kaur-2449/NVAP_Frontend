@@ -1,4 +1,4 @@
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
 import { canUseAdmin } from '@/lib/rbac';
 
@@ -14,6 +14,17 @@ export default function SuperAdminRoute({ children }) {
   }
   if (!user && !token) return <Navigate to="/login" replace />;
   return canUseAdmin(user) ? children : <Navigate to="/403" replace />;
+}
+
+/**
+ * A Super Admin works only in the platform area: any tenant page sends them to /admin/overview. Navigation only; the
+ * backend refuses every tenant route for them.
+ */
+export function SuperAdminBoundary({ children }) {
+  const { user } = useAuth();
+  const { pathname } = useLocation();
+  const allowed = pathname === '/admin' || pathname.startsWith('/admin/') || pathname === '/login' || pathname === '/403';
+  return canUseAdmin(user) && !allowed ? <Navigate to="/admin/overview" replace /> : children;
 }
 
 /** A tenant page whose Super Admin version moved to the platform area: a Super Admin goes to `to`, others stay. */

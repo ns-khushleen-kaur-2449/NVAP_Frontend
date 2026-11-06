@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, Building2, LayoutDashboard, PauseCircle, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Activity, AlertTriangle, Building2, CheckCircle2, LayoutDashboard, PauseCircle, RefreshCw } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -12,9 +13,24 @@ const TILES = [
   { key: 'suspended', label: 'Suspended', icon: PauseCircle },
 ];
 
-/** Platform overview: aggregate tenant counts from GET /api/admin/overview (Super Admin only). */
+const USAGE = [
+  { key: 'calls', label: 'Calls' },
+  { key: 'minutes', label: 'Minutes' },
+  { key: 'bookings', label: 'Bookings' },
+  { key: 'cost', label: 'Provider cost', format: (value) => (value === null || value === undefined ? 'Unknown' : `$${value.toFixed(2)}`) },
+];
+
+const WORKER_STATES = {
+  healthy: { label: 'Healthy', className: 'text-emerald-600' },
+  late: { label: 'Late', className: 'text-destructive' },
+  off: { label: 'Off', className: 'text-muted-foreground' },
+};
+
+const ALERT_LINKS = { platform_paused: '/admin/controls', tenants_paused: '/admin/controls', limit_warnings: '/admin/usage' };
+
+/** Platform health, active alerts and key usage from GET /api/admin/overview. Numbers only (Super Admin). */
 export default function AdminOverviewPage() {
-  const [counts, setCounts] = useState(null);
+  const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -22,8 +38,7 @@ export default function AdminOverviewPage() {
     setLoading(true);
     setError(null);
     try {
-      const response = await getAdminOverview();
-      setCounts(response.data.tenants);
+      setData((await getAdminOverview()).data);
     } catch (e) {
       setError(errorText(e, 'Could not load the overview'));
     } finally {
@@ -32,6 +47,10 @@ export default function AdminOverviewPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  const counts = data?.tenants;
+  const alerts = data?.alerts || [];
+  const workers = data?.health?.workers || [];
 
   return (
     <div className="space-y-6">
@@ -70,6 +89,58 @@ export default function AdminOverviewPage() {
           </Card>
         ))}
       </div>
+
+      {data && (
+        <>
+          <Card className="card-base p-5" data-testid="overview-alerts">
+            <h2 className="font-semibold flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> Active alerts</h2>
+            {alerts.length === 0
+              ? <p className="text-sm text-muted-foreground mt-2">Nothing needs attention.</p>
+              : (
+                <ul className="mt-3 space-y-2">
+                  {alerts.map((alert) => (
+                    <li key={alert.code} className="flex items-center justify-between gap-3 text-sm">
+                      <span className={alert.severity === 'critical' ? 'font-medium text-destructive' : ''}>
+                        {alert.label}{alert.count ? ` (${alert.count})` : ''}
+                      </span>
+                      <Link className="underline text-xs" to={ALERT_LINKS[alert.code] || '/admin/operations'}>Open</Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+          </Card>
+
+          <div>
+            <h2 className="font-semibold mb-3">Last {data.window_days} days</h2>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              {USAGE.map(({ key, label, format }) => (
+                <Card key={key} className="card-base p-5" data-testid={`overview-usage-${key}`}>
+                  <p className="text-sm text-muted-foreground">{label}</p>
+                  <p className="font-display text-2xl font-semibold mt-1 tabular-nums">{format ? format(data.usage?.[key]) : data.usage?.[key] ?? '—'}</p>
+                </Card>
+              ))}
+            </div>
+          </div>
+
+          <Card className="card-base p-5" data-testid="overview-health">
+            <h2 className="font-semibold flex items-center gap-2"><Activity className="w-4 h-4" /> Platform health</h2>
+            {workers.length === 0
+              ? <p className="text-sm text-muted-foreground mt-2">No background worker has reported yet.</p>
+              : (
+                <ul className="mt-3 grid sm:grid-cols-2 gap-2">
+                  {workers.map((worker) => (
+                    <li key={worker.name} className="flex items-center justify-between gap-3 text-sm">
+                      <span className="truncate">{worker.name}</span>
+                      <span className={WORKER_STATES[worker.state]?.className}>
+                        {WORKER_STATES[worker.state]?.label || worker.state}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+          </Card>
+        </>
+      )}
     </div>
   );
 }

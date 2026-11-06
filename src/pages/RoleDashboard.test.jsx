@@ -22,7 +22,7 @@ beforeEach(() => {
 });
 
 describe('Dashboard page', () => {
-  test.each(['super_admin', 'tenant_admin', 'manager'])('%s sees the voice activity section on the one Dashboard', async (role) => {
+  test.each(['tenant_admin', 'manager'])('%s sees the voice activity section on the one Dashboard', async (role) => {
     renderWithAuth(<RoleDashboard />, { user: USERS[role], path: '/dashboard' });
     expect(await screen.findByTestId('voice-dashboard')).toBeInTheDocument();
     expect(screen.getAllByRole('heading', { name: 'Dashboard' })).toHaveLength(1);

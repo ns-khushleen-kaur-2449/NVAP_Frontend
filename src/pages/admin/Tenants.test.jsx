@@ -139,3 +139,10 @@ describe('Apollo access', () => {
     expect(control).toHaveAttribute('aria-checked', 'false');
   });
 });
+
+test('shows each tenant admin name and email', async () => {
+  api.listAdminTenants.mockResolvedValue({ data: { tenants: [{ ...TENANT, tenant_admins: [{ name: 'Owner', email: 'owner@apex.example', status: 'active' }] }], total: 1 } });
+  renderWithAuth(<TenantsPage />, { user: USERS.super_admin });
+  expect(await screen.findByTestId(`tenant-admins-${TENANT.tenant_id}`)).toHaveTextContent('owner@apex.example');
+});
+

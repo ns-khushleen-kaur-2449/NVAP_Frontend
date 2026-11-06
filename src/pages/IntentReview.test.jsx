@@ -124,11 +124,10 @@ describe('Intent review', () => {
     await waitFor(() => expect(api.getIntentReviewQueue).toHaveBeenLastCalledWith({ status: 'rejected', page: 1, page_size: 25 }));
   });
 
-  it('lets a Super Admin pick a tenant and view without deciding', async () => {
+  it('offers a Super Admin no tenant picker and no decisions', async () => {
     renderWithAuth(<IntentReviewPage />, { user: USERS.super_admin, path: PATH });
-    await waitFor(() => expect(api.getIntentReviewQueue).toHaveBeenCalledWith({ status: 'pending', page: 1, page_size: 25, tenant_id: 't-9' }));
-    await openRow();
-    expect(api.getIntentAssessment).toHaveBeenCalledWith('a1', { tenant_id: 't-9' });
+    await waitFor(() => expect(api.getIntentReviewQueue).toHaveBeenCalled());
+    expect(screen.queryByLabelText('Tenant')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument();
   });
 

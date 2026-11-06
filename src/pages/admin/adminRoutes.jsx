@@ -8,14 +8,18 @@ import AgentDetailPage from '@/pages/admin/AgentDetail';
 import AdminToolsPage from '@/pages/admin/Tools';
 import TenantsAdminPage from '@/pages/admin/Tenants';
 import PlatformUsersPage from '@/pages/admin/PlatformUsers';
-import TenantUsersPage from '@/pages/admin/Users';
+import TenantAdminsPage from '@/pages/admin/TenantAdmins';
 import AdminAuditLogsPage from '@/pages/admin/AuditLogs';
 import SecurityPage from '@/pages/admin/Security';
-import { TenantIntegrationsOverview, TenantZohoIntegration } from '@/pages/admin/Integrations';
+import ControlsPage from '@/pages/admin/Controls';
+import OperationsPage from '@/pages/admin/Operations';
+import UsagePage from '@/pages/admin/Usage';
+import HierarchyPage from '@/pages/admin/Hierarchy';
+import IntegrationsPage from '@/pages/admin/Integrations';
 
 /**
- * The platform control area: /admin -> /admin/overview; Super Admin only (SuperAdminRoute). Tenants and Users reuse
- * the existing pages and APIs (/api/tenants, /api/users); the backend checks every request.
+ * The platform control area: /admin -> /admin/overview; Super Admin only (SuperAdminRoute). Every page calls /api/admin only;
+ * the backend checks every request.
  */
 export function adminRoutes() {
   return (
@@ -24,9 +28,12 @@ export function adminRoutes() {
       <Route path="overview" element={<AdminOverviewPage />} />
       <Route path="tenants" element={<TenantsAdminPage />} />
       <Route path="users" element={<PlatformUsersPage />} />
-      <Route path="tenant-users" element={<TenantUsersPage />} />
-      <Route path="integrations" element={<TenantIntegrationsOverview />} />
-      <Route path="tenants/:tenantId/integrations/zoho" element={<TenantZohoIntegration />} />
+      <Route path="tenant-users" element={<TenantAdminsPage />} />
+      <Route path="integrations" element={<IntegrationsPage />} />
+      <Route path="hierarchy" element={<HierarchyPage />} />
+      <Route path="operations" element={<OperationsPage />} />
+      <Route path="usage" element={<UsagePage />} />
+      <Route path="controls" element={<ControlsPage />} />
       <Route path="audit-logs" element={<AdminAuditLogsPage />} />
       <Route path="agents" element={<AgentsPage />} />
       <Route path="agents/import" element={<AgentImportPage />} />

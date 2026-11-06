@@ -3,12 +3,11 @@ import {
   getLeadScoringConfig, getLeadScoringConfigHistory, getLeadScoringOverview, rescoreLeadScores, updateLeadScoringConfig,
 } from '@/lib/api';
 import { useAuth } from '@/lib/AuthContext';
-import { canEditLeadScoring, canViewOperations, isSuperAdmin } from '@/lib/rbac';
+import { canEditLeadScoring, canViewOperations } from '@/lib/rbac';
 import useApiAction, { errorMessage } from '@/hooks/useApiAction';
 import ReasonDialog from './ReasonDialog';
 import RelativeTime from './RelativeTime';
 import OpsButton from './OpsButton';
-import TenantPicker from './TenantPicker';
 import { ErrorState, SkeletonRows } from './States';
 import LeadScoringOverview from './LeadScoringOverview';
 
@@ -230,15 +229,12 @@ function ScoringConfig({ scope, scopeKey, editable }) {
 /** Settings → Lead scoring: which parameters the tenant's lead scores use (GET/PUT /api/lead-scoring/config). */
 export default function LeadScoringSettings() {
   const { user } = useAuth();
-  const superAdmin = isSuperAdmin(user);
-  const [tenantId, setTenantId] = useState('');
-  const scope = useMemo(() => (superAdmin ? (tenantId ? { tenant_id: tenantId } : null) : {}), [superAdmin, tenantId]);
+  const scope = useMemo(() => ({}), []);
 
   if (!canViewOperations(user)) return null;
   return (
     <div className="space-y-4">
-      {superAdmin && <TenantPicker value={tenantId} onChange={setTenantId} label="Settings for tenant" />}
-      {scope && <ScoringConfig scope={scope} scopeKey={superAdmin ? tenantId : 'own'} editable={canEditLeadScoring(user)} />}
+      <ScoringConfig scope={scope} scopeKey="own" editable={canEditLeadScoring(user)} />
     </div>
   );
 }

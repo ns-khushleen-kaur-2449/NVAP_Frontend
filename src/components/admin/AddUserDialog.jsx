@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { authRegister, listTeams, listTenants } from '@/lib/api';
+import { authRegister, getUserSeats, listTeams, listTenants } from '@/lib/api';
 import { useAuth } from '@/lib/AuthContext';
 import { ROLES, roleLabel } from '@/lib/rbac';
 import { generateTemporaryPassword } from '@/lib/passwords';
@@ -28,6 +28,7 @@ export default function AddUserDialog({ open, onOpenChange, onCreated, defaultRo
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [created, setCreated] = useState(null);
+  const [seats, setSeats] = useState(null);
 
   const isSuperAdmin = actor?.role === ROLES.SUPER_ADMIN;
   const isTenantAdmin = actor?.role === ROLES.TENANT_ADMIN;
@@ -38,6 +39,7 @@ export default function AddUserDialog({ open, onOpenChange, onCreated, defaultRo
     setForm({ name: '', email: '', password: generateTemporaryPassword(), role, tenant_id: '', manager_user_id: '' });
     setError(null);
     setCreated(null);
+    Promise.resolve(getUserSeats()).then((r) => setSeats(r?.data || null)).catch(() => setSeats(null));
     if (isSuperAdmin) {
       listTenants().then((r) => setTenants((r.data.tenants || []).filter((t) => t.status === 'active'))).catch(() => setTenants([]));
     }
@@ -51,6 +53,7 @@ export default function AddUserDialog({ open, onOpenChange, onCreated, defaultRo
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
   const needsTenant = isSuperAdmin;
   const needsTeam = isTenantAdmin && form.role === ROLES.REP;
+  const seat = seats?.[form.role];
 
   const save = async () => {
     const problems = [];
@@ -119,6 +122,12 @@ export default function AddUserDialog({ open, onOpenChange, onCreated, defaultRo
                 </SelectContent>
               </Select>
             </div>
+            {seat && (
+              <p className={`text-xs ${seat.full ? 'text-destructive' : 'text-muted-foreground'}`} data-testid="seat-count">
+                {roleLabel(form.role)} seats: {seat.used} used{seat.limit === null ? '' : ` of ${seat.limit}`}
+                {seat.full ? '. No free seats: contact the platform administrator.' : ''}
+              </p>
+            )}
             {needsTenant && (
               <div>
                 <span className="text-xs font-medium text-muted-foreground">Tenant</span>
@@ -144,7 +153,7 @@ export default function AddUserDialog({ open, onOpenChange, onCreated, defaultRo
             )}
             {error && <p className="text-xs text-red-600" role="alert">{error}</p>}
             <DialogFooter>
-              <Button onClick={save} disabled={saving || !creatableRoles.length} className="bg-primary text-primary-foreground">
+              <Button onClick={save} disabled={saving || !creatableRoles.length || Boolean(seat?.full)} className="bg-primary text-primary-foreground">
                 {saving && <Loader2 className="w-4 h-4 mr-1 animate-spin" />} Create user
               </Button>
             </DialogFooter>

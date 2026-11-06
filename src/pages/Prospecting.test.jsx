@@ -97,12 +97,9 @@ it.each([
   expect(screen.getByRole('tab', { name: 'Saved searches' })).toBeInTheDocument();
 });
 
-it('a Super Admin has no saved searches and no Apollo Preview', async () => {
+it('hides Apollo Preview when the backend refuses it', async () => {
   getApolloStatus.mockResolvedValue({ data: refused('role_not_allowed') });
-  renderWithAuth(<ProspectingPage />, { user: USERS.super_admin, path: '/prospecting' });
-  expect(screen.queryByRole('tab', { name: 'Saved searches' })).not.toBeInTheDocument();
-  await screen.findByRole('button', { name: 'Search prospects' });
-  expect(screen.queryByRole('button', { name: 'Save filter' })).not.toBeInTheDocument();
+  renderWithAuth(<ProspectingPage />, { user: USERS.tenant_admin, path: '/prospecting' });
   await waitFor(() => expect(getApolloStatus).toHaveBeenCalled());
   expect(screen.queryByRole('tab', { name: 'Apollo Preview' })).not.toBeInTheDocument();
 });

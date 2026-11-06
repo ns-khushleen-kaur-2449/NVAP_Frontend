@@ -50,7 +50,7 @@ import { ReportsPage } from "@/pages/RoleAnalytics";
 import MeetingsPage from "@/pages/Meetings";
 import { operationsRoutes } from "@/pages/Operations";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
-import { SuperAdminGoesTo } from "@/components/auth/SuperAdminRoute";
+import { SuperAdminBoundary, SuperAdminGoesTo } from "@/components/auth/SuperAdminRoute";
 import { adminRoutes } from "@/pages/admin/adminRoutes";
 
 // The backend's roles (lib/rbac.js).  Older routes said "admin", a role that never existed.
@@ -227,6 +227,7 @@ function App() {
     <BrowserRouter>
       <AuthProvider>
         <AuthGate>
+        <SuperAdminBoundary>
         <Routes>
           <Route path="/" element={<SmartRoot />} />
           <Route path="/login" element={<LoginPage />} />
@@ -251,6 +252,7 @@ function App() {
           {/* <Route path="/calls" element={<SidebarShell><CallsPage /></SidebarShell>} /> */}
           <Route path="/*" element={<AppShell />} />
         </Routes>
+        </SuperAdminBoundary>
         </AuthGate>
         {/* <AuthedChatWidget /> */}
       </AuthProvider>

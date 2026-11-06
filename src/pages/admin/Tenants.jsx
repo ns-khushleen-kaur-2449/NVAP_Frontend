@@ -10,6 +10,8 @@ import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import ReasonDialog from '@/components/ops/ReasonDialog';
+import CallingBoundDialog from '@/components/admin/CallingBoundDialog';
+import TenantSettingsDialog from '@/components/admin/TenantSettingsDialog';
 import { errorText } from '@/components/admin/userBits';
 import {
   activateTenant, cancelTenantOffboarding, createTenantWithAdmin, initiateTenantOffboarding, listAdminTenants,
@@ -113,6 +115,8 @@ export default function TenantsPage() {
   const [offboarding, setOffboarding] = useState(null);
   const [cancelling, setCancelling] = useState(null);
   const [apolloChange, setApolloChange] = useState(null);
+  const [bounding, setBounding] = useState(null);
+  const [settingsOf, setSettingsOf] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -210,7 +214,7 @@ export default function TenantsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Tenant</TableHead><TableHead>Status</TableHead><TableHead>Apollo</TableHead><TableHead>Users</TableHead>
+                  <TableHead>Tenant</TableHead><TableHead>Tenant Admin</TableHead><TableHead>Status</TableHead><TableHead>Apollo</TableHead><TableHead>Users</TableHead>
                   <TableHead>Admins</TableHead><TableHead>Active agents</TableHead><TableHead>Calls</TableHead><TableHead>Plan</TableHead><TableHead>Created</TableHead><TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -218,6 +222,13 @@ export default function TenantsPage() {
                 {tenants.map((tenant) => (
                   <TableRow key={tenant.tenant_id} data-testid={`tenant-row-${tenant.tenant_id}`}>
                     <TableCell><p className="font-medium text-sm">{tenant.name}</p><p className="text-xs text-muted-foreground">{tenant.default_timezone}</p></TableCell>
+                    <TableCell className="text-sm" data-testid={`tenant-admins-${tenant.tenant_id}`}>
+                      {(tenant.tenant_admins || []).length === 0
+                        ? <span className="text-muted-foreground">None</span>
+                        : tenant.tenant_admins.map((admin) => (
+                          <div key={admin.email}><p className="font-medium">{admin.name}</p><p className="text-xs text-muted-foreground">{admin.email}</p></div>
+                        ))}
+                    </TableCell>
                     <TableCell>
                       <Badge variant="outline" className={tenant.status === 'active'
                         ? 'text-[11px] bg-emerald-500/10 text-emerald-600 border-emerald-500/25'
@@ -240,7 +251,9 @@ export default function TenantsPage() {
                     <TableCell className="text-sm text-muted-foreground">Not configured</TableCell>
                     <TableCell className="text-sm">{new Date(tenant.created_at).toLocaleDateString()}</TableCell>
                     <TableCell className="text-right">
-                      <Button asChild variant="ghost" size="sm"><Link to={`/admin/tenant-users?tenant_id=${tenant.tenant_id}`}>Users</Link></Button>
+                      <Button asChild variant="ghost" size="sm"><Link to={`/admin/tenant-users?tenant_id=${tenant.tenant_id}`}>Admins</Link></Button>
+                      <Button variant="ghost" size="sm" onClick={() => setSettingsOf(tenant)}>Settings</Button>
+                      <Button variant="ghost" size="sm" onClick={() => setBounding(tenant)}>Calling hours</Button>
                       {tenant.offboarding_started_at
                         ? <Button variant="ghost" size="sm" disabled={busyId === tenant.tenant_id} onClick={() => setCancelling(tenant)}>Cancel offboarding</Button>
                         : <Button variant="ghost" size="sm" disabled={busyId === tenant.tenant_id} onClick={() => setOffboarding(tenant)}>Offboard</Button>}
@@ -258,6 +271,8 @@ export default function TenantsPage() {
       </Card>
 
       <NewTenantDialog open={creating} onOpenChange={setCreating} onCreated={load} />
+      <CallingBoundDialog tenant={bounding} onOpenChange={(open) => !open && setBounding(null)} />
+      <TenantSettingsDialog tenant={settingsOf} onOpenChange={(open) => { if (!open) { setSettingsOf(null); load(); } }} />
       <ReasonDialog
         open={Boolean(confirming)}
         onOpenChange={(open) => !open && setConfirming(null)}

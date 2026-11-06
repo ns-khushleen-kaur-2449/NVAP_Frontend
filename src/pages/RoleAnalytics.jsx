@@ -24,7 +24,6 @@ const ROLE_VIEWS = {
   manager: { scope: 'Your team', Dashboard: ManagerDashboard, Reports: ManagerReports, sections: MANAGER_REPORT_SECTIONS, filter: 'rep' },
   tenant_admin: { scope: 'Your whole organisation', Dashboard: AdminDashboard, Reports: AdminReports, sections: ADMIN_REPORT_SECTIONS, filter: 'team' },
 };
-ROLE_VIEWS.super_admin = ROLE_VIEWS.tenant_admin;
 
 function useRoleView() {
   const { user } = useAuth();

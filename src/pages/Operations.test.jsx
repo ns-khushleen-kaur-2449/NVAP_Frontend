@@ -116,12 +116,9 @@ describe('Operations page', () => {
     expect(api.getIntentReviewQueue).toHaveBeenCalledWith({ status: 'pending', page_size: 1 });
   });
 
-  it('gives a Super Admin no counts (no tenant chosen yet)', async () => {
+  it('does not open a viewer tab for a Super Admin', () => {
     renderAt('/operations/callbacks', USERS.super_admin);
-    await screen.findByRole('heading', { name: 'Callbacks' });
-    expect(api.getIntentReviewQueue).not.toHaveBeenCalled();
-    expect(tabLink('Intent review')).toHaveTextContent(/^Intent review$/);
-    expect(api.getAppointments).not.toHaveBeenCalledWith({ tab: 'needs_outcome', page_size: 1 });
+    expect(screen.queryByRole('heading', { name: 'Callbacks' })).not.toBeInTheDocument();
   });
 });
 

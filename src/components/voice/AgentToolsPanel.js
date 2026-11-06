@@ -18,7 +18,7 @@ const errorDetail = (e, fallback) => {
  */
 export default function AgentToolsPanel({ selected, onChange }) {
   const { hasRole } = useAuth();
-  const canEdit = hasRole('tenant_admin', 'super_admin');
+  const canEdit = hasRole('tenant_admin');
   const [tools, setTools] = useState(null);
 
   useEffect(() => {

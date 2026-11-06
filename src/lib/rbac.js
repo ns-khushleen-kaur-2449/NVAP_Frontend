@@ -79,7 +79,7 @@ export function hasPermission(actor, permission) {
 // Who may view assistants: the backend's AssistantAction.VIEW (Manager and up).
 // /api/v1/assistants and the Voice Agent dashboard both follow it; a Sales Rep
 // gets 403 from the dashboard, so its nav entry is hidden.
-export const ASSISTANT_VIEWER_ROLES = Object.freeze(['super_admin', 'tenant_admin', 'manager']);
+export const ASSISTANT_VIEWER_ROLES = Object.freeze(['tenant_admin', 'manager']);
 
 export function canViewAssistants(actor) {
   return Boolean(actor) && ASSISTANT_VIEWER_ROLES.includes(actor.role);
@@ -103,7 +103,7 @@ export function canUseAssistantRequests(actor) {
 
 // Who may create, run and manage campaigns and place single or scheduled calls: the backend's
 // CAMPAIGN_CREATOR_ROLES (voice_campaigns/access.py). Which campaigns is the backend's call
-// (Tenant Admin: tenant; Manager: own and team; Sales Rep: own). A Super Admin only reads.
+// (Tenant Admin: tenant; Manager: own and team; Sales Rep: own).
 export const CAMPAIGN_CREATOR_ROLES = Object.freeze(['tenant_admin', 'manager', 'rep']);
 
 export function canCreateCampaigns(actor) {
@@ -146,7 +146,7 @@ export const roleLabel = (role) => ROLE_LABELS[role] || role;
 
 // Operations screens (campaign overrides, callbacks, do-not-call, appointments). Mirrors the
 // backend's OVERRIDE_ROLES / appointments.access: Tenant Admins and Managers change things;
-// a Super Admin views only; a Sales Rep records outcomes on their own meetings only.
+// a Sales Rep records outcomes on their own meetings only.
 export const OPERATOR_ROLES = Object.freeze(['tenant_admin', 'manager']);
 
 /** May override automatic decisions and manage callbacks, do-not-call and appointments. */
@@ -170,13 +170,12 @@ export function canLiftDoNotCall(actor) {
 
 /** May read the operations screens (callbacks, do-not-call, contact rules). */
 export function canViewOperations(actor) {
-  return Boolean(actor) && [...OPERATOR_ROLES, 'super_admin'].includes(actor.role);
+  return Boolean(actor) && OPERATOR_ROLES.includes(actor.role);
 }
 
-/** Conversion evidence and stage transitions are approved only by Tenant Admins.
- * A Super Admin may do the same after selecting an explicit tenant scope. */
+/** Conversion evidence and stage transitions are approved only by Tenant Admins. */
 export function canReviewConversions(actor) {
-  return Boolean(actor) && ['tenant_admin', 'super_admin'].includes(actor.role);
+  return actor?.role === ROLES.TENANT_ADMIN;
 }
 
 /** The subscription belongs to the organisation, so only its Tenant Admin may buy, change or cancel a plan. */
@@ -186,7 +185,7 @@ export function canManageBilling(actor) {
 
 /** Managers and Sales Reps can inspect only the prospects the backend exposes to them. */
 export function canViewConversions(actor) {
-  return Boolean(actor) && ['super_admin', 'tenant_admin', 'manager', 'rep'].includes(actor.role);
+  return Boolean(actor) && ['tenant_admin', 'manager', 'rep'].includes(actor.role);
 }
 
 export function isSuperAdmin(actor) {
@@ -203,17 +202,13 @@ export function homePath(actor) {
   return canUseAdmin(actor) ? '/admin/overview' : '/dashboard';
 }
 
-/** May edit tenant settings (contact and appointment rules); a Super Admin only views them. */
+/** May edit tenant settings (contact and appointment rules). */
 export function canEditTenantRules(actor) {
   return actor?.role === ROLES.TENANT_ADMIN;
 }
 
-/** Tenant Admins (and a Super Admin, naming a tenant) choose the lead scoring parameters; Managers view them. */
+/** Tenant Admins choose the lead scoring parameters; Managers view them. */
 export function canEditLeadScoring(actor) {
-  return Boolean(actor) && ['tenant_admin', 'super_admin'].includes(actor.role);
+  return actor?.role === ROLES.TENANT_ADMIN;
 }
 
-/** Only a Super Admin changes the outer calling bound. */
-export function canEditCallingBound(actor) {
-  return isSuperAdmin(actor);
-}

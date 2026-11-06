@@ -7,7 +7,7 @@ import {
   revertDoNotCall,
 } from '@/lib/api';
 import { useAuth } from '@/lib/AuthContext';
-import { canLiftDoNotCall, canOperate, isSuperAdmin } from '@/lib/rbac';
+import { canLiftDoNotCall, canOperate } from '@/lib/rbac';
 import { maskPhone, plural } from '@/lib/ops';
 import useApiAction, { errorMessage } from '@/hooks/useApiAction';
 import usePolling from '@/hooks/usePolling';
@@ -16,7 +16,6 @@ import ConfirmDialog from '@/components/ops/ConfirmDialog';
 import RelativeTime from '@/components/ops/RelativeTime';
 import OpsButton from '@/components/ops/OpsButton';
 import StatusBadge from '@/components/ops/StatusBadge';
-import TenantPicker from '@/components/ops/TenantPicker';
 import { EmptyState, ErrorState, ScrollTable, SkeletonRows } from '@/components/ops/States';
 
 const REFRESH_MS = 30000;
@@ -100,10 +99,8 @@ export default function DoNotCallPage() {
   const operator = canOperate(user);
   // Managers add and confirm; lifting a block applies to every team, so it is a Tenant Admin's.
   const canLift = canLiftDoNotCall(user);
-  const superAdmin = isSuperAdmin(user);
   const [params, setParams] = useSearchParams();
   const tab = DNC_TABS.find((t) => t.id === params.get('tab')) || DNC_TABS[0];
-  const [tenantId, setTenantId] = useState('');
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState('');
   const [rows, setRows] = useState(null);
@@ -113,11 +110,9 @@ export default function DoNotCallPage() {
   const [removing, setRemoving] = useState(null);
 
   useEffect(() => { const t = setTimeout(() => setQuery(search.trim()), 300); return () => clearTimeout(t); }, [search]);
-  const scope = superAdmin ? { tenant_id: tenantId } : {};
-  const ready = !superAdmin || Boolean(tenantId);
+  const scope = {};
 
   const load = useCallback(async () => {
-    if (!ready) return;
     try {
       if (tab.id === 'history') {
         const res = await getDoNotCallHistory({ ...scope, ...(query ? { phone_number: query } : {}) });
@@ -132,7 +127,7 @@ export default function DoNotCallPage() {
       setError(err?.response?.status === 403 ? "You don't have permission" : errorMessage(err, 'Check your connection and try again.'));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab.id, query, tenantId, ready]);
+  }, [tab.id, query]);
   usePolling(load, REFRESH_MS, [load]);
 
   const add = useApiAction((reason) => addDoNotCall(newNumber, reason), { success: 'Number added to the do-not-call list', onSuccess: () => { setNewNumber(''); load(); } });
@@ -150,7 +145,6 @@ export default function DoNotCallPage() {
       </header>
 
       <div className="flex flex-wrap items-end gap-3">
-        {superAdmin && <TenantPicker value={tenantId} onChange={setTenantId} />}
         <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
           {tab.id === 'history' ? 'Number' : 'Search by number or lead'}
           <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} className="h-9 w-64 rounded-lg border border-border bg-card px-3 text-sm" />

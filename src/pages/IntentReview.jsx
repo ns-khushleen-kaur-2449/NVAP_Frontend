@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { getIntentAssessment, getIntentReviewQueue, reviewIntentAssessment } from '@/lib/api';
 import { useAuth } from '@/lib/AuthContext';
-import { canOperate, isSuperAdmin } from '@/lib/rbac';
+import { canOperate } from '@/lib/rbac';
 import { ALREADY_REVIEWED_NOTICE, INTENT_TYPES, REVIEW_TONES, SIGNAL_TYPES, humanize } from '@/lib/intent';
 import usePolling from '@/hooks/usePolling';
 import useApiAction, { errorMessage } from '@/hooks/useApiAction';
@@ -11,7 +11,6 @@ import ReasonDialog from '@/components/ops/ReasonDialog';
 import RelativeTime from '@/components/ops/RelativeTime';
 import OpsButton from '@/components/ops/OpsButton';
 import StatusBadge from '@/components/ops/StatusBadge';
-import TenantPicker from '@/components/ops/TenantPicker';
 import IntentAssessmentDetails from '@/components/ops/IntentAssessmentDetails';
 import { EmptyState, ErrorState, ScrollTable, Skeleton, SkeletonRows } from '@/components/ops/States';
 
@@ -207,10 +206,8 @@ function AssessmentDetails({ state, onRetry }) {
 export default function IntentReviewPage({ onReviewed }) {
   const { user } = useAuth();
   const operator = canOperate(user);
-  const superAdmin = isSuperAdmin(user);
   const [params, setParams] = useSearchParams();
   const filter = INTENT_REVIEW_FILTERS.find((f) => f.id === params.get('tab')) || INTENT_REVIEW_FILTERS[0];
-  const [tenantId, setTenantId] = useState('');
   const [page, setPage] = useState(1);
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -219,11 +216,9 @@ export default function IntentReviewPage({ onReviewed }) {
   const [acting, setActing] = useState(null);
   const [notice, setNotice] = useState(null);
 
-  const scope = superAdmin ? { tenant_id: tenantId } : undefined;
-  const ready = !superAdmin || Boolean(tenantId);
+  const scope = undefined;
 
   const load = useCallback(async () => {
-    if (!ready) return;
     try {
       const res = await getIntentReviewQueue({ status: filter.id, page, page_size: PAGE_SIZE, ...scope });
       setData(res.data);
@@ -232,7 +227,7 @@ export default function IntentReviewPage({ onReviewed }) {
       setError(err?.response?.status === 403 ? "You don't have permission" : errorMessage(err, 'Check your connection and try again.'));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filter.id, page, tenantId, ready]);
+  }, [filter.id, page]);
   usePolling(load, REFRESH_MS, [load]);
 
   const fetchDetails = async (id) => {
@@ -277,8 +272,6 @@ export default function IntentReviewPage({ onReviewed }) {
         </p>
       </header>
 
-      {superAdmin && <div className="flex flex-wrap items-end gap-3"><TenantPicker value={tenantId} onChange={setTenant} /></div>}
-
       <div role="tablist" aria-label="Intent review" className="flex flex-wrap gap-1 border-b border-border">
         {INTENT_REVIEW_FILTERS.map((f) => (
           <button key={f.id} type="button" role="tab" aria-selected={filter.id === f.id} onClick={() => setFilter(f.id)}
@@ -296,7 +289,7 @@ export default function IntentReviewPage({ onReviewed }) {
       )}
 
       {error && <ErrorState message={error} onRetry={load} />}
-      {!error && ready && data === null && <SkeletonRows rows={5} label="Loading the review queue" />}
+      {!error && data === null && <SkeletonRows rows={5} label="Loading the review queue" />}
       {!error && data && rows.length === 0 && (
         <EmptyState title={filter.id === 'pending' ? 'Nothing waiting for review.' : `No ${filter.label.toLowerCase()} assessments.`} />
       )}

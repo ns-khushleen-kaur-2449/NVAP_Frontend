@@ -110,12 +110,12 @@ export const deactivateUser = (id) => api.post(`/api/users/${id}/deactivate`);
 export const reactivateUser = (id) => api.post(`/api/users/${id}/reactivate`);
 export const moveUserToTeam = (id, managerUserId) => api.put(`/api/users/${id}/team`, { manager_user_id: managerUserId });
 export const listTeams = () => api.get('/api/teams');
-export const listTenants = () => api.get('/api/tenants');
+export const listTenants = () => api.get('/api/admin/tenants/all');
 export const listAdminTenants = (params) => api.get('/api/admin/tenants', { params });
-export const createTenantWithAdmin = (data) => api.post('/api/tenants/with-admin', data);
+export const createTenantWithAdmin = (data) => api.post('/api/admin/tenants/with-admin', data);
 // A reason is required; it is kept in the admin audit trail.
-export const suspendTenant = (id, reason) => api.post(`/api/tenants/${id}/suspend`, { reason });
-export const activateTenant = (id, reason) => api.post(`/api/tenants/${id}/activate`, { reason });
+export const suspendTenant = (id, reason) => api.post(`/api/admin/tenants/${id}/suspend`, { reason });
+export const activateTenant = (id, reason) => api.post(`/api/admin/tenants/${id}/activate`, { reason });
 export const initiateTenantOffboarding = (id, reason) => api.post(`/api/admin/tenants/${id}/offboarding`, { reason });
 export const cancelTenantOffboarding = (id, reason) => api.post(`/api/admin/tenants/${id}/offboarding/cancel`, { reason });
 // Grant (true) or revoke (false) a tenant's Apollo Preview access → the tenant, with apollo_access_enabled.
@@ -130,6 +130,31 @@ export const getSystemHealth = () => api.get('/api/admin/system-health');
 
 // ── Platform control area (/api/admin, Super Admin only) ──
 export const getAdminOverview = () => api.get('/api/admin/overview');
+export const listTenantAdmins = (params) => api.get('/api/admin/tenant-admins', { params });
+export const createTenantAdmin = (data) => api.post('/api/admin/tenant-admins', data);
+export const deactivateTenantAdmin = (id) => api.post(`/api/admin/tenant-admins/${id}/deactivate`);
+export const reactivateTenantAdmin = (id) => api.post(`/api/admin/tenant-admins/${id}/reactivate`);
+export const getAdminControls = () => api.get('/api/admin/controls');
+export const pauseAllDialing = (reason) => api.post('/api/admin/controls/pause', { reason });
+export const resumeAllDialing = (reason) => api.post('/api/admin/controls/resume', { reason });
+export const pauseTenantDialing = (id, reason) => api.post(`/api/admin/tenants/${id}/pause`, { reason });
+export const resumeTenantDialing = (id, reason) => api.post(`/api/admin/tenants/${id}/resume`, { reason });
+export const disableAdminAgent = (id, reason) => api.post(`/api/admin/agents/${id}/disable`, { reason });
+export const enableAdminAgent = (id, reason) => api.post(`/api/admin/agents/${id}/enable`, { reason });
+export const getTenantSettings = (id) => api.get(`/api/admin/tenants/${id}/settings`);
+export const setTenantLimits = (id, data) => api.put(`/api/admin/tenants/${id}/limits`, data);
+export const setTenantFeature = (id, key, enabled, reason) => api.put(`/api/admin/tenants/${id}/features`, { key, enabled, reason });
+export const getAdminOperations = () => api.get('/api/admin/operations');
+export const retryOperation = (kind, id, reason) => api.post(`/api/admin/operations/${kind}/${id}/retry`, { reason });
+export const getAdminUsage = () => api.get('/api/admin/usage');
+export const getUserHierarchy = (params) => api.get('/api/admin/hierarchy', { params });
+export const grantSeatOverride = (id, role, extraSeats, reason) => api.post(`/api/admin/tenants/${id}/seat-override`, { role, extra_seats: extraSeats, reason });
+export const getOrphans = () => api.get('/api/admin/orphans');
+export const reassignOrphan = (type, id, data) => api.post(`/api/admin/orphans/${type}/${id}/reassign`, data);
+export const getUserSeats = () => api.get('/api/users/seats');
+export const getIntegrationStatus = () => api.get('/api/admin/integrations');
+export const getTenantCallingBound = (id) => api.get(`/api/admin/tenants/${id}/calling-bound`);
+export const updateTenantCallingBound = (id, data) => api.put(`/api/admin/tenants/${id}/calling-bound`, data);
 export const getAdminAuditLogs = (params) => api.get('/api/admin/audit-logs', { params });
 export const listPlatformUsers = (params) => api.get('/api/admin/users', { params });
 export const createPlatformUser = (data) => api.post('/api/admin/users', data);
@@ -139,7 +164,7 @@ export const lookupAgent = (ref) => api.post('/api/admin/agents/lookup',
   /^\d+$/.test(ref) ? { assistant_id: Number(ref) } : { vapi_assistant_id: ref });
 export const fetchAdminAgent = (vapiAssistantId) => api.post('/api/admin/agents/fetch', { vapi_assistant_id: vapiAssistantId });
 export const importAdminAgent = (vapiAssistantId, reason) => api.post('/api/admin/agents/import', { vapi_assistant_id: vapiAssistantId, reason });
-export const listAdminAgents = () => api.get('/api/admin/agents');
+export const listAdminAgents = (params) => api.get('/api/admin/agents', { params });
 export const getAdminAgent = (id) => api.get(`/api/admin/agents/${id}`);
 export const refreshAdminAgent = (id, reason) => api.post(`/api/admin/agents/${id}/refresh`, { reason });
 export const assignAdminAgent = (id, tenantId, reason) => api.post(`/api/admin/agents/${id}/assign`, { tenant_id: tenantId, reason });
@@ -488,17 +513,17 @@ export const retryBuilderConfig = (id, version) =>
   api.post(`/api/v1/assistant-builder/configs/${id}/retry/${version}`);
 
 // ── Tools (Super Admin: platform Vapi tools) ──
-export const listToolTypes = () => api.get('/api/v1/tools/types');
-export const listTools = () => api.get('/api/v1/tools');
-export const createTool = (data) => api.post('/api/v1/tools', data);
-export const updateTool = (id, data) => api.patch(`/api/v1/tools/${id}`, data);
-export const syncTool = (id) => api.post(`/api/v1/tools/${id}/sync`);
-export const deleteTool = (id) => api.delete(`/api/v1/tools/${id}`);
-export const previewTool = (data) => api.post('/api/v1/tools/preview', data);
+export const listToolTypes = () => api.get('/api/admin/tools/types');
+export const listTools = () => api.get('/api/admin/tools');
+export const createTool = (data) => api.post('/api/admin/tools', data);
+export const updateTool = (id, data) => api.patch(`/api/admin/tools/${id}`, data);
+export const syncTool = (id) => api.post(`/api/admin/tools/${id}/sync`);
+export const deleteTool = (id) => api.delete(`/api/admin/tools/${id}`);
+export const previewTool = (data) => api.post('/api/admin/tools/preview', data);
 // Create (or re-sync) the six appointment tools in Vapi; safe to re-run.
-export const registerAppointmentTools = () => api.post('/api/v1/tools/register');
-export const getToolTenants = (id) => api.get(`/api/v1/tools/${id}/tenants`);
-export const setToolTenants = (id, tenantIds, reason) => api.put(`/api/v1/tools/${id}/tenants`, { tenant_ids: tenantIds, reason });
+export const registerAppointmentTools = () => api.post('/api/admin/tools/register');
+export const getToolTenants = (id) => api.get(`/api/admin/tools/${id}/tenants`);
+export const setToolTenants = (id, tenantIds, reason) => api.put(`/api/admin/tools/${id}/tenants`, { tenant_ids: tenantIds, reason });
 // Tools on one assistant (tools granted to its tenant; Tenant Admin attaches/detaches).
 export const listAssistantTools = (assistantId) => api.get(`/api/v1/assistants/${assistantId}/tools`);
 // Tools an Assistant Builder agent can be given (granted to the tenant), each with the tool types it needs.
@@ -655,7 +680,6 @@ export const getContactRules = (params) => api.get('/api/v1/contact-rules', { pa
 export const updateContactRules = (data, params) => api.put('/api/v1/contact-rules', data, { params });
 export const getContactRulesHistory = (params) => api.get('/api/v1/contact-rules/history', { params });
 export const getCallingBound = (params) => api.get('/api/v1/contact-rules/calling-bound', { params });
-export const updateCallingBound = (data, params) => api.put('/api/v1/contact-rules/calling-bound', data, { params });
 export const getAppointmentRules = (params) => api.get('/api/v1/appointment-rules', { params });
 export const updateAppointmentRules = (data, params) => api.put('/api/v1/appointment-rules', data, { params });
 export const getAppointmentRulesHistory = (params) => api.get('/api/v1/appointment-rules/history', { params });
@@ -733,7 +757,6 @@ export const getZohoJobs = (params) => api.get(`${ZOHO_BASE}/sync/jobs`, { param
 export const getZohoInboundEvents = (params) => api.get(`${ZOHO_BASE}/sync/inbound-events`, { params });
 export const getZohoDeliveries = (params) => api.get(`${ZOHO_BASE}/sync/deliveries`, { params });
 export const retryZohoDelivery = (id, data = {}, params) => api.post(`${ZOHO_BASE}/sync/retry/${id}`, data, { params });
-export const getZohoTenantOverview = () => api.get(`${ZOHO_BASE}/admin/tenants/crm-overview`);
 
 export const uploadAudioFile = (file, executiveName) => {
   const fd = new FormData();

@@ -2,7 +2,6 @@ import { useCallback, useState } from 'react';
 import { Link, Navigate, Route, useLocation, useParams } from 'react-router-dom';
 import { getAppointments, getDoNotCallEntries, getIntentReviewQueue } from '@/lib/api';
 import { useAuth } from '@/lib/AuthContext';
-import { isSuperAdmin } from '@/lib/rbac';
 import usePolling from '@/hooks/usePolling';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import AppointmentsPage from './Appointments';
@@ -11,7 +10,7 @@ import DoNotCallPage from './DoNotCall';
 import IntentReviewPage from './IntentReview';
 
 // Tenant Admins, Managers and (view only) Super Admins (lib/rbac.js canViewOperations; the backend enforces it).
-export const OPERATIONS_VIEWERS = ['super_admin', 'tenant_admin', 'manager'];
+export const OPERATIONS_VIEWERS = ['tenant_admin', 'manager'];
 
 // One page, one tab per screen; the tab is the path (/operations/<id>), each screen keeps its own ?tab=.
 // `roles` limits a tab (others get 403); Appointments is for everyone (a Sales Rep sees their own meetings).
@@ -29,12 +28,12 @@ const REFRESH_MS = 30000;
 /**
  * Counts of what waits for a person, where one request answers it: appointments that need an
  * outcome, do-not-call opt-outs to review and pending intent reviews (each only on a tab the
- * user has). A Super Admin has no tenant until a screen picks one, so gets no counts. Callbacks
+ * user has). Callbacks
  * have no count endpoint (it would mean loading every scheduled call).
  */
 function useWaitingCounts(user) {
   const [counts, setCounts] = useState({});
-  const enabled = Boolean(user) && !isSuperAdmin(user);
+  const enabled = Boolean(user);
   const operations = Boolean(user) && OPERATIONS_VIEWERS.includes(user.role);
   const load = useCallback(async () => {
     const skip = Promise.resolve(null);

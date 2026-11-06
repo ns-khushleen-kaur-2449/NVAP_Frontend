@@ -110,7 +110,7 @@ describe('permissions', () => {
 
 
 describe('canViewAssistants (backend AssistantAction.VIEW: Manager and up)', () => {
-  it.each([['super_admin', true], ['tenant_admin', true], ['manager', true], ['rep', false]])('%s -> %s', (role, expected) => {
+  it.each([['super_admin', false], ['tenant_admin', true], ['manager', true], ['rep', false]])('%s -> %s', (role, expected) => {
     expect(canViewAssistants({ role })).toBe(expected);
   });
   it('refuses no user', () => {

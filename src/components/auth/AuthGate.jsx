@@ -4,10 +4,12 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { REQUIRED_ACTIONS, useAuth } from '@/lib/AuthContext';
 import ChangePasswordPage from '@/pages/ChangePassword';
+import MfaSetupPage from '@/pages/MfaSetup';
 
 /**
  * Before anything else: a user with a temporary password sees only the change-password
- * screen, and a user whose organisation is suspended sees only that notice.  The backend
+ * screen, a Super Admin without two-factor authentication only its setup, and a user whose
+ * organisation is suspended sees only that notice.  The backend
  * refuses their other requests anyway (403).
  */
 export default function AuthGate({ children }) {
@@ -15,6 +17,7 @@ export default function AuthGate({ children }) {
   const { pathname } = useLocation();
   if (!token || pathname === '/login' || !requiredAction) return children;
   if (requiredAction === REQUIRED_ACTIONS.CHANGE_PASSWORD) return <ChangePasswordPage />;
+  if (requiredAction === REQUIRED_ACTIONS.MFA_ENROLLMENT) return <MfaSetupPage />;
   if (requiredAction === REQUIRED_ACTIONS.TENANT_SUSPENDED) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background px-4" data-testid="tenant-suspended">

@@ -50,3 +50,57 @@ it.each([
   fireEvent.click(screen.getByTestId('login-submit-btn'));
   expect(await screen.findByText(page)).toBeInTheDocument();
 });
+
+describe('two-factor sign-in for a Super Admin', () => {
+  const signInWithPassword = () => {
+    fireEvent.change(screen.getByTestId('login-email-input'), { target: { value: 'sam@x.co' } });
+    fireEvent.change(screen.getByTestId('login-password-input'), { target: { value: 'typed-by-the-person' } });
+    fireEvent.click(screen.getByTestId('login-submit-btn'));
+  };
+
+  it('asks for a code after the password, then signs in with it', async () => {
+    const login = jest.fn().mockResolvedValue({ mfa_required: true, mfa_token: 'challenge' });
+    const completeMfaLogin = jest.fn().mockResolvedValue({ user: { id: 1, role: 'super_admin' } });
+    const routes = [<Route key="admin" path="/admin/overview" element={<div>admin-overview</div>} />];
+    renderWithAuth(<LoginPage />, { path: '/login', auth: { login, completeMfaLogin }, routes });
+    signInWithPassword();
+    const code = await screen.findByLabelText('Authentication code');
+    fireEvent.change(code, { target: { value: '12 34 56x' } });
+    expect(code).toHaveValue('123456');
+    fireEvent.click(screen.getByTestId('login-mfa-submit'));
+    await waitFor(() => expect(completeMfaLogin).toHaveBeenCalledWith('challenge', { code: '123456' }));
+    expect(await screen.findByText('admin-overview')).toBeInTheDocument();
+  });
+
+  it('takes a recovery code instead, and shows a wrong code inline', async () => {
+    const login = jest.fn().mockResolvedValue({ mfa_required: true, mfa_token: 'challenge' });
+    const completeMfaLogin = jest.fn().mockRejectedValue({ response: { status: 401, data: { detail: "That code didn't work." } } });
+    renderWithAuth(<LoginPage />, { path: '/login', auth: { login, completeMfaLogin } });
+    signInWithPassword();
+    fireEvent.click(await screen.findByRole('button', { name: 'Use a recovery code' }));
+    fireEvent.change(screen.getByLabelText('Recovery code'), { target: { value: ' abcde-12345 ' } });
+    fireEvent.click(screen.getByTestId('login-mfa-submit'));
+    await waitFor(() => expect(completeMfaLogin).toHaveBeenCalledWith('challenge', { recoveryCode: 'abcde-12345' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent("That code didn't work.");
+  });
+
+  it('says when sign-in is locked', async () => {
+    const login = jest.fn().mockResolvedValue({ mfa_required: true, mfa_token: 'challenge' });
+    const completeMfaLogin = jest.fn().mockRejectedValue({ response: { status: 429, data: { detail: 'Too many attempts.' } } });
+    renderWithAuth(<LoginPage />, { path: '/login', auth: { login, completeMfaLogin } });
+    signInWithPassword();
+    fireEvent.change(await screen.findByLabelText('Authentication code'), { target: { value: '123456' } });
+    fireEvent.click(screen.getByTestId('login-mfa-submit'));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Too many attempts. Wait a few minutes');
+  });
+
+  it('goes back to the password when the challenge expired', async () => {
+    const login = jest.fn().mockResolvedValue({ mfa_required: true, mfa_token: 'challenge' });
+    const completeMfaLogin = jest.fn().mockRejectedValue({ response: { status: 401, data: { detail: 'Sign in again' } } });
+    renderWithAuth(<LoginPage />, { path: '/login', auth: { login, completeMfaLogin } });
+    signInWithPassword();
+    fireEvent.change(await screen.findByLabelText('Authentication code'), { target: { value: '123456' } });
+    fireEvent.click(screen.getByTestId('login-mfa-submit'));
+    expect(await screen.findByTestId('login-password-input')).toBeInTheDocument();
+  });
+});

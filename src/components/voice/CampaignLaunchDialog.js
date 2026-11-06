@@ -12,6 +12,10 @@ import {
   announceCalendarSync, apiErrorMessage, browserTimeZone, configErrors, useScheduleCheck, validateSettings,
   withRetryDefaults, zonedToIso,
 } from './CampaignSettingsFields';
+import CampaignOfferFields, { PreflightProblems } from './CampaignOfferFields';
+import {
+  OFFER_TOGGLE_LABEL, offerCampaignFields, offerFormFrom, offerPitchFields, offerSaveError, preflightProblems,
+} from '@/lib/campaignOffer';
 
 function Section({ title, children }) {
   return (
@@ -45,6 +49,9 @@ export default function CampaignLaunchDialog({ open, onOpenChange, source, assis
   const [config, setConfig] = useState(DEFAULT_CONFIG);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  // The offer (lib/campaignOffer.js): pitch.offering_name / offer_text plus announce_to_leads / offer_valid_until.
+  const [offer, setOffer] = useState(offerFormFrom(null));
+  const [problems, setProblems] = useState(null);
 
   useEffect(() => {
     if (!open) return;
@@ -67,6 +74,7 @@ export default function CampaignLaunchDialog({ open, onOpenChange, source, assis
   const reset = () => {
     setName(''); setDescription(''); setNotes(''); setStartMode('now'); setStartDate(''); setStartTime('');
     setCallingWindow(null); setConfig(withRetryDefaults(DEFAULT_CONFIG, check.retryDefaults)); setTimeZone(browserTimeZone());
+    setOffer(offerFormFrom(null)); setProblems(null);
     setError(''); setTried(false);
   };
 
@@ -76,6 +84,8 @@ export default function CampaignLaunchDialog({ open, onOpenChange, source, assis
       (!name.trim() && 'Give the campaign a name.') ||
       (!description.trim() && 'Say what the campaign is about.') ||
       (!assistantId && 'Pick the assistant that will make the calls.') ||
+      (offer.announce && (!offer.offering_name.trim() || !offer.offer_text.trim())
+        && `${OFFER_TOGGLE_LABEL} is on: fill in the offer name and offer details, or turn it off.`) ||
       validateSettings({ window: callingWindow, config, timeZone });
     if (problem) { setError(problem); return; }
 
@@ -91,7 +101,10 @@ export default function CampaignLaunchDialog({ open, onOpenChange, source, assis
       if (new Date(scheduledAt) <= new Date()) { setError('The start time must be in the future.'); return; }
     }
 
+    const pitch = offerPitchFields(offer);
     const body = {
+      ...((pitch.offering_name || pitch.offer_text) ? { pitch } : {}),
+      ...offerCampaignFields(offer),
       name: name.trim(),
       description: description.trim(),
       notes: notes.trim() || null,
@@ -108,6 +121,7 @@ export default function CampaignLaunchDialog({ open, onOpenChange, source, assis
 
     setSubmitting(true);
     setError('');
+    setProblems(null);
     try {
       const res = await createVoiceCampaign(body);
       const campaign = res.data;
@@ -121,8 +135,10 @@ export default function CampaignLaunchDialog({ open, onOpenChange, source, assis
       onOpenChange(false);
       onCreated?.(campaign);
     } catch (e) {
-      const message = apiErrorMessage(e, 'Failed to create campaign');
-      setError(message);
+      const refused = preflightProblems(e);
+      const message = refused ? refused.title : offerSaveError(e, apiErrorMessage(e, 'Failed to create campaign'));
+      setProblems(refused);
+      setError(refused ? '' : message);
       toast.error(message);
     } finally {
       setSubmitting(false);
@@ -174,6 +190,11 @@ export default function CampaignLaunchDialog({ open, onOpenChange, source, assis
             </div>
           </Section>
 
+          <Section title="Offer">
+            <CampaignOfferFields value={offer} onChange={setOffer} assistantId={assistantId} name={name.trim()}
+              timeZone={timeZone.trim()} idPrefix="launch-offer" />
+          </Section>
+
           <Section title="When">
             <div className="grid grid-cols-2 gap-2">
               {[
@@ -219,6 +240,7 @@ export default function CampaignLaunchDialog({ open, onOpenChange, source, assis
           </Section>
 
           <ScheduleWarnings check={check} />
+          <PreflightProblems problems={problems} />
           {error && <p role="alert" className="text-sm text-[#b42318]">{error}</p>}
         </div>
 

@@ -116,7 +116,7 @@ describe('Editing a lead', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Edit/ }));
     expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
     fireEvent.change(screen.getByLabelText('Budget max'), { target: { value: 'lots' } });
-    expect(screen.getByText('Budgets must be numbers.')).toBeInTheDocument();
+    expect(screen.getByText('Number fields must be numbers.')).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Budget max'), { target: { value: '1200000' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Prospect not found');

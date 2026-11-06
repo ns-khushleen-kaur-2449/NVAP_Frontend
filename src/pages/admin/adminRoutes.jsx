@@ -10,6 +10,7 @@ import TenantsAdminPage from '@/pages/admin/Tenants';
 import PlatformUsersPage from '@/pages/admin/PlatformUsers';
 import TenantUsersPage from '@/pages/admin/Users';
 import AdminAuditLogsPage from '@/pages/admin/AuditLogs';
+import SecurityPage from '@/pages/admin/Security';
 import { TenantIntegrationsOverview, TenantZohoIntegration } from '@/pages/admin/Integrations';
 
 /**
@@ -31,6 +32,7 @@ export function adminRoutes() {
       <Route path="agents/import" element={<AgentImportPage />} />
       <Route path="agents/:agentId" element={<AgentDetailPage />} />
       <Route path="tools" element={<AdminToolsPage />} />
+      <Route path="security" element={<SecurityPage />} />
       <Route path="*" element={<Navigate to="/admin/overview" replace />} />
     </Route>
   );

@@ -32,7 +32,7 @@ describe('selection across result pages', () => {
     ({ selection, added } = addProspects(selection, page2));
     expect(added).toBe(0); // a is already there, d was toggled on
     expect(selectedIds(selection)).toEqual(['a', 'b', 'd']);
-    expect(selection.get('a')).toEqual({ id: 'a', name: 'Lead a', phone: '+919800000001' });
+    expect(selection.get('a')).toEqual(expect.objectContaining({ id: 'a', name: 'Lead a', phone: '+919800000001' }));
   });
 
   it('toggles a prospect off and removes a page', () => {

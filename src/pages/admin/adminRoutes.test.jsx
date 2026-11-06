@@ -73,7 +73,7 @@ describe('AdminLayout', () => {
   test('the sidebar has Overview, Tenants, Users, Audit Logs, Agents and Tools, and Tools shows the tools manager', () => {
     renderAdmin('/admin/tools', USERS.super_admin);
     const nav = screen.getByRole('navigation', { name: 'Platform admin' });
-    expect(within(nav).getAllByRole('link').map((link) => link.textContent)).toEqual(['Overview', 'Tenants', 'Platform users', 'Tenant users', 'CRM integrations', 'Audit Logs', 'Agents', 'Tools']);
+    expect(within(nav).getAllByRole('link').map((link) => link.textContent)).toEqual(['Overview', 'Tenants', 'Platform users', 'Tenant users', 'CRM integrations', 'Audit Logs', 'Agents', 'Tools', 'Security']);
     expect(screen.getByText('tools-manager')).toBeInTheDocument();
     expect(screen.getAllByRole('link', { name: /back to app/i })[0]).toHaveAttribute('href', '/dashboard');
   });

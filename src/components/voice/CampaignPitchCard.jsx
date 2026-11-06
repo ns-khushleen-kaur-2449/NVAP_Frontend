@@ -10,9 +10,14 @@ import { updateVoiceCampaign } from '@/lib/api';
 import { canManageCampaigns, canOperate } from '@/lib/rbac';
 import { toast } from 'sonner';
 import { apiErrorMessage } from './CampaignSettingsFields';
+import CampaignOfferFields from './CampaignOfferFields';
+import {
+  OFFER_TOGGLE_LABEL, formatOfferDate, offerCampaignFields, offerFormFrom, offerSaveError,
+} from '@/lib/campaignOffer';
 
 // campaigns.pitch (app/schemas/requests/campaign_pitch.py): what this call list is about. It reaches
-// each call as the call reason and campaign brief; no field may name a price.
+// each call as the call reason and campaign brief; no field may name a price except offer_text, which reaches
+// calls only as the campaign offer (<CampaignOfferFields>, with announce_to_leads / offer_valid_until).
 export const OBJECTIVES = [
   { value: 'demo', label: 'Book a demo' },
   { value: 'sell', label: 'Sell' },
@@ -93,12 +98,15 @@ export function pitchFrom(form, previous) {
 
 function PitchDialog({ campaign, open, onOpenChange, needsReason, onSaved }) {
   const [form, setForm] = useState(formFrom(campaign?.pitch));
+  // The offer's own editor (shared with the launch dialog): it owns offering_name / offer_text in the pitch.
+  const [offer, setOffer] = useState(offerFormFrom(campaign));
   const [reason, setReason] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   useEffect(() => {
     if (!open) return;
     setForm(formFrom(campaign?.pitch));
+    setOffer(offerFormFrom(campaign));
     setReason('');
     setError('');
   }, [open, campaign]);
@@ -112,12 +120,14 @@ function PitchDialog({ campaign, open, onOpenChange, needsReason, onSaved }) {
     setSaving(true);
     setError('');
     try {
-      const res = await updateVoiceCampaign(campaign.id, { pitch, ...(needsReason ? { reason: reason.trim() } : {}) });
+      // Clearing the pitch clears its offer too, so the toggle goes off with it.
+      const offerFields = pitch ? offerCampaignFields(offer) : { announce_to_leads: false };
+      const res = await updateVoiceCampaign(campaign.id, { pitch, ...offerFields, ...(needsReason ? { reason: reason.trim() } : {}) });
       toast.success(pitch ? 'Pitch saved' : 'Pitch cleared');
       onSaved?.(res.data);
       onOpenChange(false);
     } catch (e) {
-      setError(apiErrorMessage(e, 'Failed to save the pitch'));
+      setError(offerSaveError(e, apiErrorMessage(e, 'Failed to save the pitch')));
     } finally {
       setSaving(false);
     }
@@ -156,14 +166,14 @@ function PitchDialog({ campaign, open, onOpenChange, needsReason, onSaved }) {
           {form.objective === 'custom' && field('Describe the objective', 'objective_text', { maxLength: 200 })}
           {field('Why we are calling (one spoken sentence)', 'call_reason', { maxLength: 300,
             placeholder: "e.g. I'm calling about your enquiry for 3BHK flats in Solan." })}
-          <div className="grid grid-cols-2 gap-3">
-            {field('What we offer', 'offering_name', { maxLength: 200, placeholder: 'e.g. Nexon EV' })}
-            {field('In one line', 'offering_one_liner', { maxLength: 300 })}
-          </div>
+          {field('What we offer, in one line', 'offering_one_liner', { maxLength: 300 })}
           {field('Who it is for', 'audience', { maxLength: 300 })}
           {field('Benefits (one per line, up to 5)', 'benefits', { rows: 3 })}
           {field('Proof points (one per line, up to 5)', 'proof_points', { rows: 2 })}
-          {field('Current offer', 'offer_text', { maxLength: 300, placeholder: 'e.g. Free first service this month' })}
+          <div className="rounded-lg border border-border p-3">
+            <CampaignOfferFields value={offer} onChange={setOffer} campaignId={campaign?.id}
+              assistantId={campaign?.assistant_id} name={campaign?.name} timeZone={campaign?.timezone} idPrefix="pitch-offer" />
+          </div>
           {field('Questions to ask before pitching (one per line, up to 3)', 'discovery_questions', { rows: 2 })}
           <details className="rounded-lg border border-border px-3 py-2">
             <summary className="cursor-pointer text-xs font-medium text-muted-foreground">Project (optional, for property launches)</summary>
@@ -214,7 +224,8 @@ function PitchDialog({ campaign, open, onOpenChange, needsReason, onSaved }) {
             <Button variant="ghost" onClick={() => submit(null)} disabled={saving}>Clear pitch</Button>
           )}
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>Cancel</Button>
-          <Button onClick={() => submit(pitchFrom(form, campaign?.pitch))} disabled={saving}>Save pitch</Button>
+          <Button onClick={() => submit(pitchFrom({ ...form, offering_name: offer.offering_name, offer_text: offer.offer_text },
+            campaign?.pitch))} disabled={saving}>Save pitch</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -231,12 +242,19 @@ export default function CampaignPitchCard({ campaign, user, onSaved }) {
     ['Why we call', pitch.call_reason],
     ['Offering', [pitch.offering_name, pitch.offering_one_liner].filter(Boolean).join(': ')],
     ['Project', pitch.project && [pitch.project.name, pitch.project.location].filter(Boolean).join(', ')],
+    ['Offer details', pitch.offer_text],
     ['Next step', pitch.cta],
     ['Also covers', [pitch.benefits?.length && `${pitch.benefits.length} benefit${pitch.benefits.length === 1 ? '' : 's'}`,
       pitch.objections?.length && `${pitch.objections.length} objection${pitch.objections.length === 1 ? '' : 's'}`,
       pitch.discovery_questions?.length && `${pitch.discovery_questions.length} question${pitch.discovery_questions.length === 1 ? '' : 's'}`]
       .filter(Boolean).join(', ')],
   ].filter(([, value]) => value) : [];
+  // The offer's state is always shown, to everyone who can see the campaign (read-only unless they may edit).
+  const offerRows = [
+    [OFFER_TOGGLE_LABEL, campaign?.announce_to_leads ? 'On' : 'Off'],
+    ...(campaign?.announce_to_leads || campaign?.offer_valid_until
+      ? [['Offer valid until', formatOfferDate(campaign?.offer_valid_until) || 'No end date']] : []),
+  ];
 
   return (
     <section className="ops-card space-y-3 p-4 lg:col-span-3" aria-labelledby="campaign-pitch">
@@ -259,6 +277,14 @@ export default function CampaignPitchCard({ campaign, user, onSaved }) {
       ) : (
         <p className="text-sm text-muted-foreground">No pitch: calls use the assistant's own default reason for calling.</p>
       )}
+      <dl className="grid grid-cols-[auto,1fr] gap-x-4 gap-y-1.5 text-sm" aria-label="Campaign offer">
+        {offerRows.map(([label, value]) => (
+          <div key={label} className="contents">
+            <dt className="text-muted-foreground">{label}</dt>
+            <dd>{value}</dd>
+          </div>
+        ))}
+      </dl>
       {note && <p className="text-xs text-muted-foreground">{note}</p>}
       {canEdit && needsReason && <p className="text-xs text-muted-foreground">Changing it while the campaign runs needs a reason.</p>}
       {canEdit && <PitchDialog campaign={campaign} open={open} onOpenChange={setOpen} needsReason={needsReason} onSaved={onSaved} />}

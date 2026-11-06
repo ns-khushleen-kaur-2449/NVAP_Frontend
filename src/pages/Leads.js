@@ -24,6 +24,7 @@ import LeadScorePanel from '@/components/leads/LeadScorePanel';
 import TemperatureChip from '@/components/leads/TemperatureChip';
 import EngagementBadge from '@/components/leads/EngagementBadge';
 import ScoreFreshnessChip from '@/components/leads/ScoreFreshnessChip';
+import { leadDetailEntries } from '@/lib/leadDetails';
 
 // The Score column: the number with its temperature, assessment and freshness, each from the
 // backend's summaries (no cut-offs here).  A stale score keeps its number, marked OUT OF DATE.
@@ -393,6 +394,14 @@ export default function LeadsPage() {
                         <div><span className="text-muted-foreground">Category:</span> <span>{[selectedLead.category, selectedLead.sub_category].filter(Boolean).join(' / ')}</span></div>
                       )}
                       {selectedLead.source && <div><span className="text-muted-foreground">Source:</span> <span>{selectedLead.source}</span></div>}
+                      {[selectedLead.city, selectedLead.state, selectedLead.country].some(Boolean) && (
+                        <div><span className="text-muted-foreground">Location:</span> <span>{[selectedLead.city, selectedLead.state, selectedLead.country].filter(Boolean).join(', ')}</span></div>
+                      )}
+                      {selectedLead.job_title && <div><span className="text-muted-foreground">Job title:</span> <span>{selectedLead.job_title}</span></div>}
+                      {/* Every other detail the lead has (imported columns, CRM extras), by its own name. */}
+                      {leadDetailEntries(selectedLead, { except: ['budget_min', 'budget_max', 'timeline', 'project', 'category', 'sub_category'] }).map((d) => (
+                        <div key={d.key} className="min-w-0 break-words"><span className="text-muted-foreground">{d.label}:</span> <span dir="auto">{d.value}</span></div>
+                      ))}
                     </div>
                 </LeadScorePanel>
 

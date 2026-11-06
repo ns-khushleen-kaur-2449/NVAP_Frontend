@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { STEP_UP_REQUIRED, requestStepUp } from '@/lib/stepUp';
 
 /**
  * All domains are served by the unified backend at REACT_APP_BACKEND_URL.
@@ -46,16 +47,21 @@ const _addAuthInterceptor = (instance) => {
     const isLogin = config.url?.includes('/auth/login');
     if (!isLogin && isValidToken(token)) {
       config.headers.Authorization = `Bearer ${token}`;
-    } else if (config.headers.Authorization) {
+    } else if (config.headers.Authorization && (isLogin || !config._explicitToken)) {
       delete config.headers.Authorization;
     }
     return config;
   });
   instance.interceptors.response.use(
     (response) => response,
-    (error) => {
-      // A 403 the user must act on (temporary password, suspended organisation): AuthContext shows the screen.
+    async (error) => {
       const action = error.response?.headers?.['x-auth-required-action'];
+      // A high-risk action without a fresh step-up: ask for a code, then send the same request once more.
+      if (error.response?.status === 403 && action === STEP_UP_REQUIRED && error.config && !error.config._steppedUp) {
+        if (await requestStepUp()) return instance({ ...error.config, _steppedUp: true });
+        return Promise.reject(error);
+      }
+      // A 403 the user must act on (temporary password, suspended organisation, MFA setup): AuthContext shows the screen.
       if (error.response?.status === 403 && action) {
         window.dispatchEvent(new CustomEvent('auth:required-action', { detail: action }));
       }
@@ -80,6 +86,22 @@ export const authRegister = (data) => authApi.post('/api/auth/register', data);
 export const getMe = () => authApi.get('/api/auth/me');
 export const changePassword = (currentPassword, newPassword) =>
   authApi.post('/api/auth/change-password', { current_password: currentPassword, new_password: newPassword });
+// Super Admin two-factor sign-in, setup and step-up (app/features/auth/mfa.py).
+export const authLoginMfa = (mfaToken, { code, recoveryCode } = {}) => authApi.post('/api/auth/login/mfa',
+  recoveryCode ? { mfa_token: mfaToken, recovery_code: recoveryCode } : { mfa_token: mfaToken, code });
+// Sent with the token being signed out explicitly: the stored copy is removed at the same moment.
+export const authLogout = (token) => authApi.post('/api/auth/logout', null,
+  { headers: { Authorization: `Bearer ${token}` }, _explicitToken: true });
+export const getMfaStatus = () => authApi.get('/api/auth/mfa');
+export const startMfaEnrollment = () => authApi.post('/api/auth/mfa/enroll');
+export const verifyMfaEnrollment = (code) => authApi.post('/api/auth/mfa/enroll/verify', { code });
+export const regenerateRecoveryCodes = () => authApi.post('/api/auth/mfa/recovery-codes');
+export const verifyStepUp = (code) => authApi.post('/api/auth/step-up', { code });
+export const listOwnSessions = () => api.get('/api/admin/security/sessions');
+export const listUserSessions = (userId) => api.get(`/api/admin/users/${userId}/sessions`);
+export const revokeSession = (sessionId, reason) => api.post(`/api/admin/security/sessions/${sessionId}/revoke`,
+  reason ? { reason } : {});
+export const resetUserMfa = (userId, reason) => api.post(`/api/admin/users/${userId}/mfa/reset`, { reason });
 
 // ── Admin: users, teams, tenants, role dashboard ──
 export const listAdminUsers = (params) => api.get('/api/users', { params });
@@ -132,12 +154,32 @@ export const getProspect = (id) => api.get(`/api/v1/prospects/${id}`);
 export const createProspect = (data, params) => api.post('/api/v1/prospects', data, { params });
 export const updateProspect = (id, data) => api.patch(`/api/v1/prospects/${id}`, data);
 export const deleteProspect = (id) => api.delete(`/api/v1/prospects/${id}`);
+// Import leads from a CSV (features/prospects/csv_import.py): read first, then import with { column: use }.
+export const previewLeadImport = (file) => {
+  const form = new FormData();
+  form.append('file', file);
+  return api.post('/api/v1/prospects/import/preview', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+};
+// `stageValues` (optional): { value in the file: STAGE } for the column mapped to "stage".
+export const importLeads = (file, mapping, stageValues) => {
+  const form = new FormData();
+  form.append('file', file);
+  form.append('mapping', JSON.stringify(mapping));
+  if (stageValues) form.append('stage_values', JSON.stringify(stageValues));
+  return api.post('/api/v1/prospects/import', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+};
 export const getLeadScore = (id) => api.get(`/api/lead-scores/${id}`);
 export const getLeadScoreHistory = (id, params) => api.get(`/api/lead-scores/${id}/history`, { params });
 export const calculateLeadScore = (id) => api.post(`/api/lead-scores/${id}`);
 export const changeProspectStage = (id, stage, reason) =>
   api.post(`/api/v1/prospects/${id}/stage`, { stage: String(stage).toUpperCase(), reason });
 export const getProspectStageEvents = (id) => api.get(`/api/v1/prospects/${id}/stage-events`);
+// Sharing prospects with people on your team (Tenant Admin: Managers and Sales Reps; Manager: own team).
+export const getShareTargets = () => api.get('/api/v1/prospects/share-targets');
+export const shareProspects = (prospectIds, userIds) =>
+  api.post('/api/v1/prospects/shares', { prospect_ids: prospectIds, user_ids: userIds });
+export const getProspectShares = (id) => api.get(`/api/v1/prospects/${id}/shares`);
+export const revokeProspectShare = (id, userId) => api.delete(`/api/v1/prospects/${id}/shares/${userId}`);
 export const createLeadEvent = (data) => api.post('/api/lead-events', data);
 
 // ── Properties ──
@@ -270,6 +312,8 @@ export const summarizeCall = (id) => api.post(`/api/agents/call-summarize/${id}`
 //         calling_config, start: 'now'|'scheduled'|'draft', scheduled_at,
 //         prospect_ids | contacts, source_filename }
 export const createVoiceCampaign = (data) => api.post('/api/campaigns', data);
+// "What the agent will tell leads": the form's unsaved offer values (voice_campaigns/offer.py; nothing is saved).
+export const previewCampaignOffer = (data) => api.post('/api/campaigns/offer-preview', data);
 // Parses a CSV/XLSX without storing anything; returns { filename, total, skipped_rows, contacts }.
 export const previewCampaignCsv = (file) => {
   const formData = new FormData();
@@ -405,10 +449,20 @@ export const getCatalogSettingsHistory = (params) => api.get('/api/v1/catalog/se
 export const getCatalogPricePreview = (params) => api.get('/api/v1/catalog/settings/price-preview', { params });
 export const getCatalogPresets = () => api.get('/api/v1/catalog/presets');
 export const applyCatalogPreset = (name) => api.post(`/api/v1/catalog/presets/${name}/apply`);
-export const importCatalog = (file) => {
+// A CSV import template for a preset: its columns plus example products (anyone who views the Catalog).
+export const downloadCatalogPresetTemplate = (name) =>
+  api.get(`/api/v1/catalog/presets/${name}/template`, { responseType: 'blob' });
+// `mapping` (optional): { column: use } from the column-matching step (catalog/import_mapping.py).
+export const importCatalog = (file, mapping) => {
   const form = new FormData();
   form.append('file', file);
+  if (mapping) form.append('mapping', JSON.stringify(mapping));
   return api.post('/api/v1/catalog/import', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+};
+export const previewCatalogImport = (file) => {
+  const form = new FormData();
+  form.append('file', file);
+  return api.post('/api/v1/catalog/import/preview', form, { headers: { 'Content-Type': 'multipart/form-data' } });
 };
 export const addCatalogItem = (data) => api.post('/api/v1/catalog/items', data);
 export const updateCatalogItem = (id, data) => api.patch(`/api/v1/catalog/items/${id}`, data);

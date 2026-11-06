@@ -419,22 +419,16 @@ describe('Catalog settings', () => {
     expect(sheet.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
   });
 
-  it('lets a Super Admin pick the tenant and change its settings', async () => {
-    api.listTenants.mockResolvedValue({ data: { tenants: [{ tenant_id: 't-9', name: 'Raymond' }, { tenant_id: 't-8', name: 'Apex' }] } });
+  it('has no tenant picker: a Tenant Admin changes their own settings', async () => {
     api.updateCatalogSettings.mockResolvedValue({ data: { ...current, agents: agents({ republish_scheduled: false }) } });
-    const sheet = await open(USERS.super_admin);
-    expect(screen.queryByTestId('catalog-row-i-1')).not.toBeInTheDocument();
-    expect(api.getCatalogTable).not.toHaveBeenCalled(); // the table needs a tenant of one's own
-    await waitFor(() => expect(api.getCatalogSettings).toHaveBeenCalledWith({ tenant_id: 't-9' }));
-    fireEvent.change(sheet.getByLabelText('Tenant'), { target: { value: 't-8' } });
-    await waitFor(() => expect(api.getCatalogSettings).toHaveBeenCalledWith({ tenant_id: 't-8' }));
+    const sheet = await open(USERS.tenant_admin);
+    expect(sheet.queryByLabelText('Tenant')).not.toBeInTheDocument();
     fireEvent.change(await sheet.findByLabelText('Currency'), { target: { value: 'USD' } });
     fireEvent.click(sheet.getByRole('button', { name: 'Save' }));
     const confirm = within(await screen.findByRole('dialog', { name: 'Save catalog settings' }));
     fireEvent.change(confirm.getByLabelText(/Reason/), { target: { value: 'US branch' } });
     fireEvent.click(confirm.getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(api.updateCatalogSettings).toHaveBeenCalledWith(
-      { currency: 'USD', reason: 'US branch' }, { tenant_id: 't-8' }));
+    await waitFor(() => expect(api.updateCatalogSettings).toHaveBeenCalledWith({ currency: 'USD', reason: 'US branch' }, undefined));
   });
 
   it('gives a Sales Rep no settings', async () => {

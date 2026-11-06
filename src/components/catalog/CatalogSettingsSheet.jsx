@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import ReasonDialog from '@/components/ops/ReasonDialog';
-import TenantPicker from '@/components/ops/TenantPicker';
 import { getCatalogPricePreview, getCatalogSettings, getCatalogSettingsHistory, updateCatalogSettings } from '@/lib/api';
 import {
   PLAIN_WORD_LANGUAGE, WORD_LABELS, percent, refusalText, wordIn, wordLanguages, wordText, withWord,
@@ -115,12 +114,10 @@ const selectClass = 'block h-9 w-full rounded-md border border-border bg-backgro
 
 /**
  * Catalog settings (GET/PATCH /api/v1/catalog/settings, history from /settings/history). Tenant Admins (and a
- * Super Admin, who picks the tenant) change them with a reason; Managers only look.
+ * change them with a reason; Managers only look.
  */
 export default function CatalogSettingsSheet({ open, onOpenChange, user, onSaved }) {
-  const superAdmin = user?.role === 'super_admin';
-  const editable = superAdmin || user?.role === 'tenant_admin';
-  const [tenantId, setTenantId] = useState('');
+  const editable = user?.role === 'tenant_admin';
   const [settings, setSettings] = useState(null);
   const [form, setForm] = useState(null);
   const [language, setLanguage] = useState(PLAIN_WORD_LANGUAGE);
@@ -130,8 +127,8 @@ export default function CatalogSettingsSheet({ open, onOpenChange, user, onSaved
   const [confirming, setConfirming] = useState(false);
   const [view, setView] = useState('settings');
   const [history, setHistory] = useState(null);
-  const params = useMemo(() => (superAdmin ? { tenant_id: tenantId } : undefined), [superAdmin, tenantId]);
-  const ready = !superAdmin || Boolean(tenantId);
+  const params = undefined;
+  const ready = true;
 
   const load = useCallback(async () => {
     if (!ready) return;
@@ -209,7 +206,6 @@ export default function CatalogSettingsSheet({ open, onOpenChange, user, onSaved
           <SheetDescription>How your agent talks about prices, budgets and your products.</SheetDescription>
         </SheetHeader>
         <div className="mt-4 space-y-5">
-          {superAdmin && <TenantPicker value={tenantId} onChange={setTenantId} />}
           <div className="flex gap-1">{tab('settings', 'Settings')}{tab('history', 'History')}</div>
           {loadError && <p role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{loadError}</p>}
 

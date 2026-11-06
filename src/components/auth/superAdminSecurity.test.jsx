@@ -30,10 +30,10 @@ describe('step-up', () => {
     };
     const ask = jest.fn().mockResolvedValue(true);
     const unregister = setStepUpHandler(ask);
-    const response = await http.post('/api/tenants/t-1/suspend', { reason: 'x' });
+    const response = await http.post('/api/admin/tenants/t-1/suspend', { reason: 'x' });
     unregister();
     expect(ask).toHaveBeenCalledTimes(1);
-    expect(seen).toEqual(['/api/tenants/t-1/suspend', '/api/tenants/t-1/suspend']);
+    expect(seen).toEqual(['/api/admin/tenants/t-1/suspend', '/api/admin/tenants/t-1/suspend']);
     expect(response.data).toEqual({ ok: true });
   });
 

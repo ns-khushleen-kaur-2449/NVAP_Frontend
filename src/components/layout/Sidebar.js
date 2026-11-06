@@ -262,13 +262,6 @@ export function Sidebar() {
             </Link>
           )}
           */}
-          {/* The Super Admin's platform control area (/admin: overview, tools). */}
-          {canUseAdmin(user) && (
-            <NavLink to="/admin" aria-label={collapsed ? 'Platform admin' : undefined} className={({ isActive }) => itemClass(isActive, collapsed)}>
-              <ShieldCheck className="h-4 w-4 shrink-0 text-[var(--mist)] group-hover:text-[var(--pine)]" />
-              {!collapsed && <span>Platform admin</span>}
-            </NavLink>
-          )}
           {/* Users, Teams and Tenants open from Settings → General → Administration (lib/adminNav.js), not from here. */}
           <NavLink to="/settings" aria-label={collapsed ? 'Settings' : undefined} className={({ isActive }) => itemClass(isActive, collapsed)}>
             <Settings className="h-4 w-4 shrink-0 text-[var(--mist)] group-hover:text-[var(--pine)]" />

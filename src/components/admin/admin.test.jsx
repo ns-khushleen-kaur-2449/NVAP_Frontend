@@ -13,6 +13,7 @@ import * as api from '@/lib/api';
 import { USERS, authValue, renderWithAuth } from '@/test/renderWithAuth';
 
 jest.mock('@/lib/api', () => ({
+  getUserSeats: jest.fn(() => Promise.resolve({ data: null })),
   authRegister: jest.fn(),
   listTenants: jest.fn(),
   listTeams: jest.fn(),
@@ -218,7 +219,7 @@ describe('Voice Agent nav hides what a Sales Rep is refused', () => {
     expect(visibleTabs(role)).not.toContain('requests');
   });
 
-  test.each(['super_admin', 'tenant_admin', 'manager'])('%s keeps Create Agent, Knowledge Base and CSV', (role) => {
+  test.each(['tenant_admin', 'manager'])('%s keeps Create Agent, Knowledge Base and CSV', (role) => {
     expect(visibleTabs(role)).toEqual(expect.arrayContaining(['create', 'kb', 'csv', 'builder', 'logs', 'single']));
   });
 
@@ -266,3 +267,15 @@ describe('Dashboard widget registry', () => {
     expect(allowedWidgets(can, WIDGETS, {})).toEqual([]);
   });
 });
+
+describe('seats before adding a user', () => {
+  test('shows the count and limit for the chosen role', async () => {
+    api.getUserSeats.mockResolvedValue({ data: { rep: { used: 3, limit: 3, full: true }, manager: { used: 1, limit: null, full: false } } });
+    renderWithAuth(<AddUserDialog open onOpenChange={() => {}} />, { user: USERS.manager });
+    const seat = await screen.findByTestId('seat-count');
+    expect(seat).toHaveTextContent('3 used of 3');
+    expect(seat).toHaveTextContent('No free seats');
+    expect(screen.getByRole('button', { name: /Create user/ })).toBeDisabled();
+  });
+});
+

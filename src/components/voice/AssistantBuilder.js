@@ -297,8 +297,8 @@ function StatusBadge({ status }) {
 export default function AssistantBuilder() {
   const user = useContext(AuthContext)?.user;
   // The backend enforces these (custom_prompt.validate); the UI only hides or locks.
-  const canUseCustomMode = [ROLES.SUPER_ADMIN, ROLES.TENANT_ADMIN].includes(user?.role);
-  const canEditRawPrompt = user?.role === ROLES.SUPER_ADMIN;
+  const canUseCustomMode = user?.role === ROLES.TENANT_ADMIN;
+  const canEditRawPrompt = false;
   const [view, setView] = useState('list'); // 'list' | 'editor'
   const [configs, setConfigs] = useState([]);
   const [assignedAgents, setAssignedAgents] = useState([]);

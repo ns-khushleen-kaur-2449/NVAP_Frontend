@@ -26,7 +26,7 @@ export default function ProspectingPage() {
       state: { fromProspecting: picked },
     })
     : null;
-  const savedSearchesAvailable = role !== 'super_admin';
+  const savedSearchesAvailable = true;
   const canShare = role === 'tenant_admin' || role === 'manager';
 
   const [tab, setTab] = useState('search');

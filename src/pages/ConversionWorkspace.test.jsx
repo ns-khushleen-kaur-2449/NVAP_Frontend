@@ -123,13 +123,10 @@ it('filters to prospects needing attention and sorts by name', async () => {
   expect(names[0]).toMatch(/Diya Khan/);
 });
 
-it('shows the stage counts only when the whole list is loaded', async () => {
+it('has no pipeline strip above the prospect list', async () => {
   renderPage();
-  const pipeline = await screen.findByRole('navigation', { name: 'Prospects by stage' });
-  expect(within(pipeline).getByRole('button', { name: /Qualified\s*1/ })).toBeInTheDocument();
-  api.getConversionWorkspace.mockResolvedValue({ data: { ...workspace([MAYA]).data, total: 200 } });
-  fireEvent.change(screen.getByLabelText('Search prospects'), { target: { value: 'ma' } });
-  await waitFor(() => expect(screen.queryByRole('navigation', { name: 'Prospects by stage' })).not.toBeInTheDocument());
+  await waitFor(() => explorer());
+  expect(screen.queryByRole('navigation', { name: 'Prospects by stage' })).not.toBeInTheDocument();
 });
 
 it('offers no contact actions for a Do Not Contact prospect and says why', async () => {

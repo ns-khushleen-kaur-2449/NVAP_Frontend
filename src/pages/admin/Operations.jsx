@@ -16,6 +16,9 @@ const WORKER_STATES = {
   off: { label: 'Off', className: 'text-muted-foreground' },
 };
 
+const orphanTotal = (orphans) => (orphans.totals
+  ? Object.values(orphans.totals).reduce((sum, count) => sum + count, 0) : orphans.items.length);
+
 const stamp = (value) => (value ? new Date(value).toLocaleString() : '—');
 
 const GROUPS = [
@@ -69,7 +72,8 @@ function Orphans({ orphans, tenants, onDone }) {
 
   return (
     <Card className="card-base p-5 space-y-3" data-testid="orphans">
-      <h2 className="font-semibold">Records with no tenant ({orphans.items.length})</h2>
+      <h2 className="font-semibold">Records with no tenant ({orphanTotal(orphans)})</h2>
+      {orphanTotal(orphans) > orphans.items.length && <p className="text-xs text-muted-foreground">Showing the newest {orphans.items.length}.</p>}
       <p className="text-xs text-muted-foreground">Tenants can't see these. They stay as they are until someone checks and reassigns them.</p>
       {orphans.items.length === 0 ? <p className="text-sm text-muted-foreground">None.</p> : (
         <div className="overflow-auto">
@@ -80,7 +84,7 @@ function Orphans({ orphans, tenants, onDone }) {
                 <tr key={`${item.type}-${item.id}`} className="border-b last:border-0" data-testid={`orphan-${item.id}`}>
                   <td className="p-2 font-medium">{item.label}{item.has_transcript ? ' · transcript' : ''}{item.has_recording ? ' · recording' : ''}</td>
                   <td className="p-2 text-xs break-all">{item.id}</td>
-                  <td className="p-2 text-xs">{item.created_at ? String(item.created_at).slice(0, 19).replace('T', ' ') : '—'}</td>
+                  <td className="p-2 text-xs">{item.created_at ? `${String(item.created_at).slice(0, 19).replace('T', ' ')}${item.type === 'csv_batch' ? '' : ' UTC'}` : '—'}</td>
                   <td className="p-2 text-xs">{item.reason}</td>
                   <td className="p-2 text-right"><Button variant="outline" size="sm" onClick={() => open(item)}>Reassign</Button></td>
                 </tr>
@@ -174,7 +178,10 @@ export default function OperationsPage() {
           </Card>
           {GROUPS.map(({ key, label }) => (
             <Card key={key} className="card-base p-5 space-y-3" data-testid={`group-${key}`}>
-              <h2 className="font-semibold">{label} ({data.failures[key].length})</h2>
+              <h2 className="font-semibold">{label} ({data.failure_counts?.[key] ?? data.failures[key].length})</h2>
+              {(data.failure_counts?.[key] ?? 0) > data.failures[key].length && (
+                <p className="text-xs text-muted-foreground">Showing the newest {data.failures[key].length}.</p>
+              )}
               <Failures items={data.failures[key]} onRetry={setRetrying} />
             </Card>
           ))}

@@ -3,6 +3,7 @@ import { USERS, renderWithAuth } from '@/test/renderWithAuth';
 import ControlsPage from './Controls';
 import OperationsPage from './Operations';
 import UsagePage from './Usage';
+import PeriodPicker, { periodRange } from '@/components/admin/PeriodPicker';
 import AdminOverviewPage from './Overview';
 import HierarchyPage from './Hierarchy';
 import TenantSettingsDialog from '@/components/admin/TenantSettingsDialog';
@@ -150,4 +151,52 @@ test('the hierarchy shows totals, then each tenant opens to its people by name a
   expect(tenant).toHaveTextContent('No sales reps');
   expect(tenant).toHaveTextContent('No manager');
   expect(screen.getByTestId('person-13')).toHaveTextContent('Solo');
+});
+
+const PERIOD = { key: 'last_month', label: 'Last month', start: '2026-10-01T00:00:00Z', end: '2026-11-01T00:00:00Z' };
+
+it('shows the dates of the period and splits attempts from connected calls', async () => {
+  api.getAdminUsage.mockResolvedValue({ data: { period: PERIOD, months: [{ key: '2026-10', label: 'October 2026' }],
+    totals: { calls: 101, connected: 68, minutes: 9, cost: null, calls_with_unknown_cost: 0 }, tenants: [] } });
+  render(<UsagePage />);
+  expect(await screen.findByTestId('usage-period')).toHaveTextContent('Last month: 2026-10-01 to 2026-10-31 (UTC)');
+  expect(screen.getByTestId('usage-connected')).toHaveTextContent('68');
+  expect(screen.getByTestId('usage-calls')).toHaveTextContent('101');
+  expect(api.getAdminUsage).toHaveBeenCalledWith({ period: 'this_month' });
+});
+
+it('says all time has no start date', () => {
+  expect(periodRange({ start: null, end: '2026-11-06T10:00:00Z' })).toBe('Everything up to 2026-11-06 (UTC)');
+});
+
+it('only applies custom dates once both are chosen', () => {
+  const onChange = jest.fn();
+  render(<PeriodPicker value={{ period: 'custom' }} onChange={onChange} />);
+  const apply = screen.getByRole('button', { name: 'Apply' });
+  expect(apply).toBeDisabled();
+  fireEvent.change(screen.getByLabelText('Start date'), { target: { value: '2026-10-01' } });
+  expect(apply).toBeDisabled();
+  fireEvent.change(screen.getByLabelText('End date'), { target: { value: '2026-10-15' } });
+  fireEvent.click(apply);
+  expect(onChange).toHaveBeenCalledWith({ period: 'custom', start: '2026-10-01', end: '2026-10-15' });
+});
+
+it('shows the real failure total when only the newest are listed', async () => {
+  api.getAdminOperations.mockResolvedValue({ data: { workers: [], shown_limit: 1,
+    failure_counts: { webhooks: 250, emails: 0, syncs: 0, jobs: 0 },
+    failures: { webhooks: [{ kind: 'webhook', id: 'w-1', error_code: 'bad_signature' }], emails: [], syncs: [], jobs: [] } } });
+  api.getOrphans.mockResolvedValue({ data: { totals: { call_log: 120, campaign: 3 }, items: [] } });
+  api.listTenants.mockResolvedValue({ data: { tenants: [] } });
+  render(<OperationsPage />);
+  const webhooks = await screen.findByTestId('group-webhooks');
+  expect(webhooks).toHaveTextContent('Failed webhooks (250)');
+  expect(webhooks).toHaveTextContent('Showing the newest 1.');
+  expect(screen.getByTestId('orphans')).toHaveTextContent('Records with no tenant (123)');
+});
+
+it('shows the seat override already in place', async () => {
+  api.getTenantSettings.mockResolvedValue({ data: { status: 'active', dialing_paused: false, limits: { manager_seats: 2 },
+    seat_overrides: { manager: 1, rep: 0 }, features: [], tenant_admins: [] } });
+  render(<TenantSettingsDialog tenant={{ tenant_id: 't-1', name: 'Acme' }} onOpenChange={() => {}} />);
+  expect(await screen.findByTestId('seat-overrides')).toHaveTextContent('Manager +1 · Sales rep +0');
 });

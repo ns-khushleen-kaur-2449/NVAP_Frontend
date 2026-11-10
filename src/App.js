@@ -40,7 +40,8 @@ import ForbiddenPage from "@/pages/Forbidden";
 import UsersAdminPage from "@/pages/admin/Users";
 import TeamsAdminPage from "@/pages/admin/Teams";
 import RequirePermission from "@/components/auth/RequirePermission";
-import { PERMISSIONS, homePath } from "@/lib/rbac";
+import { CAMPAIGN_FEATURES, PERMISSIONS, homePath } from "@/lib/rbac";
+import FeatureRoute from "@/components/auth/FeatureRoute";
 import AuthGate from "@/components/auth/AuthGate";
 import StepUpDialog from "@/components/auth/StepUpDialog";
 import InboxPage from "@/pages/Inbox";
@@ -120,7 +121,7 @@ function AppShell() {
       {/* The SDR Campaigns pages are hidden for now; Voice Campaigns is the campaign page. */}
       <Route path="/campaigns/*" element={<Navigate to="/voice-campaigns" replace />} />
       <Route path="/inbox" element={<InboxPage />} />
-      <Route path="/catalog" element={<CatalogPage />} />
+      <Route path="/catalog" element={<FeatureRoute features={["product_catalog"]} name="Catalog"><CatalogPage /></FeatureRoute>} />
       <Route path="/meetings" element={<MeetingsPage />} />
       {/* Appointments, callbacks, do-not-call and intent review (old /appointments, /callbacks and /do-not-call redirect). */}
       {operationsRoutes()}
@@ -247,8 +248,8 @@ function App() {
           <Route path="/knowledge-base" element={<ExecAppShell><ProtectedRoute roles={ADMINS}><KnowledgeBasePage /></ProtectedRoute></ExecAppShell>} />
 
           <Route path="/voice_agent" element={<SidebarShell><VoiceAgentPage /></SidebarShell>} />
-          <Route path="/voice-campaigns" element={<SidebarShell><VoiceCampaigns /></SidebarShell>} />
-          <Route path="/voice-campaigns/:campaignId" element={<SidebarShell><VoiceCampaignDetail /></SidebarShell>} />
+          <Route path="/voice-campaigns" element={<SidebarShell><FeatureRoute features={CAMPAIGN_FEATURES} name="Voice campaigns"><VoiceCampaigns /></FeatureRoute></SidebarShell>} />
+          <Route path="/voice-campaigns/:campaignId" element={<SidebarShell><FeatureRoute features={CAMPAIGN_FEATURES} name="Voice campaigns"><VoiceCampaignDetail /></FeatureRoute></SidebarShell>} />
           {/* <Route path="/calls" element={<SidebarShell><CallsPage /></SidebarShell>} /> */}
           <Route path="/*" element={<AppShell />} />
         </Routes>

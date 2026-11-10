@@ -14,7 +14,8 @@ const PUBLISH_LABELS = { live: 'Live', paused: 'Paused', draft: 'Draft', not_pub
 
 /** Every agent on the platform, imported or built by a tenant. Metadata only. */
 export default function AgentsPage() {
-  const [data, setData] = useState({ agents: [], total: 0 });
+  // Nothing until the backend answers, so a failed load never shows as "0 agents".
+  const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
   const [search, setSearch] = useState('');
@@ -27,7 +28,10 @@ export default function AgentsPage() {
     const timer = setTimeout(() => { setSearch(query.trim()); setPage(1); }, 300);
     return () => clearTimeout(timer);
   }, [query]);
-  useEffect(() => { listTenants().then((r) => setTenants(r.data.tenants || [])).catch(() => setTenants([])); }, []);
+  useEffect(() => {
+    listTenants().then((r) => setTenants(r.data.tenants || []))
+      .catch(() => { setTenants([]); setError('Could not load the tenant list, so the tenant filter is empty.'); });
+  }, []);
 
   const load = useCallback(() => {
     const params = { page, page_size: PAGE_SIZE };
@@ -40,8 +44,8 @@ export default function AgentsPage() {
   useEffect(() => { load(); }, [load]);
 
   const pick = (setter) => (value) => { setter(value); setPage(1); };
-  const pages = Math.max(1, Math.ceil((data.total || 0) / PAGE_SIZE));
-  const agents = data.agents || [];
+  const pages = Math.max(1, Math.ceil((data?.total || 0) / PAGE_SIZE));
+  const agents = data?.agents || [];
 
   return <div className="max-w-5xl space-y-5">
     <header className="flex items-center justify-between gap-3"><div><h1 className="text-2xl font-semibold flex gap-2 items-center"><Bot className="w-6 h-6" />Agents</h1><p className="text-sm text-muted-foreground">Every agent on the platform: ones you imported and ones tenants built.</p></div><Button asChild><Link to="/admin/agents/import"><Plus className="w-4 h-4 mr-1" />Import</Link></Button></header>
@@ -87,9 +91,9 @@ export default function AgentsPage() {
           </span>
         </Link>
       </Card>
-    )) : <Card className="card-base p-5 text-sm text-muted-foreground">No agents match.</Card>}</div>
+    )) : data ? <Card className="card-base p-5 text-sm text-muted-foreground">No agents match.</Card> : null}</div>
     <div className="flex items-center justify-between text-sm text-muted-foreground">
-      <span>{data.total || 0} agent{data.total === 1 ? '' : 's'}</span>
+      <span>{data ? `${data.total} agent${data.total === 1 ? '' : 's'}` : ''}</span>
       <div className="flex items-center gap-2">
         <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Previous</Button>
         <span>Page {page} of {pages}</span>

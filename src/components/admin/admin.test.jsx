@@ -43,6 +43,32 @@ async function fillBasics(user) {
 }
 
 describe('Add User dialog', () => {
+  test('a taken email is shown beside the email field, with the generic message only', async () => {
+    api.authRegister.mockRejectedValueOnce({ response: { status: 409, data: { detail: 'This email is already in use' } } });
+    const user = userEvent.setup();
+    renderWithAuth(<AddUserDialog open onOpenChange={() => {}} />, { user: USERS.tenant_admin });
+    await user.click(screen.getByTestId('role-select'));
+    await user.click(await screen.findByRole('option', { name: 'Manager' }));
+    await fillBasics(user);
+    await user.click(screen.getByRole('button', { name: /create user/i }));
+    const message = await screen.findByText(/This email is already in use/);
+    expect(message).toHaveAttribute('id', 'add-user-email-error');
+    expect(screen.getByLabelText('Email')).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+  });
+
+  test('another 409, such as a full seat limit, is shown as it is', async () => {
+    api.authRegister.mockRejectedValueOnce({ response: { status: 409, data: { detail: 'No Manager seats left' } } });
+    const user = userEvent.setup();
+    renderWithAuth(<AddUserDialog open onOpenChange={() => {}} />, { user: USERS.tenant_admin });
+    await user.click(screen.getByTestId('role-select'));
+    await user.click(await screen.findByRole('option', { name: 'Manager' }));
+    await fillBasics(user);
+    await user.click(screen.getByRole('button', { name: /create user/i }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('No Manager seats left');
+    expect(screen.getByLabelText('Email')).toHaveAttribute('aria-invalid', 'false');
+  });
+
   test('super admin: only Tenant Admin, and a tenant picker is required', async () => {
     const user = userEvent.setup();
     renderWithAuth(<AddUserDialog open onOpenChange={() => {}} />, { user: USERS.super_admin });

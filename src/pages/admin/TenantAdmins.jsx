@@ -12,7 +12,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
   AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { errorText } from '@/components/admin/userBits';
+import { errorText, EMAIL_IN_USE, EmailInUse } from '@/components/admin/userBits';
 import {
   createTenantAdmin, deactivateTenantAdmin, listTenantAdmins, listTenants, reactivateTenantAdmin,
 } from '@/lib/api';
@@ -80,8 +80,9 @@ function AddTenantAdminDialog({ open, onOpenChange, tenants, defaultTenant, onCr
               <Input value={form.name} onChange={(e) => set({ name: e.target.value })} className="mt-1" />
             </label>
             <label className="block text-xs font-medium text-muted-foreground">Email
-              <Input type="email" value={form.email} onChange={(e) => set({ email: e.target.value })} className="mt-1" />
+              <Input type="email" aria-invalid={error === EMAIL_IN_USE} aria-describedby={error === EMAIL_IN_USE ? 'tenant-admin-email-error' : undefined} value={form.email} onChange={(e) => set({ email: e.target.value })} className="mt-1" />
             </label>
+            <EmailInUse error={error} id="tenant-admin-email-error" />
             <label className="block text-xs font-medium text-muted-foreground">Temporary password
               <div className="flex gap-2 mt-1">
                 <Input value={form.password} onChange={(e) => set({ password: e.target.value })} />
@@ -98,7 +99,7 @@ function AddTenantAdminDialog({ open, onOpenChange, tenants, defaultTenant, onCr
                 </SelectContent>
               </Select>
             </div>
-            {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+            {error && error !== EMAIL_IN_USE && <p role="alert" className="text-sm text-destructive">{error}</p>}
             <DialogFooter>
               <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>Cancel</Button>
               <Button onClick={save} disabled={saving}>{saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}Add Tenant Admin</Button>
@@ -130,7 +131,10 @@ export default function TenantAdminsPage() {
     return () => clearTimeout(timer);
   }, [query]);
 
-  useEffect(() => { listTenants().then((r) => setTenants(r.data.tenants || [])).catch(() => setTenants([])); }, []);
+  useEffect(() => {
+    listTenants().then((r) => setTenants(r.data.tenants || []))
+      .catch((e) => { setTenants([]); toast.error(errorText(e, 'Could not load the tenant list')); });
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);

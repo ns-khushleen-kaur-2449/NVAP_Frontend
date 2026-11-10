@@ -129,7 +129,7 @@ export const getDashboardStats = () => api.get('/api/dashboard/stats');
 export const getSystemHealth = () => api.get('/api/admin/system-health');
 
 // ── Platform control area (/api/admin, Super Admin only) ──
-export const getAdminOverview = () => api.get('/api/admin/overview');
+export const getAdminOverview = (params) => api.get('/api/admin/overview', { params });
 export const listTenantAdmins = (params) => api.get('/api/admin/tenant-admins', { params });
 export const createTenantAdmin = (data) => api.post('/api/admin/tenant-admins', data);
 export const deactivateTenantAdmin = (id) => api.post(`/api/admin/tenant-admins/${id}/deactivate`);
@@ -146,7 +146,7 @@ export const setTenantLimits = (id, data) => api.put(`/api/admin/tenants/${id}/l
 export const setTenantFeature = (id, key, enabled, reason) => api.put(`/api/admin/tenants/${id}/features`, { key, enabled, reason });
 export const getAdminOperations = () => api.get('/api/admin/operations');
 export const retryOperation = (kind, id, reason) => api.post(`/api/admin/operations/${kind}/${id}/retry`, { reason });
-export const getAdminUsage = () => api.get('/api/admin/usage');
+export const getAdminUsage = (params) => api.get('/api/admin/usage', { params });
 export const getUserHierarchy = (params) => api.get('/api/admin/hierarchy', { params });
 export const grantSeatOverride = (id, role, extraSeats, reason) => api.post(`/api/admin/tenants/${id}/seat-override`, { role, extra_seats: extraSeats, reason });
 export const getOrphans = () => api.get('/api/admin/orphans');

@@ -2,6 +2,8 @@ import { useCallback, useState } from 'react';
 import { Link, Navigate, Route, useLocation, useParams } from 'react-router-dom';
 import { getAppointments, getDoNotCallEntries, getIntentReviewQueue } from '@/lib/api';
 import { useAuth } from '@/lib/AuthContext';
+import { featureEnabled } from '@/lib/rbac';
+import { FeatureOff } from '@/components/auth/FeatureRoute';
 import usePolling from '@/hooks/usePolling';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import AppointmentsPage from './Appointments';
@@ -15,13 +17,14 @@ export const OPERATIONS_VIEWERS = ['tenant_admin', 'manager'];
 // One page, one tab per screen; the tab is the path (/operations/<id>), each screen keeps its own ?tab=.
 // `roles` limits a tab (others get 403); Appointments is for everyone (a Sales Rep sees their own meetings).
 export const OPERATIONS_TABS = [
-  { id: 'appointments', label: 'Appointments', roles: null },
+  { id: 'appointments', label: 'Appointments', roles: null, feature: 'appointment_booking' },
   { id: 'callbacks', label: 'Callbacks', roles: OPERATIONS_VIEWERS },
   { id: 'do-not-call', label: 'Do-not-call', roles: OPERATIONS_VIEWERS },
   { id: 'intent-review', label: 'Intent review', roles: OPERATIONS_VIEWERS },
 ];
 
-export const tabsFor = (user) => OPERATIONS_TABS.filter((t) => !t.roles || (user && t.roles.includes(user.role)));
+const roleAllows = (tab, user) => !tab.roles || (user && tab.roles.includes(user.role));
+export const tabsFor = (user) => OPERATIONS_TABS.filter((t) => roleAllows(t, user) && (!t.feature || featureEnabled(user, t.feature)));
 
 const REFRESH_MS = 30000;
 
@@ -59,8 +62,10 @@ export default function OperationsPage() {
   const [counts, refreshCounts] = useWaitingCounts(user);
   const tabs = tabsFor(user);
   const tab = OPERATIONS_TABS.find((t) => t.id === tabId);
+  if (!tabs.length) return <FeatureOff name="Appointments" />;
   if (!tab) return <Navigate to={`/operations/${tabs[0].id}`} replace />;
-  if (!tabs.includes(tab)) return <Navigate to="/403" replace />;
+  // A tab only its feature switch hides moves on to the next one; a tab the role can't have is a 403.
+  if (!tabs.includes(tab)) return <Navigate to={roleAllows(tab, user) ? `/operations/${tabs[0].id}` : '/403'} replace />;
 
   return (
     <div className="ops">

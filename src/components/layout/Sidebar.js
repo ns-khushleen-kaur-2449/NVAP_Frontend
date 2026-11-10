@@ -11,7 +11,9 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useAuth } from '@/lib/AuthContext';
 import ThemeToggle from '@/components/shared/ThemeToggle';
 import BrandLockup, { NetsmartzMark } from '@/components/shared/BrandLockup';
-import { canManageBilling, canUseAdmin, canViewAssistants } from '@/lib/rbac';
+import {
+  canManageBilling, canUseAdmin, canViewAssistants, canViewOperations, featureEnabled, voiceTabEnabled,
+} from '@/lib/rbac';
 
 const APP_NAV = [
   { path: '/dashboard',   label: 'Dashboard',    icon: LayoutDashboard },
@@ -20,14 +22,15 @@ const APP_NAV = [
 // Secondary surfaces, listed below Voice Agent.
 const PENDING_NAV = [
   // Operations: appointments for everyone; callbacks, do-not-call and intent review only for
-  // Tenant Admins, Managers and (view only) Super Admins (pages/Operations.jsx gates each tab).
-  { path: '/operations',  label: 'Operations',   icon: ClipboardCheck },
+  // Tenant Admins and Managers (pages/Operations.jsx gates each tab).
+  { path: '/operations',  label: 'Operations',   icon: ClipboardCheck,
+    requires: (user) => canViewOperations(user) || featureEnabled(user, 'appointment_booking') },
   { path: '/prospecting', label: 'Prospecting',  icon: Users },
   { path: '/conversion',  label: 'Conversion',   icon: GitCompareArrows },
   // Hidden from the menu for now; the /strategist page and route still work.
   // { path: '/strategist',  label: 'AI Strategist', icon: Sparkles },
   { path: '/inbox',       label: 'Inbox',        icon: InboxIcon },
-  { path: '/catalog',     label: 'Catalog',      icon: Package },
+  { path: '/catalog',     label: 'Catalog',      icon: Package, requires: (user) => featureEnabled(user, 'product_catalog') },
   { path: '/meetings',    label: 'Meetings',     icon: CalendarClock },
   { path: '/reports',     label: 'Reports & Analytics', icon: BarChart3 },
 ];
@@ -151,7 +154,7 @@ export function Sidebar() {
 
             {(voiceOpen || collapsed) && (
               <div className={collapsed ? '' : 'pl-4 flex flex-col gap-0.5'}>
-                {VOICE_TABS.filter((tab) => !tab.requires || tab.requires(user)).map((tab) => {
+                {VOICE_TABS.filter((tab) => (!tab.requires || tab.requires(user)) && voiceTabEnabled(user, tab.id)).map((tab) => {
                   const isActive = tab.path
                     ? location.pathname.startsWith(tab.path)
                     : onVoiceAgent && currentTab === tab.id;

@@ -19,6 +19,7 @@ export default function ControlsPage() {
   const [tenantId, setTenantId] = useState('');
   const [action, setAction] = useState(null);
   const [error, setError] = useState('');
+  const [tenantsError, setTenantsError] = useState('');
 
   const load = useCallback(async () => {
     setError('');
@@ -28,7 +29,8 @@ export default function ControlsPage() {
 
   useEffect(() => {
     load();
-    listTenants().then((r) => setTenants(r.data.tenants || [])).catch(() => setTenants([]));
+    listTenants().then((r) => { setTenants(r.data.tenants || []); setTenantsError(''); })
+      .catch((e) => { setTenants([]); setTenantsError(errorText(e, 'Could not load the tenants, so none can be chosen')); });
   }, [load]);
 
   const confirm = async (reason) => {
@@ -76,6 +78,7 @@ export default function ControlsPage() {
 
       <Card className="card-base p-5 space-y-3">
         <h2 className="font-semibold">One tenant</h2>
+        {tenantsError && <p role="alert" className="text-sm text-destructive">{tenantsError}</p>}
         <div className="flex flex-wrap gap-2">
           <Select value={tenantId} onValueChange={setTenantId}>
             <SelectTrigger className="w-[260px]" aria-label="Tenant to pause"><SelectValue placeholder="Choose a tenant" /></SelectTrigger>

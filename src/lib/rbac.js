@@ -212,3 +212,24 @@ export function canEditLeadScoring(actor) {
   return actor?.role === ROLES.TENANT_ADMIN;
 }
 
+// Tenant feature switches, from /api/auth/me. Display only: the backend refuses a switched-off feature.
+// A missing key means on, like the backend, so a cached user from before this field loses nothing.
+export function featureEnabled(actor, key) {
+  return actor?.features?.[key] !== false;
+}
+
+export function featuresEnabled(actor, keys = []) {
+  return keys.every((key) => featureEnabled(actor, key));
+}
+
+// Campaign screens list assistants too, so they need both switches.
+const CAMPAIGN_SCREEN = Object.freeze(['voice_agent', 'campaigns']);
+export const CAMPAIGN_FEATURES = CAMPAIGN_SCREEN;
+export const VOICE_TAB_FEATURES = Object.freeze({
+  builder: CAMPAIGN_SCREEN, csv: CAMPAIGN_SCREEN, campaigns: CAMPAIGN_SCREEN,
+  create: ['voice_agent'], kb: ['voice_agent'], single: ['voice_agent'],
+});
+
+export function voiceTabEnabled(actor, tab) {
+  return featuresEnabled(actor, VOICE_TAB_FEATURES[tab]);
+}

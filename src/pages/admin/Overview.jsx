@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Activity, AlertTriangle, Building2, CheckCircle2, LayoutDashboard, PauseCircle, RefreshCw } from 'lucide-react';
 import { Card } from '@/components/ui/card';
@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { errorText } from '@/components/admin/userBits';
 import { getAdminOverview } from '@/lib/api';
+import PeriodPicker, { DEFAULT_PERIOD, periodRange } from '@/components/admin/PeriodPicker';
 
 const TILES = [
   { key: 'total', label: 'Tenants', icon: Building2 },
@@ -14,7 +15,8 @@ const TILES = [
 ];
 
 const USAGE = [
-  { key: 'calls', label: 'Calls' },
+  { key: 'calls', label: 'Dial attempts' },
+  { key: 'connected', label: 'Connected' },
   { key: 'minutes', label: 'Minutes' },
   { key: 'bookings', label: 'Bookings' },
   { key: 'cost', label: 'Provider cost', format: (value) => (value === null || value === undefined ? 'Unknown' : `$${value.toFixed(2)}`) },
@@ -26,7 +28,10 @@ const WORKER_STATES = {
   off: { label: 'Off', className: 'text-muted-foreground' },
 };
 
-const ALERT_LINKS = { platform_paused: '/admin/controls', tenants_paused: '/admin/controls', limit_warnings: '/admin/usage' };
+// Every other code (workers_late, failed_*) belongs on Operations.
+const ALERT_LINKS = {
+  platform_paused: '/admin/controls', tenants_paused: '/admin/controls', limit_warnings: '/admin/usage', limit_warnings_calls: '/admin/usage',
+};
 
 /** Platform health, active alerts and key usage from GET /api/admin/overview. Numbers only (Super Admin). */
 export default function AdminOverviewPage() {
@@ -34,17 +39,22 @@ export default function AdminOverviewPage() {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  const [query, setQuery] = useState(DEFAULT_PERIOD);
+  const latest = useRef(0);
+
   const load = useCallback(async () => {
+    const asked = ++latest.current; // a slower, older reply must not replace the period just chosen
     setLoading(true);
     setError(null);
     try {
-      setData((await getAdminOverview()).data);
+      const { data: next } = await getAdminOverview(query);
+      if (asked === latest.current) setData(next);
     } catch (e) {
-      setError(errorText(e, 'Could not load the overview'));
+      if (asked === latest.current) setError(errorText(e, 'Could not load the overview'));
     } finally {
-      setLoading(false);
+      if (asked === latest.current) setLoading(false);
     }
-  }, []);
+  }, [query]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -94,6 +104,7 @@ export default function AdminOverviewPage() {
         <>
           <Card className="card-base p-5" data-testid="overview-alerts">
             <h2 className="font-semibold flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> Active alerts</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">Right now, whatever period is chosen below.</p>
             {alerts.length === 0
               ? <p className="text-sm text-muted-foreground mt-2">Nothing needs attention.</p>
               : (
@@ -111,8 +122,14 @@ export default function AdminOverviewPage() {
           </Card>
 
           <div>
-            <h2 className="font-semibold mb-3">Last {data.window_days} days</h2>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+              <div>
+                <h2 className="font-semibold">{data.period?.label || 'Usage'}</h2>
+                <p className="text-xs text-muted-foreground" data-testid="overview-period">{periodRange(data.period)}</p>
+              </div>
+              <PeriodPicker value={query} months={data.months} onChange={setQuery} />
+            </div>
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
               {USAGE.map(({ key, label, format }) => (
                 <Card key={key} className="card-base p-5" data-testid={`overview-usage-${key}`}>
                   <p className="text-sm text-muted-foreground">{label}</p>

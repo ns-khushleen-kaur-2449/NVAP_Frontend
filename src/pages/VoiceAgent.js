@@ -16,7 +16,8 @@ import CampaignLaunchDialog from '../components/voice/CampaignLaunchDialog';
 import AssistantBuilder from '../components/voice/AssistantBuilder';
 import AssistantChangeRequests from '../components/voice/AssistantChangeRequests';
 import { useAuth } from '@/lib/AuthContext';
-import { canCreateCampaigns, canOperate, canUseAssistantRequests } from '@/lib/rbac';
+import { FeatureOff } from '@/components/auth/FeatureRoute';
+import { canCreateCampaigns, canOperate, canUseAssistantRequests, voiceTabEnabled } from '@/lib/rbac';
 import ReasonDialog from '@/components/ops/ReasonDialog';
 import SingleCallBlock from '@/components/ops/SingleCallBlock';
 import { Loader2, PhoneCall, BookOpen, Mic, UploadCloud, Phone, RotateCw, Layers, Info, FileText, Database, Search, Copy, Check, ClipboardCheck } from 'lucide-react';
@@ -719,6 +720,7 @@ export default function VoiceAgentPage() {
   };
 
   const renderContent = () => {
+    if (!voiceTabEnabled(user, activeTab)) return <FeatureOff name={TABS.find((t) => t.id === activeTab)?.label || 'This feature'} />;
     switch (activeTab) {
       case 'single':     return <>{renderSingleCall()}{renderOverride()}</>;
       case 'csv':        return renderCsvCampaign();

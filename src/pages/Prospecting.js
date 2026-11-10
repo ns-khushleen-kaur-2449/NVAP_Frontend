@@ -9,7 +9,8 @@ import ProspectQuickSearch from '@/components/prospecting/ProspectQuickSearch';
 import SavedSearches from '@/components/prospecting/SavedSearches';
 import { getApolloStatus } from '@/lib/api';
 import { useAuth } from '@/lib/AuthContext';
-import { canCreateCampaigns } from '@/lib/rbac';
+import { canCreateCampaigns, featureEnabled } from '@/lib/rbac';
+import { FeatureOff } from '@/components/auth/FeatureRoute';
 
 // Where "Add to Lead-to-Campaign Builder" lands; VoiceAgent reads `fromProspecting` from the history state.
 export const CAMPAIGN_BUILDER_PATH = '/voice_agent?tab=builder';
@@ -26,7 +27,7 @@ export default function ProspectingPage() {
       state: { fromProspecting: picked },
     })
     : null;
-  const savedSearchesAvailable = true;
+  const savedSearchesAvailable = featureEnabled(user, 'ai_filtering');
   const canShare = role === 'tenant_admin' || role === 'manager';
 
   const [tab, setTab] = useState('search');
@@ -96,14 +97,16 @@ export default function ProspectingPage() {
 
         {/* Each tab stays mounted while hidden, so it keeps its own filter and results. */}
         <TabsContent value="search" forceMount className="space-y-4 data-[state=inactive]:hidden">
-          <AiFilterSearch
-            savedFiltersAvailable={savedSearchesAvailable}
-            canShare={canShare}
-            loadRequest={loadRequest}
-            onSaved={() => setSavedVersion((version) => version + 1)}
-            onUseSelected={sendToBuilder}
-            canShareProspects={canShare}
-          />
+          {featureEnabled(user, 'ai_filtering') ? (
+            <AiFilterSearch
+              savedFiltersAvailable={savedSearchesAvailable}
+              canShare={canShare}
+              loadRequest={loadRequest}
+              onSaved={() => setSavedVersion((version) => version + 1)}
+              onUseSelected={sendToBuilder}
+              canShareProspects={canShare}
+            />
+          ) : <FeatureOff name="Lead search" />}
         </TabsContent>
 
         {savedSearchesAvailable && opened.saved && (

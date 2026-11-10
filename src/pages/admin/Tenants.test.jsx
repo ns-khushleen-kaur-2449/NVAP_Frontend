@@ -146,3 +146,16 @@ test('shows each tenant admin name and email', async () => {
   expect(await screen.findByTestId(`tenant-admins-${TENANT.tenant_id}`)).toHaveTextContent('owner@apex.example');
 });
 
+test('the plan comes from billing, and a search with no match says so', async () => {
+  api.listAdminTenants.mockResolvedValue({ data: { total: 1, tenants: [{ ...TENANT, active_assistant_count: 0, call_count: 0,
+    plan: { key: 'pro', name: 'Pro', status: 'past_due', interval: 'month', cancel_at_period_end: false } }] } });
+  renderWithAuth(<TenantsPage />, { user: USERS.super_admin, path: '/admin/tenants' });
+  const plan = await screen.findByTestId('tenant-plan-t-1');
+  expect(plan).toHaveTextContent('Pro');
+  expect(plan).toHaveTextContent('past due');
+  expect(screen.queryByText('Not configured')).not.toBeInTheDocument();
+
+  api.listAdminTenants.mockResolvedValue({ data: { tenants: [], total: 0 } });
+  fireEvent.change(screen.getByLabelText('Search tenants'), { target: { value: 'nobody' } });
+  expect(await screen.findByText('No tenants match this search.')).toBeInTheDocument();
+});

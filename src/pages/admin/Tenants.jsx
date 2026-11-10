@@ -12,12 +12,33 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import ReasonDialog from '@/components/ops/ReasonDialog';
 import CallingBoundDialog from '@/components/admin/CallingBoundDialog';
 import TenantSettingsDialog from '@/components/admin/TenantSettingsDialog';
-import { errorText } from '@/components/admin/userBits';
+import { errorText, EMAIL_IN_USE, EmailInUse } from '@/components/admin/userBits';
 import {
   activateTenant, cancelTenantOffboarding, createTenantWithAdmin, initiateTenantOffboarding, listAdminTenants,
   setTenantApolloAccess, suspendTenant,
 } from '@/lib/api';
 import { generateTemporaryPassword } from '@/lib/passwords';
+
+const STATUS_STYLES = {
+  active: 'text-[11px] bg-emerald-500/10 text-emerald-600 border-emerald-500/25',
+  suspended: 'text-[11px] bg-red-500/10 text-red-600 border-red-500/25',
+};
+const statusLabel = (status) => (status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Unknown');
+
+/** The plan from Stripe billing; a tenant with no paid plan is Free. */
+function PlanCell({ plan }) {
+  if (!plan) return <span className="text-muted-foreground">Unknown</span>;
+  const unpaid = plan.key && plan.status && !['active', 'trialing'].includes(plan.status);
+  return (
+    <div>
+      <p className="font-medium">{plan.name}{plan.interval ? <span className="text-xs text-muted-foreground"> · {plan.interval}</span> : null}</p>
+      {unpaid && <p className="text-xs text-amber-700">{plan.status.replace(/_/g, ' ')}</p>}
+      {plan.cancel_at_period_end && plan.current_period_end && (
+        <p className="text-xs text-muted-foreground">Ends {new Date(plan.current_period_end).toLocaleDateString()}</p>
+      )}
+    </div>
+  );
+}
 
 function NewTenantDialog({ open, onOpenChange, onCreated }) {
   const [form, setForm] = useState(null);
@@ -85,8 +106,9 @@ function NewTenantDialog({ open, onOpenChange, onCreated }) {
               <Input value={form.admin_name} onChange={(e) => set({ admin_name: e.target.value })} className="mt-1" />
             </label>
             <label className="block text-xs font-medium text-muted-foreground">First admin email
-              <Input type="email" value={form.admin_email} onChange={(e) => set({ admin_email: e.target.value })} className="mt-1" />
+              <Input type="email" aria-invalid={error === EMAIL_IN_USE} aria-describedby={error === EMAIL_IN_USE ? 'new-tenant-email-error' : undefined} value={form.admin_email} onChange={(e) => set({ admin_email: e.target.value })} className="mt-1" />
             </label>
+            <EmailInUse error={error} id="new-tenant-email-error" />
             <label className="block text-xs font-medium text-muted-foreground">Temporary password
               <div className="flex gap-2 mt-1">
                 <Input value={form.password} onChange={(e) => set({ password: e.target.value })} />
@@ -94,7 +116,7 @@ function NewTenantDialog({ open, onOpenChange, onCreated }) {
                   onClick={() => set({ password: generateTemporaryPassword() })}><RefreshCw className="w-4 h-4" /></Button>
               </div>
             </label>
-            {error && <p className="text-xs text-red-600" role="alert">{error}</p>}
+            {error && error !== EMAIL_IN_USE && <p className="text-xs text-red-600" role="alert">{error}</p>}
             <DialogFooter>
               <Button onClick={save} disabled={saving} className="bg-primary text-primary-foreground">
                 {saving && <Loader2 className="w-4 h-4 mr-1 animate-spin" />} Create tenant
@@ -208,14 +230,14 @@ export default function TenantsPage() {
         {!tenants ? (
           <div className="flex justify-center py-10"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div>
         ) : tenants.length === 0 ? (
-          <p className="text-sm text-muted-foreground py-8 text-center">No tenants yet.</p>
+          <p className="text-sm text-muted-foreground py-8 text-center">{query || statusFilter ? 'No tenants match this search.' : 'No tenants yet.'}</p>
         ) : (
           <div className="rounded-lg border border-border overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Tenant</TableHead><TableHead>Tenant Admin</TableHead><TableHead>Status</TableHead><TableHead>Apollo</TableHead><TableHead>Users</TableHead>
-                  <TableHead>Admins</TableHead><TableHead>Active agents</TableHead><TableHead>Calls</TableHead><TableHead>Plan</TableHead><TableHead>Created</TableHead><TableHead className="text-right">Actions</TableHead>
+                  <TableHead>Admins</TableHead><TableHead>Active agents</TableHead><TableHead>Dial attempts (all time)</TableHead><TableHead>Plan</TableHead><TableHead>Created</TableHead><TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -230,10 +252,8 @@ export default function TenantsPage() {
                         ))}
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline" className={tenant.status === 'active'
-                        ? 'text-[11px] bg-emerald-500/10 text-emerald-600 border-emerald-500/25'
-                        : 'text-[11px] bg-red-500/10 text-red-600 border-red-500/25'}>
-                        {tenant.status === 'active' ? 'Active' : 'Suspended'}
+                      <Badge variant="outline" className={STATUS_STYLES[tenant.status] || 'text-[11px]'}>
+                        {statusLabel(tenant.status)}
                       </Badge>
                       {tenant.offboarding_started_at && <div className="mt-1 text-xs text-amber-700">Offboarding · {new Date(tenant.offboarding_started_at).toLocaleDateString()}</div>}
                     </TableCell>
@@ -248,7 +268,7 @@ export default function TenantsPage() {
                     <TableCell className="text-sm">{tenant.admin_count}</TableCell>
                     <TableCell className="text-sm">{tenant.active_assistant_count}</TableCell>
                     <TableCell className="text-sm">{tenant.call_count}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">Not configured</TableCell>
+                    <TableCell className="text-sm" data-testid={`tenant-plan-${tenant.tenant_id}`}><PlanCell plan={tenant.plan} /></TableCell>
                     <TableCell className="text-sm">{new Date(tenant.created_at).toLocaleDateString()}</TableCell>
                     <TableCell className="text-right">
                       <Button asChild variant="ghost" size="sm"><Link to={`/admin/tenant-users?tenant_id=${tenant.tenant_id}`}>Admins</Link></Button>

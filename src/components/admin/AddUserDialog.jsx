@@ -9,7 +9,7 @@ import { authRegister, getUserSeats, listTeams, listTenants } from '@/lib/api';
 import { useAuth } from '@/lib/AuthContext';
 import { ROLES, roleLabel } from '@/lib/rbac';
 import { generateTemporaryPassword } from '@/lib/passwords';
-import { errorText } from '@/components/admin/userBits';
+import { errorText, EMAIL_IN_USE, EmailInUse } from '@/components/admin/userBits';
 
 const fieldClass = 'mt-1';
 
@@ -104,8 +104,9 @@ export default function AddUserDialog({ open, onOpenChange, onCreated, defaultRo
               <Input value={form.name} onChange={(e) => set({ name: e.target.value })} className={fieldClass} />
             </label>
             <label className="block text-xs font-medium text-muted-foreground">Email
-              <Input type="email" value={form.email} onChange={(e) => set({ email: e.target.value })} className={fieldClass} />
+              <Input type="email" aria-invalid={error === EMAIL_IN_USE} aria-describedby={error === EMAIL_IN_USE ? 'add-user-email-error' : undefined} value={form.email} onChange={(e) => set({ email: e.target.value })} className={fieldClass} />
             </label>
+            <EmailInUse error={error} id="add-user-email-error" />
             <label className="block text-xs font-medium text-muted-foreground">Temporary password
               <div className="flex gap-2 mt-1">
                 <Input value={form.password} onChange={(e) => set({ password: e.target.value })} />
@@ -151,7 +152,7 @@ export default function AddUserDialog({ open, onOpenChange, onCreated, defaultRo
                 {!managers.length && <p className="text-[11px] text-amber-600 mt-1">Create a Manager first: a team is a Manager and their Sales Reps.</p>}
               </div>
             )}
-            {error && <p className="text-xs text-red-600" role="alert">{error}</p>}
+            {error && error !== EMAIL_IN_USE && <p className="text-xs text-red-600" role="alert">{error}</p>}
             <DialogFooter>
               <Button onClick={save} disabled={saving || !creatableRoles.length || Boolean(seat?.full)} className="bg-primary text-primary-foreground">
                 {saving && <Loader2 className="w-4 h-4 mr-1 animate-spin" />} Create user

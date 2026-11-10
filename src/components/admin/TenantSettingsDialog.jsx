@@ -10,20 +10,24 @@ import ReasonDialog from '@/components/ops/ReasonDialog';
 import { errorText } from '@/components/admin/userBits';
 import { getTenantSettings, grantSeatOverride, setTenantFeature, setTenantLimits } from '@/lib/api';
 
-const LIMITS = [
-  { key: 'monthly_minutes', label: 'Monthly minutes (warning only)', min: 1 },
-  { key: 'monthly_calls', label: 'Monthly calls (enforced)', min: 0 },
-  { key: 'concurrent_calls', label: 'Concurrent calls (enforced)', min: 1 },
-  { key: 'manager_seats', label: 'Manager seats (enforced)', min: 0 },
-  { key: 'rep_seats', label: 'Sales rep seats (enforced)', min: 0 },
-];
-const EMPTY_LIMITS = Object.fromEntries(LIMITS.map(({ key }) => [key, '']));
+// Labels only: the fields themselves are the keys the backend returns, so a new limit always shows.
+const LIMIT_LABELS = {
+  monthly_minutes: { label: 'Monthly minutes (warning only)', min: 1 },
+  monthly_calls: { label: 'Monthly calls (enforced)', min: 0 },
+  concurrent_calls: { label: 'Concurrent calls (enforced)', min: 1 },
+  manager_seats: { label: 'Manager seats (enforced)', min: 0 },
+  rep_seats: { label: 'Sales rep seats (enforced)', min: 0 },
+};
+const limitFields = (settings) => Object.keys(settings?.limits || {}).map((key) => ({
+  key, label: LIMIT_LABELS[key]?.label || key.replace(/_/g, ' '), min: LIMIT_LABELS[key]?.min ?? 0,
+}));
+const ROLE_LABELS = { manager: 'Manager', rep: 'Sales rep' };
 const number = (value) => (value === '' ? null : Number(value));
 
 /** One tenant's limits, feature switches and Tenant Admins. Every change takes a reason and is audited. */
 export default function TenantSettingsDialog({ tenant, onOpenChange }) {
   const [data, setData] = useState(null);
-  const [limits, setLimits] = useState(EMPTY_LIMITS);
+  const [limits, setLimits] = useState({});
   const [change, setChange] = useState(null);
   const [override, setOverride] = useState({ role: 'manager', extra: '' });
   const [error, setError] = useState(null);
@@ -31,7 +35,7 @@ export default function TenantSettingsDialog({ tenant, onOpenChange }) {
 
   const show = useCallback((settings) => {
     setData(settings);
-    setLimits(Object.fromEntries(LIMITS.map(({ key }) => [key, settings.limits[key] ?? ''])));
+    setLimits(Object.fromEntries(Object.keys(settings.limits).map((key) => [key, settings.limits[key] ?? ''])));
   }, []);
 
   useEffect(() => {
@@ -53,7 +57,8 @@ export default function TenantSettingsDialog({ tenant, onOpenChange }) {
     }
   };
 
-  const limitsChanged = data && LIMITS.some(({ key }) => String(limits[key]) !== String(data.limits[key] ?? ''));
+  const fields = limitFields(data);
+  const limitsChanged = data && fields.some(({ key }) => String(limits[key] ?? '') !== String(data.limits[key] ?? ''));
 
   return (
     <Dialog open={Boolean(tenant)} onOpenChange={onOpenChange}>
@@ -69,22 +74,23 @@ export default function TenantSettingsDialog({ tenant, onOpenChange }) {
             <section className="space-y-2">
               <h3 className="text-sm font-semibold">Limits</h3>
               <div className="grid grid-cols-2 gap-3">
-                {LIMITS.map(({ key, label, min }) => (
+                {fields.map(({ key, label, min }) => (
                   <label key={key} className="block text-xs font-medium text-muted-foreground">{label}
-                    <Input type="number" min={min} className="mt-1" value={limits[key]} placeholder="No limit"
+                    <Input type="number" min={min} className="mt-1" value={limits[key] ?? ''} placeholder="No limit"
                       onChange={(e) => setLimits({ ...limits, [key]: e.target.value })} />
                   </label>
                 ))}
               </div>
               <Button size="sm" disabled={!limitsChanged} onClick={() => setChange({
                 title: `Change the limits of ${tenant.name}?`, label: 'Save limits',
-                run: (reason) => setTenantLimits(tenantId, { ...Object.fromEntries(LIMITS.map(({ key }) => [key, number(limits[key])])), reason }),
+                run: (reason) => setTenantLimits(tenantId, { ...Object.fromEntries(fields.map(({ key }) => [key, number(limits[key] ?? '')])), reason }),
               })}>Save limits</Button>
             </section>
 
             <section className="space-y-2">
               <h3 className="text-sm font-semibold">Seat override</h3>
               <p className="text-xs text-muted-foreground">Extra seats on top of the limit, for a one-off exception. 0 removes it.</p>
+              <p className="text-xs" data-testid="seat-overrides">Now: {Object.entries(data.seat_overrides || {}).map(([role, extra]) => `${ROLE_LABELS[role] || role} +${extra}`).join(' · ') || 'none'}</p>
               <div className="flex flex-wrap items-end gap-2">
                 <label className="block text-xs font-medium text-muted-foreground">Role
                   <select aria-label="Override role" className="mt-1 h-9 rounded-md border border-input bg-background px-3 text-sm block" value={override.role}

@@ -137,7 +137,9 @@ it('shows the assessment, its secondary badge, the intent age and the freshness 
   expect(screen.getByTestId('secondary-badge')).toHaveTextContent('Latest call: No result recorded yet');
   expect(screen.getByTestId('intent-age')).toHaveTextContent('Assessed 46 days ago');
   expect(screen.getByTestId('freshness-chip')).toHaveTextContent('RECALCULATION DUE');
-  expect(screen.getByTestId('score-status')).toHaveTextContent('Current');
+  // Due for recalculation: not presented as current.
+  expect(screen.getByTestId('score-status')).toHaveTextContent('Recalculation due');
+  expect(screen.getByTestId('score-status')).not.toHaveTextContent('Current');
   expect(screen.getByTestId('temperature-chip')).toHaveTextContent('HOT');
 });
 

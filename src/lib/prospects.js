@@ -16,6 +16,10 @@ export const toLeadRow = (p) => ({
   ai_score: scoreOf(p) == null ? null : Math.round(scoreOf(p)),
 });
 
+// The departments a lead may have: the lead score methodology's labels (backend title_mapping.DEPARTMENTS).
+// Left empty, the backend reads the department from the job title when it names one.
+export const DEPARTMENTS = ['Sales', 'Marketing', 'Operations', 'IT', 'Engineering', 'Finance', 'HR'];
+
 // What the Leads list asks the prospect API to add to each row.
 export const LIST_INCLUDE = 'score_summary,assessment_status';
 

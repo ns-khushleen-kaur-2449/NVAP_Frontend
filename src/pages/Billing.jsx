@@ -2,17 +2,17 @@ import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
-  cancelBillingSubscription, changeBillingPlan, createCheckoutSession, createPortalSession, getBillingInvoices,
-  getBillingPlans, getBillingSubscription, resumeBillingSubscription,
+  cancelBillingSubscription, changeBillingPlan, createCheckoutSession, createPortalSession,
+  getBillingPlans, getBillingSubscription, resumeBillingSubscription, syncBillingSubscription,
 } from '@/lib/api';
 import { errorMessage } from '@/hooks/useApiAction';
 import ConfirmDialog from '@/components/ops/ConfirmDialog';
 import OpsButton from '@/components/ops/OpsButton';
 import { ErrorState, SkeletonRows } from '@/components/ops/States';
 import CurrentPlan from '@/components/billing/CurrentPlan';
-import InvoiceTable from '@/components/billing/InvoiceTable';
+import CurrencyToggle from '@/components/billing/CurrencyToggle';
 import PlanCards from '@/components/billing/PlanCards';
-import { formatDate, redirectTo } from '@/components/billing/billingUi';
+import { BILLING_CHANGED, formatDate, redirectTo } from '@/components/billing/billingUi';
 
 // After Checkout the plan is switched on by Stripe's webhook, not by this page. Ask the backend until it has.
 const CONFIRM_EVERY_MS = 2500;
@@ -21,26 +21,17 @@ const CONFIRM_ATTEMPTS = 12;
 export default function Billing() {
   const [params, setParams] = useSearchParams();
   const checkout = params.get('checkout');
+  // Back from Stripe's upgrade page: the plan that was paid for.
+  const upgradeTo = params.get('upgrade');
   const [plans, setPlans] = useState(null);
   const [subscription, setSubscription] = useState(null);
   const [configured, setConfigured] = useState(true);
   const [loadError, setLoadError] = useState(null);
-  const [invoices, setInvoices] = useState([]);
-  const [invoicesError, setInvoicesError] = useState(null);
   const [billingInterval, setBillingInterval] = useState('month');
+  const [currency, setCurrency] = useState('usd');
   const [busy, setBusy] = useState(null);
   const [confirm, setConfirm] = useState(null);
   const [notice, setNotice] = useState(null);
-
-  const loadInvoices = useCallback(async () => {
-    try {
-      const response = await getBillingInvoices();
-      setInvoices(response.data.invoices || []);
-      setInvoicesError(null);
-    } catch (error) {
-      setInvoicesError(errorMessage(error, 'Billing history could not be loaded.'));
-    }
-  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -49,35 +40,48 @@ export default function Billing() {
       setConfigured(planResponse.data.billing_configured !== false);
       setSubscription(subscriptionResponse.data);
       setLoadError(null);
-      loadInvoices();
+      // A webhook can be missed (e.g. `stripe listen` not running): re-read the plan from Stripe itself.
+      if (subscriptionResponse.data.has_billing_account) {
+        syncBillingSubscription().then(({ data }) => setSubscription(data)).catch(() => {});
+      }
     } catch (error) {
       setLoadError(errorMessage(error, 'Billing could not be loaded.'));
     }
-  }, [loadInvoices]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 
-  // Back from Stripe Checkout.
+  // Tell the sidebar which plan the organisation is on now.
+  const planKey = subscription?.plan;
+  const planName = subscription?.plan_name;
+  useEffect(() => {
+    if (planKey) window.dispatchEvent(new CustomEvent(BILLING_CHANGED, { detail: { key: planKey, name: planName } }));
+  }, [planKey, planName]);
+
+  // Back from Stripe Checkout or Stripe's upgrade page.
   useEffect(() => {
     if (checkout === 'cancelled') {
       setNotice({ tone: 'info', text: 'Checkout was cancelled. You have not been charged.' });
       setParams({}, { replace: true });
       return undefined;
     }
-    if (checkout !== 'success') return undefined;
+    let done = null;
+    if (checkout === 'success') done = (data) => data.plan !== 'free';
+    else if (upgradeTo) done = (data) => data.plan === upgradeTo;
+    if (!done) return undefined;
     let stopped = false;
     let timer;
     let attempts = 0;
     setNotice({ tone: 'info', text: 'Confirming your payment with Stripe…', pending: true });
     const poll = async () => {
       try {
-        const { data } = await getBillingSubscription();
+        // Asks Stripe directly, so the plan shows even when the webhook has not arrived.
+        const { data } = await syncBillingSubscription();
         if (stopped) return;
         setSubscription(data);
-        if (data.plan !== 'free') {
+        if (done(data)) {
           setNotice({ tone: 'good', text: `Payment confirmed. Your ${data.plan_name} plan is now active.` });
           setParams({}, { replace: true });
-          loadInvoices();
           return;
         }
       } catch {
@@ -93,7 +97,7 @@ export default function Billing() {
     };
     poll();
     return () => { stopped = true; clearTimeout(timer); };
-  }, [checkout, setParams, loadInvoices]);
+  }, [checkout, upgradeTo, setParams]);
 
   const fail = (error, fallback) => toast.error(errorMessage(error, fallback));
 
@@ -143,6 +147,11 @@ export default function Billing() {
     try {
       const { data } = await changeBillingPlan(plan.key, billingInterval);
       setSubscription(data.subscription);
+      if (data.result === 'payment_required') {
+        // Every upgrade is paid on Stripe's hosted page; it comes back to /billing?upgrade=<plan>.
+        redirectTo(data.payment_url);
+        return true;
+      }
       if (data.result === 'scheduled') {
         setNotice({ tone: 'info', text: `You will move to ${plan.name} on ${formatDate(data.effective_at)}. Until then you keep all your current features.` });
       } else if (data.result === 'pending_payment') {
@@ -150,7 +159,6 @@ export default function Billing() {
       } else {
         setNotice({ tone: 'good', text: `You are now on ${plan.name}. Stripe charges only the prorated difference for this period.` });
       }
-      loadInvoices();
       return true;
     } catch (error) {
       fail(error, 'The plan could not be changed.');
@@ -177,8 +185,8 @@ export default function Billing() {
   let confirmProps = null;
   if (confirm?.kind === 'upgrade') {
     confirmProps = {
-      title: `Upgrade to ${target.name}`, confirmLabel: `Upgrade to ${target.name}`, onConfirm: applyChange,
-      description: `${target.name} starts now. Stripe charges the prorated difference for the rest of this billing period, and your plan changes as soon as that payment succeeds.`,
+      title: `Upgrade to ${target.name}`, confirmLabel: 'Continue to payment', onConfirm: applyChange,
+      description: `You will go to Stripe's secure payment page to review and pay the prorated difference for the rest of this billing period. You can change your card there. ${target.name} starts as soon as the payment succeeds.`,
     };
   } else if (confirm?.kind === 'downgrade') {
     confirmProps = {
@@ -196,7 +204,7 @@ export default function Billing() {
     <main className="ops mx-auto max-w-[1280px] space-y-6 p-4 sm:p-6">
       <header>
         <h1 className="text-3xl font-semibold tracking-tight">Billing &amp; subscription</h1>
-        <p className="mt-1 max-w-xl text-sm text-muted-foreground">Choose a plan for your organisation, change it at any time, and manage payment details and invoices.</p>
+        <p className="mt-1 max-w-xl text-sm text-muted-foreground">Choose a plan for your organisation, change it at any time, and manage your payment details.</p>
       </header>
 
       {notice && (
@@ -222,33 +230,28 @@ export default function Billing() {
       {!loadError && !subscription && <div aria-busy="true"><SkeletonRows rows={1} label="Loading your plan" /></div>}
 
       {subscription && plans && <>
-        {(subscription.plan !== 'free' || subscription.has_billing_account) && (
+        {subscription.plan !== 'free' && (
           <CurrentPlan subscription={subscription} busy={busy} onPortal={openPortal} onResume={resume} onCancel={() => setConfirm({ kind: 'cancel' })} />
         )}
 
         <section aria-label="Available plans" className="space-y-3">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <h2 className="text-xl font-semibold tracking-tight">Available plans</h2>
-            {hasYearly && (
-              <div role="group" aria-label="Billing interval" className="inline-flex rounded-lg border border-border p-0.5 text-sm">
-                {[['month', 'Monthly'], ['year', 'Annual']].map(([value, label]) => (
-                  <button key={value} type="button" aria-pressed={billingInterval === value} onClick={() => setBillingInterval(value)}
-                    className={`rounded-md px-3 py-1 font-semibold transition-colors ${billingInterval === value ? 'bg-[var(--ops-accent)] text-white' : 'text-muted-foreground hover:text-foreground'}`}>
-                    {label}
-                  </button>
-                ))}
-              </div>
-            )}
+            <div className="flex flex-wrap items-center gap-3">
+              <CurrencyToggle value={currency} onChange={setCurrency} />
+              {hasYearly && (
+                <div role="group" aria-label="Billing interval" className="inline-flex rounded-lg border border-border p-0.5 text-sm">
+                  {[['month', 'Monthly'], ['year', 'Annual']].map(([value, label]) => (
+                    <button key={value} type="button" aria-pressed={billingInterval === value} onClick={() => setBillingInterval(value)}
+                      className={`rounded-md px-3 py-1 font-semibold transition-colors ${billingInterval === value ? 'bg-[var(--ops-accent)] text-white' : 'text-muted-foreground hover:text-foreground'}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-          <PlanCards plans={plans} subscription={subscription} interval={billingInterval} busyPlan={busy} onChoose={choose} />
-        </section>
-
-        <section aria-label="Billing history" className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-xl font-semibold tracking-tight">Billing history</h2>
-            {subscription.has_billing_account && <OpsButton size="sm" onClick={openPortal} busy={busy === 'portal'}>Manage billing details</OpsButton>}
-          </div>
-          <InvoiceTable invoices={invoices} error={invoicesError} onRetry={loadInvoices} />
+          <PlanCards plans={plans} subscription={subscription} interval={billingInterval} currency={currency} busyPlan={busy} onChoose={choose} />
         </section>
       </>}
     </main>

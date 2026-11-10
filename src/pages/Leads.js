@@ -18,13 +18,30 @@ import {
   exportLeadsCSV, downloadBlob
 } from '@/lib/api';
 import { formatCurrency, STAGE_OPTIONS } from '@/lib/utils';
-import { LIST_INCLUDE, toLeadRow } from '@/lib/prospects';
+import { DEPARTMENTS, LIST_INCLUDE, toLeadRow } from '@/lib/prospects';
 import { StageBadge, PriorityBadge, StatusBadge } from '@/components/shared/StatusBadges';
 import LeadScorePanel from '@/components/leads/LeadScorePanel';
 import TemperatureChip from '@/components/leads/TemperatureChip';
 import EngagementBadge from '@/components/leads/EngagementBadge';
 import ScoreFreshnessChip from '@/components/leads/ScoreFreshnessChip';
 import { leadDetailEntries } from '@/lib/leadDetails';
+import { CLASSIFICATION_LABELS } from '@/lib/leadScoreLabels';
+import usePolling from '@/hooks/usePolling';
+
+// While a listed lead's score is being calculated (Pending Calculation: queued for the lead-score worker),
+// or the lead just edited has a score due for recalculation, the list is read again every PENDING_RECHECK_MS,
+// visible tab only, at most PENDING_RECHECKS times; creating or editing a lead allows that many again.
+// Nothing is polled otherwise.  After the last check a lead still pending keeps saying so.
+const PENDING_RECHECK_MS = 10000;
+const PENDING_RECHECKS = 6;
+const isPending = (lead) => lead.lead_score_summary?.classification === 'pending_calculation';
+const isDue = (lead) => lead.lead_score_summary?.freshness_indicator === 'recalculation_due';
+// The open lead's score panel reloads when its score is calculated, stops being current or becomes due
+// for recalculation (an edit), so it never shows an outdated score as current.
+const scoreVersion = (lead) => {
+  const summary = lead.lead_score_summary || {};
+  return `${summary.calculated_at || ''}:${summary.status || ''}:${summary.freshness_indicator || ''}`;
+};
 
 // The Score column: the number with its temperature, assessment and freshness, each from the
 // backend's summaries (no cut-offs here).  A stale score keeps its number, marked OUT OF DATE.
@@ -36,6 +53,11 @@ function ScoreCell({ lead }) {
       {lead.ai_score != null ? (
         <span className={`text-sm font-medium tabular-nums ${summary?.status === 'stale' ? 'text-muted-foreground' : ''}`}>
           {lead.ai_score}
+        </span>
+      ) : isPending(lead) ? (
+        // Still said after the page stops re-reading: the score has not been calculated yet.
+        <span className="text-xs text-muted-foreground" title={CLASSIFICATION_LABELS.pending_calculation.help}>
+          {CLASSIFICATION_LABELS.pending_calculation.label}
         </span>
       ) : <span className="text-xs text-muted-foreground">--</span>}
       <div className="flex flex-wrap justify-end gap-1">
@@ -65,7 +87,7 @@ export default function LeadsPage() {
   const [bulkStage, setBulkStage] = useState('');
   const [bulkRunning, setBulkRunning] = useState(false);
   const [showBulkDialog, setShowBulkDialog] = useState(false);
-  const [newLead, setNewLead] = useState({ name: '', email: '', phone: '', source: 'website', project: '', category: '', sub_category: '', budget_min: '', budget_max: '', location_preference: '', timeline: '', employment: '' });
+  const [newLead, setNewLead] = useState({ name: '', email: '', phone: '', job_title: '', department: '', source: 'website', project: '', category: '', sub_category: '', budget_min: '', budget_max: '', location_preference: '', timeline: '', employment: '' });
   const [countryCode, setCountryCode] = useState('+91');
 
   const fetchLeads = useCallback(async () => {
@@ -75,13 +97,26 @@ export default function LeadsPage() {
       if (search) params.search = search;
       if (stageFilter && stageFilter !== 'all') params.stage = stageFilter;
       const r = await getProspects(params);
-      setLeads(r.data.prospects.map(toLeadRow));
+      const rows = r.data.prospects.map(toLeadRow);
+      setLeads(rows);
       setTotal(r.data.total);
+      setSelectedLead((open) => {
+        const row = open && rows.find((x) => x.id === open.id);
+        return row && scoreVersion(row) !== scoreVersion(open)
+          ? { ...open, ai_score: row.ai_score, lead_score_summary: row.lead_score_summary } : open;
+      });
     } catch (e) { console.error(e); }
     setLoading(false);
   }, [search, stageFilter]);
 
   useEffect(() => { fetchLeads(); }, [fetchLeads]);
+
+  const [rechecks, setRechecks] = useState(0);
+  // The lead just edited: its queued recalculation is waited for too (other "due" scores have no job to wait for).
+  const [edited, setEdited] = useState(null);
+  const awaited = (lead) => isPending(lead) || (lead.id === edited && isDue(lead));
+  usePolling(() => { setRechecks((n) => n + 1); return fetchLeads(); }, PENDING_RECHECK_MS, [],
+    { enabled: leads.some(awaited) && rechecks < PENDING_RECHECKS });
 
   // /leads?prospect=<id> (links from the Operations tabs) opens that prospect.
   const [searchParams] = useSearchParams();
@@ -99,13 +134,15 @@ export default function LeadsPage() {
   // After an edit: the panel and the list row show the saved prospect.
   const leadSaved = (prospect) => {
     const row = toLeadRow(prospect);
+    setRechecks(0);
+    setEdited(row.id);
     setSelectedLead(row);
     setLeads((rows) => rows.map((r) => (r.id === row.id ? { ...r, ...row } : r)));
   };
 
   const handleCreate = async () => {
     try {
-      const { name, email, phone, source, budget_min, budget_max, ...rest } = newLead;
+      const { name, email, phone, job_title, department, source, budget_min, budget_max, ...rest } = newLead;
       const trimmed = (phone || '').trim();
       // Details with no prospect column are kept in custom_fields.
       const custom_fields = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== ''));
@@ -115,12 +152,16 @@ export default function LeadsPage() {
         full_name: name.trim(),
         email: email || null,
         phone: trimmed ? (trimmed.startsWith('+') ? trimmed : `${countryCode}${trimmed}`) : null,
+        // Columns the lead score reads (seniority comes from the job title), not custom_fields.
+        job_title: job_title.trim() || null,
+        department: department || null,
         source: source || 'manual',
         custom_fields,
       });
       toast.success('Lead created');
+      setRechecks(0);
       setShowCreate(false);
-      setNewLead({ name: '', email: '', phone: '', source: 'website', project: '', category: '', sub_category: '', budget_min: '', budget_max: '', location_preference: '', timeline: '', employment: '' });
+      setNewLead({ name: '', email: '', phone: '', job_title: '', department: '', source: 'website', project: '', category: '', sub_category: '', budget_min: '', budget_max: '', location_preference: '', timeline: '', employment: '' });
       fetchLeads();
     } catch (e) {
       toast.error('Failed to create lead');
@@ -250,6 +291,11 @@ export default function LeadsPage() {
                     className="bg-[hsl(var(--surface-2))] border-border flex-1"
                   />
                 </div>
+                <Input placeholder="Job Title" value={newLead.job_title} onChange={e => setNewLead({...newLead, job_title: e.target.value})} className="bg-[hsl(var(--surface-2))] border-border" />
+                <select aria-label="Department" value={newLead.department} onChange={e => setNewLead({...newLead, department: e.target.value})} className="h-9 rounded-md border border-border bg-[hsl(var(--surface-2))] px-3 text-sm">
+                  <option value="">Department (from job title)</option>
+                  {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
                 <Input placeholder="Source" value={newLead.source} onChange={e => setNewLead({...newLead, source: e.target.value})} className="bg-[hsl(var(--surface-2))] border-border" />
                 <Input placeholder="Project" value={newLead.project} onChange={e => setNewLead({...newLead, project: e.target.value})} className="bg-[hsl(var(--surface-2))] border-border col-span-2" />
                 <Input placeholder="Category" value={newLead.category} onChange={e => setNewLead({...newLead, category: e.target.value})} className="bg-[hsl(var(--surface-2))] border-border" />
@@ -372,7 +418,7 @@ export default function LeadsPage() {
                 </div>
 
                 <LeadScorePanel
-                  key={selectedLead.id}
+                  key={`${selectedLead.id}:${scoreVersion(selectedLead)}`}
                   prospectId={selectedLead.id}
                   onScored={(s) => setLeads((rows) => rows.map((r) => (r.id === selectedLead.id ? {
                     ...r,
@@ -398,6 +444,8 @@ export default function LeadsPage() {
                         <div><span className="text-muted-foreground">Location:</span> <span>{[selectedLead.city, selectedLead.state, selectedLead.country].filter(Boolean).join(', ')}</span></div>
                       )}
                       {selectedLead.job_title && <div><span className="text-muted-foreground">Job title:</span> <span>{selectedLead.job_title}</span></div>}
+                      {selectedLead.seniority && <div><span className="text-muted-foreground">Seniority:</span> <span>{selectedLead.seniority}</span></div>}
+                      {selectedLead.department && <div><span className="text-muted-foreground">Department:</span> <span>{selectedLead.department}</span></div>}
                       {/* Every other detail the lead has (imported columns, CRM extras), by its own name. */}
                       {leadDetailEntries(selectedLead, { except: ['budget_min', 'budget_max', 'timeline', 'project', 'category', 'sub_category'] }).map((d) => (
                         <div key={d.key} className="min-w-0 break-words"><span className="text-muted-foreground">{d.label}:</span> <span dir="auto">{d.value}</span></div>

@@ -4,8 +4,10 @@ import {
   Layers, Phone, Mic, BookOpen, UploadCloud, Megaphone, ClipboardCheck,
   ChevronDown, ChevronLeft, ChevronRight, Settings, LogOut, GitCompareArrows, ShieldCheck, Crown, BarChart3,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
+import { getBillingSubscription } from '@/lib/api';
+import { BILLING_CHANGED } from '@/components/billing/billingUi';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useAuth } from '@/lib/AuthContext';
@@ -91,6 +93,27 @@ export function Sidebar() {
   const location = useLocation();
   const { user, logout } = useAuth();
 
+  // The organisation's current plan, shown above Logout for its Tenant Admin. Re-read when they leave the
+  // billing page, so a plan they just bought shows without a reload. A failure only hides the label.
+  const [plan, setPlan] = useState(null);
+  const billingAdmin = canManageBilling(user);
+  const onBilling = location.pathname.startsWith('/billing');
+  useEffect(() => {
+    if (!billingAdmin) return undefined;
+    let stopped = false;
+    Promise.resolve(getBillingSubscription())
+      .then(({ data }) => { if (!stopped) setPlan({ key: data.plan, name: data.plan_name }); })
+      .catch(() => { if (!stopped) setPlan(null); });
+    return () => { stopped = true; };
+  }, [billingAdmin, onBilling]);
+  useEffect(() => {
+    if (!billingAdmin) return undefined;
+    const update = (e) => setPlan(e.detail);
+    window.addEventListener(BILLING_CHANGED, update);
+    return () => window.removeEventListener(BILLING_CHANGED, update);
+  }, [billingAdmin]);
+  const topPlan = plan?.key === 'pro_plus';
+
   const params = new URLSearchParams(location.search);
   const onVoiceAgent = location.pathname.startsWith('/voice_agent');
   // const onReportAgent = REPORT_TABS.some(
@@ -108,11 +131,12 @@ export function Sidebar() {
         )}
       >
         <div className={cn('flex shrink-0 items-center border-b border-[var(--line)]', collapsed ? 'h-14 justify-center px-2' : 'px-5 py-4')}>
-          <Link to="/welcome" aria-label="SmartSDR by Netsmartz — home" className={cn('flex items-center text-[var(--ink)]', !collapsed && 'w-full')}>
+          {/* The logo is only a brand mark: it does not navigate anywhere. */}
+          <div role="img" aria-label="SmartSDR by Netsmartz" className={cn('flex items-center text-[var(--ink)]', !collapsed && 'w-full')}>
             {collapsed
               ? <NetsmartzMark size={30} />
               : <BrandLockup layout="stacked" size="sm" wordAlign="end" className="flex w-full" />}
-          </Link>
+          </div>
         </div>
 
         <ScrollArea className="flex-1 px-3 py-2">
@@ -251,11 +275,16 @@ export function Sidebar() {
             <ThemeToggle className="h-8 w-8 shrink-0" />
           </div>
           {/* Upgrade Plan — the organisation's subscription; only its Tenant Admin sees it. Sits just above Logout. */}
-          {canManageBilling(user) && (
+          {billingAdmin && plan && !collapsed && (
+            <p data-testid="current-plan" className="px-3 pt-1 text-xs text-[var(--mist)]">
+              You are on the <span className="font-semibold text-[var(--pine)]">{plan.name}</span> plan
+            </p>
+          )}
+          {billingAdmin && (
             <NavLink
               to="/billing"
-              aria-label={collapsed ? 'Upgrade Plan' : undefined}
-              title={collapsed ? 'Upgrade Plan' : undefined}
+              aria-label={collapsed ? (topPlan ? 'Manage Plan' : 'Upgrade Plan') : undefined}
+              title={collapsed ? (topPlan ? `${plan.name} plan` : plan ? `${plan.name} plan - upgrade` : 'Upgrade Plan') : undefined}
               className={({ isActive }) => cn(
                 'group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-all duration-200 hover:translate-x-0.5',
                 isActive
@@ -265,7 +294,7 @@ export function Sidebar() {
               )}
             >
               <Crown className="h-4 w-4 shrink-0 transition-transform duration-200 group-hover:-rotate-12 group-hover:scale-110" />
-              {!collapsed && <span>Upgrade Plan</span>}
+              {!collapsed && <span>{topPlan ? 'Manage Plan' : 'Upgrade Plan'}</span>}
             </NavLink>
           )}
           <button

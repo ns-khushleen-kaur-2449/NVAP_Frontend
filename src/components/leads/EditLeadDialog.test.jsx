@@ -51,3 +51,32 @@ it('still sends nothing for an Add Lead detail the lead never had, unless it is 
   expect(changesFor(before, { ...before })).toEqual({});
   expect(changesFor(before, { ...before, timeline: 'Next month' }).custom_fields).toEqual({ timeline: 'Next month' });
 });
+
+it('edits the department as a lead column; emptied, it is read from the job title again', async () => {
+  updateProspect.mockResolvedValue({ data: {} });
+  const lead = { ...ZOYA, job_title: 'Sales Manager', department: 'Sales' };
+  render(<EditLeadDialog open onOpenChange={jest.fn()} lead={lead} onSaved={jest.fn()} />);
+  expect(screen.getByLabelText('Department')).toHaveValue('Sales');
+  fireEvent.change(screen.getByLabelText('Department'), { target: { value: 'Finance' } });
+  fireEvent.click(screen.getByRole('button', { name: /Save changes/ }));
+  await waitFor(() => expect(updateProspect).toHaveBeenCalledWith('p-1', { department: 'Finance' }));
+
+  const before = formFor(lead);
+  expect(changesFor(before, { ...before, department: '' })).toEqual({ department: null });
+});
+
+it('sends "From job title" as no department, so the backend reads it from the title; a chosen one as is', async () => {
+  updateProspect.mockResolvedValue({ data: {} });
+  const lead = { ...ZOYA, job_title: 'Sales Manager', department: 'Finance' };
+  const { unmount } = render(<EditLeadDialog open onOpenChange={jest.fn()} lead={lead} onSaved={jest.fn()} />);
+  expect(screen.getByRole('option', { name: 'From job title' })).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('Department'), { target: { value: '' } });
+  fireEvent.click(screen.getByRole('button', { name: /Save changes/ }));
+  await waitFor(() => expect(updateProspect).toHaveBeenLastCalledWith('p-1', { department: null }));
+  unmount();
+
+  render(<EditLeadDialog open onOpenChange={jest.fn()} lead={lead} onSaved={jest.fn()} />);
+  fireEvent.change(screen.getByLabelText('Department'), { target: { value: 'Marketing' } });
+  fireEvent.click(screen.getByRole('button', { name: /Save changes/ }));
+  await waitFor(() => expect(updateProspect).toHaveBeenLastCalledWith('p-1', { department: 'Marketing' }));
+});

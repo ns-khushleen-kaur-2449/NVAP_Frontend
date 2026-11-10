@@ -112,6 +112,7 @@ describe('toasts', () => {
   it('links each notification to its page', () => {
     expect(notificationLink({ entity_type: 'appointment', entity_id: 'a1' })).toBe('/operations/appointments?open=a1');
     expect(notificationLink({ entity_type: 'campaign', entity_id: 'c1' })).toBe('/voice-campaigns/c1');
+    expect(notificationLink({ entity_type: 'interview_booking', entity_id: 'b1' })).toBe('/hiring_agent/bookings/b1');
     expect(notificationLink({ entity_type: 'unknown', entity_id: 'x' })).toBeNull();
   });
 });

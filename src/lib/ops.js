@@ -75,6 +75,7 @@ export function notificationLink(notification) {
     case 'call_log': return '/voice_agent?tab=logs';
     case 'assistant_change_request': return `/voice_agent?tab=requests&open=${id}`;
     case 'conversion': return `/conversion?prospect=${encodeURIComponent(id)}`;
+    case 'interview_booking': return `/hiring_agent/bookings/${id}`;
     default: return null;
   }
 }

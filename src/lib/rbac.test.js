@@ -105,6 +105,13 @@ describe('permissions', () => {
     expect(ROLES.filter((r) => hasPermission(actorOf(r), PERMISSIONS.AGENTS_MANAGE))).toEqual(['super_admin']);
   });
 
+  test('hiring mirrors the backend: tenant users view, admins and managers manage and call, a super admin has none', () => {
+    expect(ROLES.filter((r) => hasPermission(actorOf(r), PERMISSIONS.HIRING_VIEW))).toEqual(['tenant_admin', 'manager', 'rep']);
+    [PERMISSIONS.HIRING_MANAGE, PERMISSIONS.HIRING_CALL].forEach((perm) => {
+      expect(ROLES.filter((r) => hasPermission(actorOf(r), perm))).toEqual(['tenant_admin', 'manager']);
+    });
+  });
+
   test('server-provided permissions win', () => {
     expect(hasPermission({ role: 'rep', permissions: ['users.view'] }, 'users.view')).toBe(true);
     expect(hasPermission(null, 'users.view')).toBe(false);

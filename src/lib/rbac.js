@@ -42,6 +42,11 @@ export const PERMISSIONS = Object.freeze({
   DASHBOARD_OWN: 'dashboard.own',
   AGENTS_VIEW: 'agents.view',
   AGENTS_MANAGE: 'agents.manage',
+  // The Hiring agent: everyone in a tenant reads; Tenant Admins and Managers also change records and place calls.
+  // A Super Admin has none (backend decision 2026-11-02).
+  HIRING_VIEW: 'hiring.view',
+  HIRING_MANAGE: 'hiring.manage',
+  HIRING_CALL: 'hiring.call',
 });
 
 /** Who may create whom. Managing (edit, deactivate, reactivate) follows the same map, narrowed by scope. */
@@ -57,9 +62,10 @@ export const ROLE_PERMISSIONS = Object.freeze({
   super_admin: Object.freeze([P.TENANTS_MANAGE, P.USERS_VIEW, P.USERS_CREATE, P.USERS_MANAGE, P.DASHBOARD_PLATFORM,
     P.AGENTS_VIEW, P.AGENTS_MANAGE]),
   tenant_admin: Object.freeze([P.USERS_VIEW, P.USERS_CREATE, P.USERS_MANAGE, P.TEAMS_VIEW, P.TEAMS_MANAGE, P.DASHBOARD_TENANT,
-    P.AGENTS_VIEW]),
-  manager: Object.freeze([P.USERS_VIEW, P.USERS_CREATE, P.USERS_MANAGE, P.TEAMS_VIEW, P.DASHBOARD_TEAM, P.AGENTS_VIEW]),
-  rep: Object.freeze([P.DASHBOARD_OWN, P.AGENTS_VIEW]),
+    P.AGENTS_VIEW, P.HIRING_VIEW, P.HIRING_MANAGE, P.HIRING_CALL]),
+  manager: Object.freeze([P.USERS_VIEW, P.USERS_CREATE, P.USERS_MANAGE, P.TEAMS_VIEW, P.DASHBOARD_TEAM, P.AGENTS_VIEW,
+    P.HIRING_VIEW, P.HIRING_MANAGE, P.HIRING_CALL]),
+  rep: Object.freeze([P.DASHBOARD_OWN, P.AGENTS_VIEW, P.HIRING_VIEW]),
 });
 
 const sameId = (a, b) => a != null && b != null && String(a) === String(b);

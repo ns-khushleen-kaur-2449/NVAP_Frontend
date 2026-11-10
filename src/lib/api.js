@@ -121,6 +121,24 @@ export const publishAgentAssistantVersion = (id, rowId, n) => api.post(`${assist
 export const rollbackAgentAssistantVersion = (id, rowId, n) => api.post(`${assistantVersions(id, rowId)}/${n}/rollback`);
 // Whether this server has the agent's code and can run it: { key, has_code, contract_version, ok, problems }.
 export const getAgentHealth = (id) => api.get(`/api/v1/agents/${id}/health`);
+
+// ── Hiring agent (backend app/agents/hiring/router.py) ──
+// Every route checks the caller: hiring.view reads, hiring.manage changes records, hiring.call places calls, and
+// the organisation must be allowed to use Hiring (403 otherwise). Responses never carry Vapi details.
+const HIRING = '/api/v1/hiring';
+export const listHiringJobs = (params) => api.get(`${HIRING}/jobs`, { params });
+export const getHiringJob = (id) => api.get(`${HIRING}/jobs/${id}`);
+export const createHiringJob = (data) => api.post(`${HIRING}/jobs`, data);
+export const updateHiringJob = (id, data) => api.patch(`${HIRING}/jobs/${id}`, data);
+export const replaceHiringQuestions = (id, questions) =>
+  api.put(`${HIRING}/jobs/${id}/questions`, { questions: questions.map((text) => ({ question_text: text })) });
+export const listHiringCandidates = (params) => api.get(`${HIRING}/candidates`, { params });
+export const createHiringCandidate = (data) => api.post(`${HIRING}/candidates`, data);
+export const updateHiringCandidate = (id, data) => api.patch(`${HIRING}/candidates/${id}`, data);
+export const listHiringBookings = (params) => api.get(`${HIRING}/bookings`, { params });
+export const getHiringBooking = (id) => api.get(`${HIRING}/bookings/${id}`);
+// The same idempotency_key again returns the first booking (200) instead of a second one.
+export const createHiringBooking = (data) => api.post(`${HIRING}/bookings`, data);
 // Users the caller may see (was /api/auth/users, which never existed).
 export const listUsers = () => authApi.get('/api/users', { params: { page_size: 100 } });
 

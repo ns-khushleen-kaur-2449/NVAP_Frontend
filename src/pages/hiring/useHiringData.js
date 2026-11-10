@@ -13,7 +13,6 @@ export default function useHiringData(request, deps, { pollMs = 0 } = {}) {
   const [error, setError] = useState(null);
   const latest = useRef(0);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const load = useCallback(async () => {
     const mine = ++latest.current;
     try {
@@ -24,6 +23,8 @@ export default function useHiringData(request, deps, { pollMs = 0 } = {}) {
     } catch (e) {
       if (mine === latest.current) setError(e);
     }
+  // `deps` is the caller's list of what `request` reads (as for useEffect), so it cannot be checked here.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 
   useEffect(() => { if (!pollMs) load(); }, [load, pollMs]);

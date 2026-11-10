@@ -7,6 +7,7 @@
  */
 export const AGENT_ROUTES = Object.freeze({
   sdr: '/voice_agent',
+  hiring: '/hiring_agent',
 });
 
 export const agentRoute = (agent) => AGENT_ROUTES[agent?.key] || null;
@@ -28,6 +29,9 @@ export const AGENT_PROBLEM_LABELS = Object.freeze({
   server_url_not_public_https: 'The server URL is not a public HTTPS address, so Vapi cannot reach it',
   webhook_secret_not_set: 'The Vapi webhook secret is not set',
   campaign_runner_disabled: 'Campaign runner is off on this server',
+  call_context_key_not_set: 'The call-context signing key is not set',
+  intake_assistant_not_registered: 'No intake assistant is registered',
+  recovery_not_running: 'Call recovery is not running (the campaign runner is off)',
 });
 
 export const problemLabel = (code) => AGENT_PROBLEM_LABELS[code] || code;

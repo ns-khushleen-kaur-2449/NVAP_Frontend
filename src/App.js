@@ -42,6 +42,7 @@ import TeamsAdminPage from "@/pages/admin/Teams";
 import TenantsAdminPage from "@/pages/admin/Tenants";
 import AgentsAdminPage from "@/pages/admin/AgentsAdmin";
 import AgentsPage from "@/pages/Agents";
+import { HiringRoute } from "@/pages/hiring/HiringAgent";
 import RequirePermission from "@/components/auth/RequirePermission";
 import { PERMISSIONS } from "@/lib/rbac";
 import AuthGate from "@/components/auth/AuthGate";
@@ -244,6 +245,8 @@ function App() {
           <Route path="/knowledge-base" element={<ExecAppShell><ProtectedRoute roles={ADMINS}><KnowledgeBasePage /></ProtectedRoute></ExecAppShell>} />
 
           <Route path="/voice_agent" element={<SidebarShell><VoiceAgentPage /></SidebarShell>} />
+          {/* The Hiring agent (AGENT_ROUTES.hiring): tenant users with hiring.view; the page checks the agent is available. */}
+          <Route path="/hiring_agent/*" element={<SidebarShell><HiringRoute /></SidebarShell>} />
           <Route path="/voice-campaigns" element={<SidebarShell><VoiceCampaigns /></SidebarShell>} />
           <Route path="/voice-campaigns/:campaignId" element={<SidebarShell><VoiceCampaignDetail /></SidebarShell>} />
           {/* <Route path="/calls" element={<SidebarShell><CallsPage /></SidebarShell>} /> */}

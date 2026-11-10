@@ -79,7 +79,8 @@ describe('agent permissions', () => {
 describe('lib/agents', () => {
   test('only agents with a screen can be opened', () => {
     expect(agentRoute({ key: 'sdr' })).toBe('/voice_agent');
-    expect(agentRoute({ key: 'hiring' })).toBeNull();
+    expect(agentRoute({ key: 'hiring' })).toBe('/hiring_agent');
+    expect(agentRoute({ key: 'insurance' })).toBeNull();
     expect(agentRoute(null)).toBeNull();
   });
 
@@ -100,12 +101,16 @@ describe('lib/agents', () => {
 
 describe('Agents (tenant view)', () => {
   test('lists the available agents and opens only those with a screen', async () => {
+    const noScreen = { id: 'a-3', key: 'insurance', name: 'Insurance', industry: null, description: null, status: 'active', access_scope: 'all' };
+    api.listAvailableAgents.mockResolvedValue({ data: [AGENTS[0], AGENTS[1], noScreen] });
     renderWithAuth(<AgentsPage />, { user: USERS.manager });
     const sdr = await screen.findByTestId('agent-card-sdr');
     expect(within(sdr).getByRole('link', { name: 'Open' })).toHaveAttribute('href', '/voice_agent');
-    const hiring = screen.getByTestId('agent-card-hiring');
-    expect(within(hiring).queryByRole('link')).not.toBeInTheDocument();
-    expect(within(hiring).getByText(/coming soon/i)).toBeInTheDocument();
+    expect(within(screen.getByTestId('agent-card-hiring')).getByRole('link', { name: 'Open' }))
+      .toHaveAttribute('href', '/hiring_agent');
+    const insurance = screen.getByTestId('agent-card-insurance');
+    expect(within(insurance).queryByRole('link')).not.toBeInTheDocument();
+    expect(within(insurance).getByText(/coming soon/i)).toBeInTheDocument();
   });
 
   test('says so when nothing is available', async () => {

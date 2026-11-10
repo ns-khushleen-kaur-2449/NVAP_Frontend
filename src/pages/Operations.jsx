@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { Link, Navigate, Route, useLocation, useParams } from 'react-router-dom';
-import { getAppointments, getDoNotCallEntries, getIntentReviewQueue } from '@/lib/api';
+import { getAppointments, getCallbackHandoffCount, getDoNotCallEntries, getIntentReviewQueue } from '@/lib/api';
 import { useAuth } from '@/lib/AuthContext';
 import { featureEnabled } from '@/lib/rbac';
 import { FeatureOff } from '@/components/auth/FeatureRoute';
@@ -31,7 +31,7 @@ const REFRESH_MS = 30000;
 /**
  * Counts of what waits for a person, where one request answers it: appointments that need an
  * outcome, do-not-call opt-outs to review and pending intent reviews (each only on a tab the
- * user has). Callbacks
+ * user has), and callbacks waiting for a person (open hand-offs).  Scheduled callbacks themselves
  * have no count endpoint (it would mean loading every scheduled call).
  */
 function useWaitingCounts(user) {
@@ -40,16 +40,18 @@ function useWaitingCounts(user) {
   const operations = Boolean(user) && OPERATIONS_VIEWERS.includes(user.role);
   const load = useCallback(async () => {
     const skip = Promise.resolve(null);
-    const [appointments, dnc, intent] = await Promise.allSettled([
+    const [appointments, dnc, intent, handoffs] = await Promise.allSettled([
       getAppointments({ tab: 'needs_outcome', page_size: 1 }),
       operations ? getDoNotCallEntries({ source: 'call', reviewed: false }) : skip,
       operations ? getIntentReviewQueue({ status: 'pending', page_size: 1 }) : skip,
+      operations ? getCallbackHandoffCount() : skip,
     ]);
     const value = (result, pick) => (result.status === 'fulfilled' && result.value ? pick(result.value.data) ?? null : null);
     setCounts({
       appointments: value(appointments, (d) => d?.counts?.needs_outcome),
       'do-not-call': value(dnc, (d) => d?.entries?.length),
       'intent-review': value(intent, (d) => d?.total),
+      callbacks: value(handoffs, (d) => d?.open),
     });
   }, [operations]);
   const refresh = usePolling(load, REFRESH_MS, [], { enabled });

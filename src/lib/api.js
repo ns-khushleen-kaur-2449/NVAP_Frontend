@@ -616,6 +616,18 @@ export const getUnreadNotificationCount = () => api.get('/api/v1/notifications/u
 export const markNotificationRead = (id) => api.post(`/api/v1/notifications/${id}/read`);
 export const markAllNotificationsRead = () => api.post('/api/v1/notifications/read-all');
 
+// Did the lead ask for a callback on this call, and was one scheduled?
+// { requested, unscheduled, callback_task_id, scheduled_call_id, prospect_id }
+export const getCallCallbackFollowUp = (callId) => api.get(`/api/call-logs/${encodeURIComponent(callId)}/callback-follow-up`);
+
+// ── Hand-offs: callbacks a person must make (Tenant Admin / Manager) ──
+// params: { status: open | done | cancelled }
+export const getCallbackHandoffs = (params) => api.get('/api/v1/callback-handoffs', { params });
+export const getCallbackHandoffCount = () => api.get('/api/v1/callback-handoffs/count');
+export const getCallbackHandoffEvents = (id) => api.get(`/api/v1/callback-handoffs/${id}/events`);
+// action: done | cancel | schedule-call {scheduled_time, assistant_id?}; every body carries a reason.
+export const callbackHandoffAction = (id, action, body) => api.post(`/api/v1/callback-handoffs/${id}/${action}`, body);
+
 // ── Scheduled calls and callbacks (Tenant Admin / Manager) ──
 export const getScheduledCalls = (params) => api.get('/api/v1/scheduled-calls', { params });
 export const getScheduledCallEvents = (id) => api.get(`/api/v1/scheduled-calls/${id}/events`);

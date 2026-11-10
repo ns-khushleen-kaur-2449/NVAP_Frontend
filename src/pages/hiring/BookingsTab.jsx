@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Plus } from 'lucide-react';
 import OpsButton from '@/components/ops/OpsButton';
 import RelativeTime from '@/components/ops/RelativeTime';
@@ -8,7 +9,7 @@ import BookingDialog from '@/components/hiring/BookingDialog';
 import { CONTROL, HiringError, ListFooter } from '@/components/hiring/HiringBits';
 import { listHiringBookings, listHiringJobs } from '@/lib/api';
 import { useAuth } from '@/lib/AuthContext';
-import { BOOKING_STATUS, MAX_ROWS, PAGE_SIZE, statusOf } from '@/lib/hiring';
+import { BOOKING_STATUS, MAX_ROWS, PAGE_SIZE, bookingPath, statusOf } from '@/lib/hiring';
 import { PERMISSIONS } from '@/lib/rbac';
 import useHiringData from './useHiringData';
 
@@ -75,7 +76,11 @@ export default function BookingsTab() {
                   const state = statusOf(BOOKING_STATUS, booking.status);
                   return (
                     <tr key={booking.id} data-testid={`booking-row-${booking.id}`}>
-                      <td className="px-4 py-3 font-medium">{booking.candidate_name}</td>
+                      <td className="px-4 py-3 font-medium">
+                        <Link to={bookingPath(booking.id)} className="text-[color:var(--ops-accent-ink)] hover:underline">
+                          {booking.candidate_name}
+                        </Link>
+                      </td>
                       <td className="px-4 py-3">{booking.job_title}</td>
                       <td className="px-4 py-3"><StatusBadge label={state.label} tone={state.tone} /></td>
                       <td className="px-4 py-3 text-muted-foreground"><RelativeTime iso={booking.created_at} /></td>

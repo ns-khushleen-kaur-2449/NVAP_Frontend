@@ -6,6 +6,7 @@ import { EmptyState, SkeletonRows } from '@/components/ops/States';
 import { HiringError, NOT_AVAILABLE } from '@/components/hiring/HiringBits';
 import { listAvailableAgents } from '@/lib/api';
 import { PERMISSIONS } from '@/lib/rbac';
+import BookingPage from './BookingPage';
 import BookingsTab from './BookingsTab';
 import CandidatesTab from './CandidatesTab';
 import JobsTab from './JobsTab';
@@ -38,7 +39,7 @@ function useHiringAvailable() {
   return { ...state, retry: check };
 }
 
-/** The Hiring agent's screen: bookings, jobs and candidates. */
+/** The Hiring agent's screen: bookings (each with its own page, /hiring_agent/bookings/<id>), jobs and candidates. */
 export default function HiringAgentPage() {
   const { available, error, retry } = useHiringAvailable();
   const { pathname } = useLocation();
@@ -77,6 +78,7 @@ export default function HiringAgentPage() {
             </nav>
             <Routes>
               <Route path="bookings" element={<BookingsTab />} />
+              <Route path="bookings/:bookingId" element={<BookingPage />} />
               <Route path="jobs" element={<JobsTab />} />
               <Route path="candidates" element={<CandidatesTab />} />
               <Route path="*" element={<Navigate to={`${HIRING_PATH}/bookings`} replace />} />

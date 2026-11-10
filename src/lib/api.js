@@ -139,6 +139,17 @@ export const listHiringBookings = (params) => api.get(`${HIRING}/bookings`, { pa
 export const getHiringBooking = (id) => api.get(`${HIRING}/bookings/${id}`);
 // The same idempotency_key again returns the first booking (200) instead of a second one.
 export const createHiringBooking = (data) => api.post(`${HIRING}/bookings`, data);
+export const getHiringCandidate = (id) => api.get(`${HIRING}/candidates/${id}`);
+// Place the booking's intake call. One key per click, kept only to retry that click: the same key never dials twice.
+// 201 placed; 200 that key's call again; 202 sent but not confirmed; 409 refused (detail.code); 502/503 not placed.
+export const startHiringCall = (bookingId, idempotencyKey) =>
+  api.post(`${HIRING}/bookings/${bookingId}/calls`, { idempotency_key: idempotencyKey });
+// { call_id, transcript, summary }: never Vapi's raw messages. 404 when the call has none (yet).
+export const getHiringCallTranscript = (bookingId, callId) =>
+  api.get(`${HIRING}/bookings/${bookingId}/calls/${callId}/transcript`);
+// { url, expires_at }: a short-lived link the <audio> element plays directly; ask again once it expires.
+export const getHiringCallRecording = (bookingId, callId) =>
+  api.get(`${HIRING}/bookings/${bookingId}/calls/${callId}/recording`);
 // Users the caller may see (was /api/auth/users, which never existed).
 export const listUsers = () => authApi.get('/api/users', { params: { page_size: 100 } });
 

@@ -1,12 +1,25 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { getVoiceDashboardSummary, pauseAssistant } from '@/lib/api';
+import { getAgentMetrics, getVoiceDashboardSummary, pauseAssistant } from '@/lib/api';
 import VoiceDashboard, { REFRESH_MS } from './VoiceDashboard';
 
 jest.mock('@/lib/api', () => ({
+  getAgentMetrics: jest.fn(),
   getVoiceDashboardSummary: jest.fn(),
   pauseAssistant: jest.fn(),
   resumeAssistant: jest.fn(),
 }));
+
+const AGENT_METRICS = {
+  tenant_id: 't-1', from: '2026-10-19T18:30:00Z', to: '2026-10-20T18:30:00Z',
+  agents: [
+    { id: 'a-sdr', key: 'sdr', name: 'SDR', has_code: true,
+      calls: { dialed: 17, connected: 6, connect_rate: 0.353, avg_talk_seconds: 115, inbound: 2 },
+      metrics: { interested: 3, hot: 2, appointments_booked: 0, callbacks_requested: 0 } },
+    { id: 'a-hiring', key: 'hiring', name: 'Hiring', has_code: true,
+      calls: { dialed: 4, connected: 3, connect_rate: 0.75, avg_talk_seconds: 240, inbound: 0 },
+      metrics: { interviews_completed: 2, interviews_incomplete: 0, needs_review: 1, not_interviewed: 0, awaiting_result: 0 } },
+  ],
+};
 
 const SUMMARY = {
   window: { from: '2026-10-19T18:30:00Z', to: '2026-10-20T18:30:00Z', tz: 'Asia/Kolkata' },
@@ -62,6 +75,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   setHidden(false);
   getVoiceDashboardSummary.mockResolvedValue({ data: SUMMARY });
+  getAgentMetrics.mockResolvedValue({ data: AGENT_METRICS });
 });
 
 afterEach(() => jest.useRealTimers());
@@ -90,6 +104,32 @@ test('every value comes from the summary endpoint', async () => {
   const params = getVoiceDashboardSummary.mock.calls[0][0];
   expect(params).toEqual(expect.objectContaining({ from: expect.any(String), to: expect.any(String), tz: expect.any(String) }));
   expect(params.agent_id).toBeUndefined();
+});
+
+test('calls by agent: every agent the tenant uses, for the dashboard\'s own period', async () => {
+  render(<VoiceDashboard onNavigate={jest.fn()} />);
+  const table = await screen.findByRole('table', { name: 'Calls by agent' });
+  const hiring = within(table).getByRole('row', { name: /Hiring/ });
+  expect(within(hiring).getByText('4')).toBeInTheDocument();
+  expect(within(hiring).getByText('75%')).toBeInTheDocument();
+  expect(within(hiring).getByText('4:00')).toBeInTheDocument();
+  expect(within(hiring).getByText('2 interviews completed · 1 needing review')).toBeInTheDocument();
+  expect(within(table).getByText('3 interested · 2 hot')).toBeInTheDocument();
+  // A tenant user's own tenant: no tenant is named, and the window is the dashboard's.
+  const dashboardWindow = getVoiceDashboardSummary.mock.calls[0][0];
+  const params = getAgentMetrics.mock.calls[0][0];
+  expect(params).toEqual({ from: dashboardWindow.from, to: dashboardWindow.to });
+  expect(screen.queryByRole('combobox', { name: /Tenant/ })).not.toBeInTheDocument();
+});
+
+test('the calls by agent card failing leaves the dashboard as it is', async () => {
+  getAgentMetrics.mockRejectedValueOnce({ response: { status: 500 } });
+  render(<VoiceDashboard onNavigate={jest.fn()} />);
+  expect(await screen.findByText('These numbers could not be loaded.')).toBeInTheDocument();
+  expect(screen.getByRole('region', { name: 'Calls dialed' })).toBeInTheDocument();
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Load calls by agent again' }));
+  expect(await screen.findByRole('table', { name: 'Calls by agent' })).toBeInTheDocument();
 });
 
 test('an API error shows an inline retry', async () => {

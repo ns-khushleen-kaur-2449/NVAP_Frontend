@@ -39,21 +39,22 @@ import ForbiddenPage from "@/pages/Forbidden";
 import RoleDashboard from "@/pages/RoleDashboard";
 import UsersAdminPage from "@/pages/admin/Users";
 import TeamsAdminPage from "@/pages/admin/Teams";
-import TenantsAdminPage from "@/pages/admin/Tenants";
 import RequirePermission from "@/components/auth/RequirePermission";
-import { PERMISSIONS } from "@/lib/rbac";
+import { PERMISSIONS, homePath } from "@/lib/rbac";
 import AuthGate from "@/components/auth/AuthGate";
 import InboxPage from "@/pages/Inbox";
 import CatalogPage from "@/pages/Catalog";
 import MeetingsPage from "@/pages/Meetings";
 import { operationsRoutes } from "@/pages/Operations";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
+import { SuperAdminGoesTo } from "@/components/auth/SuperAdminRoute";
+import { adminRoutes } from "@/pages/admin/adminRoutes";
 
 // The backend's roles (lib/rbac.js).  Older routes said "admin", a role that never existed.
 const ADMINS = ['super_admin', 'tenant_admin'];
 const ADMINS_AND_MANAGERS = ['super_admin', 'tenant_admin', 'manager'];
 
-/** Shows LandingPage for guests; redirects logged-in users to /dashboard */
+/** Shows LandingPage for guests; redirects logged-in users home (/admin/overview for a Super Admin, else /dashboard) */
 function SmartRoot() {
   const { user, token, loading } = useAuth();
   if (loading) {
@@ -63,7 +64,7 @@ function SmartRoot() {
       </div>
     );
   }
-  if (user || token) return <Navigate to="/dashboard" replace />;
+  if (user || token) return <Navigate to={homePath(user)} replace />;
   return <LandingPage />;
 }
 
@@ -118,9 +119,12 @@ function AppShell() {
       {/* Appointments, callbacks, do-not-call and intent review (old /appointments, /callbacks and /do-not-call redirect). */}
       {operationsRoutes()}
       <Route path="/403" element={<ForbiddenPage />} />
-      <Route path="/settings/users" element={<RequirePermission perm={PERMISSIONS.USERS_VIEW}><UsersAdminPage /></RequirePermission>} />
+      {/* A Super Admin manages tenants and their users in the platform area (/admin/tenants, /admin/tenant-users). */}
+      <Route path="/settings/users" element={
+        <SuperAdminGoesTo to="/admin/tenant-users"><RequirePermission perm={PERMISSIONS.USERS_VIEW}><UsersAdminPage /></RequirePermission></SuperAdminGoesTo>
+      } />
       <Route path="/settings/teams" element={<RequirePermission perm={PERMISSIONS.TEAMS_MANAGE}><TeamsAdminPage /></RequirePermission>} />
-      <Route path="/settings/tenants" element={<RequirePermission perm={PERMISSIONS.TENANTS_MANAGE}><TenantsAdminPage /></RequirePermission>} />
+      <Route path="/settings/tenants" element={<Navigate to="/admin/tenants" replace />} />
       <Route path="/settings" element={<SettingsPage />} />
       <Route path="/settings/calendar" element={<SettingsPage />} />
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
@@ -224,14 +228,8 @@ function App() {
           <Route path="/marketplace" element={<Navigate to="/" replace />} />
           <Route path="/marketplace/listings" element={<MarketplaceListingsPage />} />
           <Route path="/marketplace/listings/:id" element={<MarketplaceDetailsPage />} />
-          {/* Admin dashboard — hidden for now; /admin falls through to the
-              catch-all below and redirects to /dashboard.
-          <Route path="/admin" element={
-            <ProtectedRoute roles={ADMINS_AND_MANAGERS}>
-              <AdminDashboardPage />
-            </ProtectedRoute>
-          } />
-          */}
+          {/* The platform control area (Super Admin only), with its own layout. The old AdminDashboard page stays unmounted. */}
+          {adminRoutes()}
           <Route path="/projects" element={<ExecAppShell><ProjectsPage /></ExecAppShell>} />
           <Route path="/audio-upload" element={<SidebarShell><AudioUploadPage /></SidebarShell>} />
           <Route path="/call-quality" element={<SidebarShell><CallQualityDashboard /></SidebarShell>} />

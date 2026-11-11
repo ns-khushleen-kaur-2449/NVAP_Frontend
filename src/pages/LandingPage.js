@@ -9,7 +9,7 @@ import {
 import MarketingNav from '@/components/marketing/MarketingNav';
 import MarketingFooter from '@/components/marketing/MarketingFooter';
 import HeroWave3D from '@/components/marketing/HeroWave3D';
-import { VoiceCard } from '@/components/marketing/ProductVisuals';
+import GlassCalendar from '@/components/marketing/GlassCalendar';
 import WorkflowVisual from '@/components/marketing/WorkflowVisual';
 import { NetsmartzLogo, SmartSDRWordmark } from '@/components/shared/BrandLockup';
 import { cn } from '@/lib/utils';
@@ -23,17 +23,11 @@ import zoho from '@/assets/zoho.png';
 
 const LOGOS = [hubspot, salesforce, azure, dynamics, twilio, zoho];
 
-const MEETINGS = [
-  { a: 'AR', b: 'PK', days: 2 }, { a: 'SM', b: 'DV', days: 8 }, { a: 'RJ', b: 'NK', days: 3 },
-  { a: 'VT', b: 'AS', days: 8 }, { a: 'MK', b: 'RP', days: 4 }, { a: 'KG', b: 'HT', days: 3 },
-  { a: 'DN', b: 'SB', days: 4 }, { a: 'PA', b: 'JM', days: 1 },
-];
-
 const STATS = [
   { v: '3.4×', k: 'more qualified conversations' },
   { v: '100%', k: 'of your lead list called' },
   { v: '24/7', k: 'autonomous lead calling' },
-  { v: 'HOT · WARM · COLD', k: 'every lead scored automatically' },
+  { v: 'HOT · WARM · COLD', k: 'or Provisional until there\u2019s enough evidence' },
 ];
 
 const STEPS = [
@@ -116,13 +110,13 @@ const PLANS = [
 
 const WHAT = [
   { n: '01', icon: Target, t: 'Call every lead, not just the easy ones', d: 'The Voice Agent works your entire list autonomously — no lead goes cold because a rep ran out of hours.' },
-  { n: '02', icon: FileSearch, t: 'Know which leads are ready', d: 'Every lead gets a score from fit and engagement, labelled HOT, WARM or COLD, with the reasons behind it.' },
+  { n: '02', icon: FileSearch, t: 'Know which leads are ready', d: 'Leads are scored from fit and engagement and labelled HOT, WARM or COLD, or PROVISIONAL when there isn\u2019t enough conversation evidence yet, with the reasons behind it.' },
   { n: '03', icon: Zap, t: 'Follow up while the lead is warm', d: 'Scores update as soon as a lead engages, so your team acts on the right lead at the right time.' },
 ];
 
 const FEATURES = [
   { icon: Layers, t: 'Campaign builder', d: 'Pick a lead list, an agent and a schedule, then launch a calling campaign in a few clicks.' },
-  { icon: Gauge, t: 'Lead scoring', d: 'Every call is scored HOT, WARM or COLD from fit and engagement, with the reasons shown.' },
+  { icon: Gauge, t: 'Lead scoring', d: 'Leads are scored from fit and engagement and labelled HOT, WARM or COLD, or PROVISIONAL until a conversation has been assessed, with the reasons shown.' },
   { icon: BookOpen, t: 'Knowledge base', d: 'Give the agent your projects, pricing and FAQs so it answers the way your team would.' },
   { icon: FileSpreadsheet, t: 'Lead imports & sync', d: 'Upload a list or sync from Google Sheets. No new process to learn.' },
   { icon: BarChart3, t: 'Live dashboard', d: 'Dialed, connected, interested and hot leads, per agent, refreshed as calls happen.' },
@@ -151,7 +145,7 @@ const TESTIMONIALS = [
 const FAQS = [
   { q: 'What exactly is the Voice Agent?', a: 'The Voice Agent autonomously calls and qualifies your leads, books appointments, and scores each lead so your team knows who to follow up with first.' },
   { q: 'Do I need to change my current tools?', a: 'No. Import a lead list, drop in recordings, or sync from Google Sheets. SmartSDR fits around the way your brokerage already works.' },
-  { q: 'How is a lead scored?', a: 'Each lead gets a score out of 100 from how well they fit your ideal customer and how engaged they are, labelled HOT, WARM or COLD. You can see the reasons behind every score.' },
+  { q: 'How is a lead scored?', a: 'Each lead gets a score out of 100 from how well they fit your ideal customer and how engaged they are, labelled HOT, WARM or COLD. When we don\u2019t yet have reliable conversation information (for example, the lead hasn\u2019t been reached or a call couldn\u2019t be assessed), the lead is marked PROVISIONAL instead of being guessed. You can see the reasons behind every score.' },
   { q: 'Is my data secure?', a: 'Enterprise plans include SSO and role-based access. Your call data stays yours and is never used to train shared models.' },
   { q: 'Can I tune how the agent talks to leads?', a: 'Yes. You set the script, the questions it asks and the knowledge it draws on, so it reflects how your brokerage actually sells.' },
 ];
@@ -506,34 +500,13 @@ export default function LandingPage() {
           </motion.div>
         </motion.div>
 
-        {/* Booked-meetings live strip */}
-        <div className="relative z-10 mx-auto mt-16 max-w-[1300px] px-6 md:mt-20 md:px-10">
-          <p className="mb-6 text-center text-xs font-semibold uppercase tracking-[0.24em] text-white/45">This agent booked meetings with</p>
-          <div className="relative overflow-hidden [mask-image:linear-gradient(90deg,transparent,black_10%,black_90%,transparent)]">
-            <div className="mk-marquee flex w-max items-center gap-4">
-              {[...MEETINGS, ...MEETINGS].map((m, i) => (
-                <div key={i} className="flex shrink-0 items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-3 backdrop-blur">
-                  <div className="flex -space-x-2">
-                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-[var(--pine)] to-[var(--brass)] text-[0.6rem] font-bold text-white ring-2 ring-[var(--deep)]">{m.a}</span>
-                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-slate-500 to-slate-700 text-[0.6rem] font-bold text-white ring-2 ring-[var(--deep)]">{m.b}</span>
-                  </div>
-                  <div className="leading-tight">
-                    <p className="text-[0.7rem] font-semibold text-white">Meeting in {m.days} day{m.days > 1 ? 's' : ''}</p>
-                    <p className="text-[0.6rem] uppercase tracking-wider text-emerald-400">Outgoing</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
         {/* Trusted-by marquee */}
-        <div className="relative z-10 mx-auto mt-10 max-w-[1300px] px-6 md:px-10">
+        <div className="relative z-10 mx-auto mt-16 max-w-[1300px] px-6 md:mt-20 md:px-10">
           <p className="mb-6 text-center text-sm font-semibold uppercase tracking-[0.24em] text-white/40">Plugs into the tools you already use</p>
           <div className="relative overflow-hidden [mask-image:linear-gradient(90deg,transparent,black_12%,black_88%,transparent)]">
             <div className="mk-marquee flex w-max items-center gap-16">
               {[...LOGOS, ...LOGOS].map((src, i) => (
-                <img key={i} src={src} alt="" className="h-12 w-auto object-contain opacity-55 grayscale transition hover:opacity-100 hover:grayscale-0" />
+                <img key={i} src={src} alt="" className="h-12 w-auto object-contain" />
               ))}
             </div>
           </div>
@@ -639,7 +612,7 @@ export default function LandingPage() {
             </button>
           </Reveal>
           <Reveal delay={0.1} className="flex justify-center">
-            <div className="mk-float"><VoiceCard /></div>
+            <GlassCalendar />
           </Reveal>
         </div>
       </section>

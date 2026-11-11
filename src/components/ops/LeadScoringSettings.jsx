@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  getLeadScoringConfig, getLeadScoringConfigHistory, updateLeadScoringConfig,
+  getLeadScoringConfig, getLeadScoringConfigHistory, getLeadScoringOverview, rescoreLeadScores, updateLeadScoringConfig,
 } from '@/lib/api';
 import { useAuth } from '@/lib/AuthContext';
 import { canEditLeadScoring, canViewOperations, isSuperAdmin } from '@/lib/rbac';
@@ -10,9 +10,37 @@ import RelativeTime from './RelativeTime';
 import OpsButton from './OpsButton';
 import TenantPicker from './TenantPicker';
 import { ErrorState, SkeletonRows } from './States';
+import LeadScoringOverview from './LeadScoringOverview';
 
 const num = (v) => (v == null ? '—' : String(Math.round(v * 10) / 10));
 const sameSet = (a, b) => a.length === b.length && a.every((x) => b.includes(x));
+const plural = (count, one, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
+// The most prospects one "Recalculate scores" pass handles (POST /api/lead-scores/rescore default).
+const RESCORE_PASS = 100;
+
+// What a save does to existing scores, honestly: recalculated in the background only when
+// automatic refresh is on; otherwise they wait for "Recalculate scores".
+export const saveMessage = (automatic) => {
+  if (automatic === true) {
+    return 'Lead scoring saved. Affected scores are recalculated in the background; until then they show RECALCULATION DUE.';
+  }
+  if (automatic === false) {
+    return 'Lead scoring saved. Existing scores show RECALCULATION DUE until they are recalculated: use "Recalculate scores".';
+  }
+  return 'Lead scoring saved. Existing scores show RECALCULATION DUE until they are recalculated.';
+};
+
+// One refresh pass, in words: { scored, fresh, no_fit_data, missing, failed }.
+export const rescoreMessage = (r) => {
+  const handled = r.scored + r.fresh + r.no_fit_data + r.missing + r.failed;
+  if (handled === 0) return 'Every score is up to date. Nothing to recalculate.';
+  const parts = [`Recalculated ${plural(r.scored, 'score')}.`];
+  if (r.fresh) parts.push(`${plural(r.fresh, 'score was', 'scores were')} already up to date.`);
+  if (r.no_fit_data) parts.push(`${plural(r.no_fit_data, 'lead')} can't be scored until seniority, department or company size is added.`);
+  if (r.failed) parts.push(`${plural(r.failed, 'lead')} could not be scored; nothing was changed for them.`);
+  if (handled >= RESCORE_PASS) parts.push('More may be waiting: run it again.');
+  return parts.join(' ');
+};
 
 function ScoringConfig({ scope, scopeKey, editable }) {
   const [data, setData] = useState(null);
@@ -20,6 +48,19 @@ function ScoringConfig({ scope, scopeKey, editable }) {
   const [error, setError] = useState(null);
   const [confirming, setConfirming] = useState(false);
   const [history, setHistory] = useState(null);
+  const [overview, setOverview] = useState(null);
+  const [overviewError, setOverviewError] = useState(null);
+  const [rescoring, setRescoring] = useState(false);
+  const [rescoreResult, setRescoreResult] = useState(null);
+
+  const fetchOverview = useCallback(async () => {
+    try {
+      setOverview((await getLeadScoringOverview(scope)).data);
+      setOverviewError(null);
+    } catch (err) {
+      setOverviewError(errorMessage(err, 'The overview could not be loaded.'));
+    }
+  }, [scope]);
 
   const fetchAll = useCallback(async () => {
     try {
@@ -28,20 +69,34 @@ function ScoringConfig({ scope, scopeKey, editable }) {
       setDisabled(res.data.disabled);
       setError(null);
       try { setHistory((await getLeadScoringConfigHistory(scope)).data.items); } catch { setHistory(null); }
+      fetchOverview();
     } catch (err) {
       setError(err?.response?.status === 403 ? "You don't have permission" : errorMessage(err, 'Check your connection and try again.'));
     }
   }, [scope]);
-  useEffect(() => { setData(null); fetchAll(); }, [fetchAll, scopeKey]);
+  useEffect(() => { setData(null); setOverview(null); setRescoreResult(null); fetchAll(); }, [fetchAll, scopeKey]);
 
   const { run } = useApiAction(
     (reason) => updateLeadScoringConfig({ disabled, reason, expected_config_hash: data.config_hash }, scope),
     {
-      success: (r) => (r.data.changed === false ? 'No changes to save' : 'Lead scoring saved. Scores are being refreshed.'),
+      success: (r) => (r.data.changed === false ? 'No changes to save' : saveMessage(overview?.automatic_refresh_enabled)),
       onSuccess: fetchAll,
       onConflict: fetchAll,
     },
   );
+
+  const recalculate = async () => {
+    setRescoring(true);
+    setRescoreResult(null);
+    try {
+      const r = await rescoreLeadScores({ ...scope, limit: RESCORE_PASS });
+      setRescoreResult({ ok: true, text: rescoreMessage(r.data) });
+      fetchOverview();
+    } catch (err) {
+      setRescoreResult({ ok: false, text: errorMessage(err, 'Scores could not be recalculated. Nothing was changed.') });
+    }
+    setRescoring(false);
+  };
 
   const params = useMemo(() => data?.parameters || [], [data]);
   const byGroup = useMemo(
@@ -101,9 +156,14 @@ function ScoringConfig({ scope, scopeKey, editable }) {
           </fieldset>
         ))}
         {data && data.thresholds?.length > 0 && (
-          <div className="space-y-1">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Temperature thresholds</p>
+          <div className="space-y-1" data-testid="thresholds">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Temperature thresholds (fixed)</p>
             <p className="ops-num text-sm">{data.thresholds.map((t) => `${t.label} ${t.min}–${t.max}`).join(' · ')}</p>
+            <p className="text-xs text-muted-foreground">
+              PROVISIONAL is shown instead of a temperature when there isn't enough reliable conversation information yet
+              (no calls, no accepted assessment, an inconclusive result, or the latest assessment pending, without a
+              result or failed). It is not a score range.
+            </p>
           </div>
         )}
         {noFit && <p className="text-xs font-semibold text-[color:var(--ops-bad)]">At least one Fit parameter must stay on.</p>}
@@ -111,6 +171,29 @@ function ScoringConfig({ scope, scopeKey, editable }) {
           <div className="flex flex-wrap items-center gap-3">
             <OpsButton variant="primary" disabled={!changed || noFit} onClick={() => setConfirming(true)}>Save</OpsButton>
             <OpsButton variant="quiet" disabled={!changed} onClick={() => setDisabled(data.disabled)}>Undo changes</OpsButton>
+          </div>
+        )}
+        {data && (
+          <div className="space-y-2 border-t border-border pt-3">
+            {overviewError && <ErrorState message={overviewError} onRetry={fetchOverview} />}
+            <LeadScoringOverview data={overview} />
+            {editable && (
+              <div className="flex flex-wrap items-center gap-3">
+                <OpsButton variant="quiet" disabled={rescoring} onClick={recalculate}>
+                  {rescoring ? 'Recalculating…' : 'Recalculate scores'}
+                </OpsButton>
+                <span className="text-xs text-muted-foreground">
+                  Recalculates up to {RESCORE_PASS} out-of-date or never-calculated scores now
+                  {overview && !overview.automatic_refresh_enabled ? ' (automatic refresh is off)' : ''}.
+                </span>
+              </div>
+            )}
+            {rescoreResult && (
+              <p role="status" data-testid="rescore-result"
+                className={`text-xs ${rescoreResult.ok ? '' : 'font-semibold text-[color:var(--ops-bad)]'}`}>
+                {rescoreResult.text}
+              </p>
+            )}
           </div>
         )}
         {history && (
@@ -136,7 +219,9 @@ function ScoringConfig({ scope, scopeKey, editable }) {
         )}
       </section>
       <ReasonDialog open={confirming} onOpenChange={setConfirming} title="Save lead score parameters" changes={changes}
-        description="Scores for this tenant are refreshed in the background after the change."
+        description={overview?.automatic_refresh_enabled === false
+          ? 'Existing scores show RECALCULATION DUE after the change until they are recalculated with "Recalculate scores".'
+          : 'Affected scores show RECALCULATION DUE after the change until they are recalculated.'}
         confirmLabel="Save" onConfirm={async (reason) => Boolean(await run(reason))} />
     </>
   );

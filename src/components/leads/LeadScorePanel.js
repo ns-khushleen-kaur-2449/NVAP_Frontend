@@ -1,20 +1,38 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
-import { RefreshCw, HelpCircle, Check, X } from 'lucide-react';
-import { getLeadScore, getLeadScoreHistory, calculateLeadScore } from '@/lib/api';
+import { RefreshCw, Check, X } from 'lucide-react';
+import { getLeadScore, getLeadScoreHistory, calculateLeadScore, getProspectAssessmentStatus } from '@/lib/api';
 import { ScoreGauge } from '@/components/shared/ScoreGauge';
+import DataCompleteness from './DataCompleteness';
+import WhyThisScore from './WhyThisScore';
+import TemperatureChip, { FALLBACK_COLOR, TEMPERATURE_COLOR } from './TemperatureChip';
+import EngagementBadge from './EngagementBadge';
+import ScoreFreshnessChip from './ScoreFreshnessChip';
+import { PROVISIONAL_HELP, PROVISIONAL_REASONS, describeReasons } from '@/lib/leadScoreLabels';
 
-// Temperature comes from the backend (HOT / WARM / COLD by default, bands set by the methodology).
-const TEMPERATURE_COLOR = {
-  HOT: 'hsl(0, 72%, 52%)',
-  WARM: 'hsl(38, 80%, 58%)',
-  COLD: 'hsl(210, 70%, 60%)',
+// The temperature to show comes from the backend (temperature_display): HOT / WARM / COLD,
+// or PROVISIONAL when there is not enough reliable conversation information.
+
+// "Assessed 46 days ago": the accepted intent's age, beside the assessment badge.
+const intentAge = (accepted) => {
+  if (!accepted || accepted.age_days == null) return null;
+  return accepted.age_days === 0 ? 'Assessed today' : `Assessed ${accepted.age_days} day${accepted.age_days === 1 ? '' : 's'} ago`;
 };
-const FALLBACK_COLOR = 'hsl(215, 15%, 60%)';
 
-const GROUP_LABEL = { fit: 'Fit', engagement: 'Engagement' };
+// The assessment status, shown for scored and unscored leads alike.
+const AssessmentLine = ({ status }) => {
+  if (!status?.engagement_label) return null;
+  const age = intentAge(status.accepted_intent);
+  return (
+    <div className="flex flex-wrap items-center gap-2" data-testid="assessment-status">
+      <EngagementBadge label={status.engagement_label} latestAttempt={status.latest_attempt}
+        secondaryBadge={status.secondary_badge} thresholds={status.thresholds} />
+      {age && <span className="text-xs text-muted-foreground" data-testid="intent-age">{age}</span>}
+    </div>
+  );
+};
+
 const CHANNEL_LABEL = { call: 'Call', sms: 'SMS', email: 'Email' };
 const RESTRICTION_LABEL = {
   stage_disqualified: 'Stage is Disqualified',
@@ -39,23 +57,33 @@ const errorText = (e, fallback) => {
   return fallback;
 };
 
-const factorValue = (f) => {
-  if (f.status === 'missing') return f.note || 'No data';
-  if (f.status === 'malformed') return 'Invalid value';
-  return f.matched != null ? String(f.matched) : '';
-};
-
-const GroupRow = ({ name, points, group }) => {
-  const weight = group?.weight;
+// The live layer: how the score reads now (separate from how it was calculated).
+const NowLayer = ({ score }) => {
+  const shown = score.temperature_display;
+  const completeness = score.data_completeness;
+  const recalculation = score.recalculation;
   return (
-    <div>
-      <div className="flex justify-between text-xs mb-1">
-        <span className="font-medium">{GROUP_LABEL[name] || label(name)}</span>
-        <span className="tabular-nums text-muted-foreground">{points ?? 0}{weight != null ? ` / ${weight}` : ''} pts</span>
-      </div>
-      <Progress value={weight ? Math.min(100, ((points ?? 0) / weight) * 100) : 0} className="h-1.5" />
-      {group?.below_min_coverage && (
-        <p className="text-[10px] text-muted-foreground mt-0.5">Too little data ({Math.round(group.coverage * 100)}% known) — unknown factors count as 0.</p>
+    <div className="mt-4 space-y-1.5 border-t border-border pt-3" data-testid="score-now">
+      <p className="text-xs font-semibold">Now</p>
+      {shown?.provisional && (
+        <p className="text-xs text-muted-foreground" data-testid="provisional-reason">
+          Provisional: {PROVISIONAL_REASONS[shown.reason] || label(shown.reason)} {PROVISIONAL_HELP}
+        </p>
+      )}
+      {score.freshness_indicator === 'out_of_date' && (
+        <p className="text-xs text-[hsl(38,92%,65%)]" data-testid="out-of-date">
+          Out of date: this is the last calculated value, not a current score.
+          {recalculation?.due ? ' Its details are back, so it can be recalculated.' : ' It cannot be recalculated until seniority, department or company size is known.'}
+        </p>
+      )}
+      {score.freshness_indicator === 'recalculation_due' && (
+        <p className="text-xs text-[hsl(38,92%,65%)]" data-testid="recalculation-due">
+          Recalculation due: {describeReasons(recalculation?.reasons)}.
+        </p>
+      )}
+      {completeness && (
+        <DataCompleteness recorded={completeness.recorded} level={completeness.display_level}
+          capReason={completeness.cap_reason} />
       )}
     </div>
   );
@@ -64,7 +92,10 @@ const GroupRow = ({ name, points, group }) => {
 // One card: the lead's quick info (children), its current Fit + Engagement score and why.
 const LeadScorePanel = ({ prospectId, onScored, children }) => {
   const [score, setScore] = useState(null);
+  // For a lead without a score: its assessment status (GET /api/intent-assessment/prospects/{id}/status).
+  const [status, setStatus] = useState(null);
   const [events, setEvents] = useState([]);
+  const [opened, setOpened] = useState(null);
   const [loading, setLoading] = useState(true);
   const [calculating, setCalculating] = useState(false);
   const [message, setMessage] = useState('');
@@ -72,7 +103,9 @@ const LeadScorePanel = ({ prospectId, onScored, children }) => {
   const load = useCallback(async () => {
     setLoading(true);
     setScore(null);
+    setStatus(null);
     setEvents([]);
+    setOpened(null);
     setMessage('');
     try {
       const r = await getLeadScore(prospectId);
@@ -80,9 +113,12 @@ const LeadScorePanel = ({ prospectId, onScored, children }) => {
       try {
         const h = await getLeadScoreHistory(prospectId, { page: 1, page_size: 5 });
         setEvents(h.data.items || []);
-      } catch { /* the breakdown is optional */ }
+      } catch { /* the history list is optional */ }
     } catch (e) {
       if (e.response?.status !== 404) setMessage(errorText(e, 'Could not load the lead score.'));
+      else {
+        try { setStatus((await getProspectAssessmentStatus(prospectId)).data); } catch { /* optional */ }
+      }
     }
     setLoading(false);
   }, [prospectId]);
@@ -98,25 +134,21 @@ const LeadScorePanel = ({ prospectId, onScored, children }) => {
       onScored?.(r.data.current_score);
       if (r.data.is_current === false) toast.info('A newer score already exists; showing it.');
       else toast.success('Lead score updated');
-      // History is newest first; reload it so the breakdown and trend match the new score.
       const h = await getLeadScoreHistory(prospectId, { page: 1, page_size: 5 }).catch(() => null);
       setEvents(h?.data.items || [r.data.calculation]);
+      setOpened(null);
     } catch (e) {
       toast.error(errorText(e, 'Could not calculate a score for this lead.'));
     }
     setCalculating(false);
   };
 
-  // The breakdown belongs to the newest scoring event; a seeded score has none.
-  const explanation = events[0]?.explanation || null;
-  const factors = explanation?.factors || [];
-  const groupPoints = explanation?.group_points || {};
-  const quality = explanation?.data_quality;
   const eligibility = score?.eligibility;
-  const temperature = score?.temperature;
-  const color = TEMPERATURE_COLOR[temperature] || FALLBACK_COLOR;
-  const seeded = score && !score.scoring_method;
+  const shown = score?.temperature_display;
+  const displayLabel = shown?.label || null;
+  const color = TEMPERATURE_COLOR[displayLabel] || FALLBACK_COLOR;
   const rounded = score ? Math.round(score.lead_score) : null;
+  const openedEvent = events.find((ev) => ev.score_history_id === opened);
 
   return (
     <section className="mb-5 w-full min-w-0 break-words rounded-xl border border-border bg-[hsl(var(--surface-2))] p-4" aria-label="Lead score">
@@ -133,71 +165,39 @@ const LeadScorePanel = ({ prospectId, onScored, children }) => {
       {loading ? (
         <p className="text-xs text-muted-foreground">Loading score...</p>
       ) : !score ? (
-        <p className="text-xs text-muted-foreground">{message || 'This lead has not been scored yet.'}</p>
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground">{message || 'This lead has not been scored yet.'}</p>
+          <AssessmentLine status={status} />
+        </div>
       ) : (
         <>
           <div className="flex items-center gap-4">
-            <ScoreGauge score={rounded} size={100} color={color} label={temperature || 'Score'} />
+            <ScoreGauge score={rounded} size={100} color={color} label={displayLabel || 'Score'} />
             <div className="flex-1 space-y-1 text-sm">
-              <div className="flex items-center gap-2">
-                {temperature && (
-                  <span className="rounded-full border px-2 py-0.5 text-xs font-semibold" style={{ color, borderColor: color }}>
-                    {temperature}
-                  </span>
-                )}
+              <div className="flex flex-wrap items-center gap-2">
+                <TemperatureChip display={shown} />
                 <span className="text-xs text-muted-foreground">out of 100</span>
+                <span className="text-xs text-muted-foreground" data-testid="score-status">
+                  · {score.status === 'stale' ? 'Stale' : 'Current'}
+                </span>
+                <ScoreFreshnessChip indicator={score.freshness_indicator} />
               </div>
+              <AssessmentLine status={score} />
               {score.intent_level && <div><span className="text-muted-foreground">Intent:</span> <span className="capitalize">{label(score.intent_level)}</span></div>}
               {score.recommended_action && <div><span className="text-muted-foreground">Next action:</span> <span className="capitalize">{label(score.recommended_action)}</span></div>}
               <div className="text-xs text-muted-foreground">Scored {new Date(score.calculated_at).toLocaleString()}</div>
             </div>
           </div>
 
-          {seeded && (
-            <p className="mt-3 text-xs text-muted-foreground">
-              This is a demo score with no breakdown. Recalculate to score it from the lead's data.
+          <NowLayer score={score} />
+
+          <div className="mt-4 border-t border-border pt-3" data-testid="score-calculation">
+            <p className="text-xs font-semibold">How this score was calculated</p>
+            <p className="mb-2 text-xs text-muted-foreground">
+              Calculated {new Date(score.calculated_at).toLocaleString()} with the settings in force then.
             </p>
-          )}
-
-          {Object.keys(groupPoints).length > 0 && (
-            <div className="mt-4 space-y-2">
-              {Object.entries(groupPoints).map(([name, points]) => (
-                <GroupRow key={name} name={name} points={points} group={explanation.groups?.[name]} />
-              ))}
-            </div>
-          )}
-
-          {factors.length > 0 && (
-            <div className="mt-4">
-              <p className="text-xs text-muted-foreground mb-2 flex items-center gap-1"><HelpCircle className="w-3 h-3" /> Why This Score</p>
-              <ul className="space-y-1.5">
-                {factors.map((f) => {
-                  const known = f.status !== 'missing' && f.status !== 'malformed';
-                  return (
-                    <li key={f.feature} className="flex items-start justify-between gap-3 text-xs">
-                      <span className="min-w-0">
-                        <span className="capitalize">{label(f.feature)}</span>
-                        <span className="block text-muted-foreground break-words">
-                          {factorValue(f)}
-                          {f.freshness?.multiplier != null && f.freshness.multiplier < 1 && ` · aged ×${f.freshness.multiplier}`}
-                          {f.excluded && ' · left out of the score'}
-                        </span>
-                      </span>
-                      <span className={`shrink-0 tabular-nums ${known ? '' : 'text-muted-foreground'}`}>
-                        {f.contribution == null ? '—' : `${f.contribution} pts`}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          )}
-
-          {quality && (
-            <p className="mt-3 text-xs text-muted-foreground">
-              Contact data: email {quality.has_email ? 'on file' : 'missing'}{quality.verified_email ? ' (verified)' : ''}, phone {quality.has_phone ? 'on file' : 'missing'}. Not scored.
-            </p>
-          )}
+            <WhyThisScore explanation={score.explanation} />
+          </div>
 
           {eligibility && (
             <div className="mt-4 border-t border-border pt-3">
@@ -222,17 +222,29 @@ const LeadScorePanel = ({ prospectId, onScored, children }) => {
             </div>
           )}
 
-          {events.length > 1 && (
-            <div className="mt-4 border-t border-border pt-3">
-              <p className="text-xs text-muted-foreground mb-1.5">Recent scores</p>
+          {events.length > 0 && (
+            <div className="mt-4 border-t border-border pt-3" data-testid="score-history">
+              <p className="text-xs text-muted-foreground mb-1.5">Recent scores (historical: as calculated then)</p>
               <ul className="space-y-1 text-xs">
                 {events.map((ev) => (
-                  <li key={ev.score_history_id} className="flex justify-between text-muted-foreground">
-                    <span>{new Date(ev.calculated_at).toLocaleDateString()}</span>
-                    <span className="tabular-nums">{Math.round(ev.lead_score)}{ev.temperature ? ` · ${ev.temperature}` : ''}</span>
+                  <li key={ev.score_history_id}>
+                    <button type="button" className="flex w-full justify-between text-muted-foreground hover:text-foreground"
+                      aria-expanded={opened === ev.score_history_id}
+                      onClick={() => setOpened(opened === ev.score_history_id ? null : ev.score_history_id)}>
+                      <span>Historical · {new Date(ev.calculated_at).toLocaleDateString()}</span>
+                      <span className="tabular-nums">{Math.round(ev.lead_score)}{ev.temperature ? ` · ${ev.temperature}` : ''}</span>
+                    </button>
                   </li>
                 ))}
               </ul>
+              {openedEvent && (
+                <div className="mt-2 rounded-lg border border-border p-3">
+                  <p className="mb-2 text-xs text-muted-foreground">
+                    Historical score calculated {new Date(openedEvent.calculated_at).toLocaleString()}; shown as recorded then.
+                  </p>
+                  <WhyThisScore explanation={openedEvent.explanation_view} historical />
+                </div>
+              )}
             </div>
           )}
         </>

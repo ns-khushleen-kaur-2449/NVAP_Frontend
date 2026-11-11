@@ -5,34 +5,53 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useCallLogs } from '@/hooks/useCallLogs';
 import { isConnectedStatus, isNotConnectedStatus } from '@/lib/callOutcome';
-import { Phone, Clock, Calendar, RefreshCw, Flame, Thermometer, Snowflake, Loader2, XCircle } from 'lucide-react';
+import { Phone, Clock, Calendar, RefreshCw, MessagesSquare, MessageSquare, PhoneOff, Loader2, XCircle } from 'lucide-react';
 
-function getLeadTemp(log) {
+// How engaged the latest call was, from its outcome and length.  A call-level fact, not the
+// lead's temperature (that comes from the lead score): it never says Hot, Warm or Cold.
+export const ENGAGEMENT_FILTERS = [
+  { value: 'strong', label: 'Strong engagement' },
+  { value: 'moderate', label: 'Moderate engagement' },
+  { value: 'short', label: 'Short call' },
+  { value: 'not_connected', label: 'Not connected' },
+];
+
+export function getCallEngagement(log) {
   if (log.appointment_booked || (isConnectedStatus(log.status) && log.duration_seconds >= 300)) {
     return {
-      label: 'Hot',
-      icon: Flame,
-      color: 'bg-red-500/15 text-red-500 border-red-400/30',
+      key: 'strong',
+      label: 'Strong engagement',
+      icon: MessagesSquare,
+      color: 'bg-emerald-500/15 text-emerald-600 border-emerald-400/30',
       reason: log.appointment_booked
-        ? 'Appointment was booked during the call.'
-        : 'Long, engaged conversation — strong buying intent.',
+        ? 'An appointment was booked during the call.'
+        : 'Connected for 5 minutes or more.',
     };
   }
   if (isConnectedStatus(log.status) && log.duration_seconds >= 120) {
     return {
-      label: 'Warm',
-      icon: Thermometer,
-      color: 'bg-orange-400/15 text-orange-500 border-orange-400/30',
-      reason: 'Call completed with reasonable engagement. Needs follow-up.',
+      key: 'moderate',
+      label: 'Moderate engagement',
+      icon: MessageSquare,
+      color: 'bg-sky-400/15 text-sky-600 border-sky-400/30',
+      reason: 'Connected for 2 minutes or more.',
+    };
+  }
+  if (isNotConnectedStatus(log.status)) {
+    return {
+      key: 'not_connected',
+      label: 'Not connected',
+      icon: PhoneOff,
+      color: 'bg-gray-200 text-gray-600 border-gray-300',
+      reason: 'The call failed or was not connected.',
     };
   }
   return {
-    label: 'Cold',
-    icon: Snowflake,
-    color: 'bg-blue-400/15 text-blue-400 border-blue-400/30',
-    reason: isNotConnectedStatus(log.status)
-      ? 'Call failed or was not connected.'
-      : 'Very short or incomplete conversation. Low engagement.',
+    key: 'short',
+    label: 'Short call',
+    icon: Phone,
+    color: 'bg-gray-100 text-gray-600 border-gray-300',
+    reason: 'A short or incomplete conversation (under 2 minutes).',
   };
 }
 
@@ -52,7 +71,7 @@ function formatTime(iso) {
 }
 
 export default function EngagementsPage() {
-  const [tempFilter, setTempFilter] = useState('');
+  const [engagementFilter, setEngagementFilter] = useState('');
 
   const { logs, loading, error, refresh } = useCallLogs({
     page: 1, pageSize: 50, sortBy: 'latest', autoRefresh: false,
@@ -72,8 +91,8 @@ export default function EngagementsPage() {
   }
   const dedupedLeads = Array.from(leadMap.values());
 
-  const filtered = tempFilter
-    ? dedupedLeads.filter(l => getLeadTemp(l).label.toLowerCase() === tempFilter)
+  const filtered = engagementFilter
+    ? dedupedLeads.filter(l => getCallEngagement(l).key === engagementFilter)
     : dedupedLeads;
 
   return (
@@ -83,7 +102,7 @@ export default function EngagementsPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="font-display text-2xl font-semibold tracking-tight mb-1">Engagements</h1>
-            <p className="text-sm text-muted-foreground">Lead temperature and call outcome summary.</p>
+            <p className="text-sm text-muted-foreground">Call engagement and outcome summary.</p>
           </div>
           <div className="flex items-center gap-2">
             <Badge variant="outline" className="tabular-nums text-xs">{dedupedLeads.length} leads</Badge>
@@ -94,17 +113,15 @@ export default function EngagementsPage() {
         </div>
       </div>
 
-      {/* Temperature filter */}
+      {/* Call engagement filter */}
       <div className="flex items-center gap-2">
-        <Select value={tempFilter} onValueChange={v => setTempFilter(v === 'all' ? '' : v)}>
-          <SelectTrigger className="w-[150px] text-sm bg-white">
-            <SelectValue placeholder="All Leads" />
+        <Select value={engagementFilter} onValueChange={v => setEngagementFilter(v === 'all' ? '' : v)}>
+          <SelectTrigger className="w-[200px] text-sm bg-white" aria-label="Call engagement">
+            <SelectValue placeholder="All calls" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Leads</SelectItem>
-            <SelectItem value="hot">🔥 Hot</SelectItem>
-            <SelectItem value="warm">🌡️ Warm</SelectItem>
-            <SelectItem value="cold">🧊 Cold</SelectItem>
+            <SelectItem value="all">All calls</SelectItem>
+            {ENGAGEMENT_FILTERS.map((f) => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}
           </SelectContent>
         </Select>
       </div>
@@ -128,8 +145,8 @@ export default function EngagementsPage() {
       ) : (
         <div className="space-y-2">
           {filtered.map(log => {
-            const temp = getLeadTemp(log);
-            const Icon = temp.icon;
+            const engagement = getCallEngagement(log);
+            const Icon = engagement.icon;
             return (
               <Card key={log.phone_number || log.id} className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:border-[#F87217]/30 hover:bg-[#F87217]/5 transition-all duration-200 cursor-pointer group">
                 <CardContent className="p-4">
@@ -149,12 +166,12 @@ export default function EngagementsPage() {
                       </div>
                     </div>
 
-                    {/* Right — temperature + reason */}
+                    {/* Right — call engagement + reason */}
                     <div className="flex flex-col items-end gap-1.5 shrink-0 max-w-[220px] text-right">
-                      <Badge className={`${temp.color} gap-1 text-xs font-semibold`}>
-                        <Icon className="w-3 h-3" /> {temp.label}
+                      <Badge className={`${engagement.color} gap-1 text-xs font-semibold`} data-testid="call-engagement">
+                        <Icon className="w-3 h-3" /> {engagement.label}
                       </Badge>
-                      <p className="text-[11px] text-gray-500 leading-snug">{temp.reason}</p>
+                      <p className="text-[11px] text-gray-500 leading-snug">{engagement.reason}</p>
                     </div>
                   </div>
                 </CardContent>

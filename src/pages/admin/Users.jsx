@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Loader2, Plus, Search, UserCheck, UserX, Users as UsersIcon, Clock } from 'lucide-react';
 import { Card } from '@/components/ui/card';
@@ -30,13 +31,14 @@ const ROLE_FILTERS = {
 /** Users the current user may see (tenant admins: their tenant; managers: their team). */
 export default function UsersPage() {
   const { user: actor } = useAuth();
+  const [searchParams] = useSearchParams();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [search, setSearch] = useState('');
   const [role, setRole] = useState(ALL);
   const [status, setStatus] = useState(ALL);
-  const [tenantId, setTenantId] = useState(ALL);
+  const [tenantId, setTenantId] = useState(searchParams.get('tenant_id') || ALL);
   const [tenants, setTenants] = useState([]);
   const [page, setPage] = useState(1);
   const [adding, setAdding] = useState(false);

@@ -13,8 +13,10 @@ import { placeholdersFor } from '../../../lib/builderPersonalization';
  */
 export default function OpenerSection({
   personalized, firstMessage, onFirstMessage, leadFields, mentionsReason, onMentionsReason,
-  defaultReason, onDefaultReason, generated, errors = {}, warnings = [],
+  defaultReason, onDefaultReason, generated, errors = {}, warnings = [], dir = 'ltr',
 }) {
+  // The agent's words are written in its language pack's direction ("rtl" for Arabic), set explicitly: "auto" would
+  // read an Arabic line that starts with {agent_name} or a Latin name as left to right.
   const box = useRef(null);
   // Where the caret was when the line lost focus (clicking a placeholder moves focus to the button);
   // null until the line was edited: placeholders are then added at the end.
@@ -45,7 +47,7 @@ export default function OpenerSection({
           </div>
           <Field label="Default reason for calling" hint="One spoken sentence. Used when a call has no campaign pitch (inbound, test and single calls). No prices.">
             <Input
-              dir="auto"
+              dir={dir}
               value={defaultReason}
               maxLength={300}
               onChange={(e) => onDefaultReason(e.target.value)}
@@ -64,7 +66,7 @@ export default function OpenerSection({
       >
         <Textarea
           ref={box}
-          dir="auto"
+          dir={dir}
           value={firstMessage}
           maxLength={500}
           onChange={(e) => onFirstMessage(e.target.value)}
@@ -89,7 +91,7 @@ export default function OpenerSection({
           </div>
         )}
         {!firstMessage.trim() && generated && (
-          <p dir="auto" className="text-[11px] text-muted-foreground">Will say: “{generated}”</p>
+          <p className="text-[11px] text-muted-foreground">Will say: <span dir={dir} data-testid="will-say">“{generated}”</span></p>
         )}
         <FieldMessages errors={errors.first_message} warnings={warnings} />
       </Field>

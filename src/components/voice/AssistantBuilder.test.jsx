@@ -14,13 +14,15 @@ jest.mock('../../lib/api', () => ({
   rollbackBuilderConfig: jest.fn(),
   retryBuilderConfig: jest.fn(),
   getKnowledgeFiles: jest.fn(),
+  getAssistants: jest.fn(),
   getCatalogItems: jest.fn(),
   getCatalogTable: jest.fn(),
   getCatalogSettings: jest.fn(),
   getLeadFieldRegistry: jest.fn(),
+  getBuilderLanguages: jest.fn(),
 }));
 jest.mock('./AgentToolsPanel', () => () => null);
-jest.mock('sonner', () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
+jest.mock('sonner', () => ({ toast: { success: jest.fn(), error: jest.fn(), info: jest.fn() } }));
 jest.mock('../ui/select', () => ({
   Select: ({ children }) => <div>{children}</div>,
   SelectTrigger: ({ children }) => <div>{children}</div>,
@@ -38,17 +40,45 @@ const LEGACY = {
   rules: { one_question_at_a_time: true, no_unlisted_pricing: true, check_stock_before_confirming: true, transfer_on_request: true },
   voice_stack: { stt: 'deepgram-nova-3', llm: 'groq', tts: '11labs' },
 };
+// What GET /assistant-builder/languages answers a test tenant: approved en and hi, a draft Arabic pack.
+const voice = (ready, needs = false) => (needs
+  ? { needs_persona_gender: true, ready: false, voices: { female: { ready: true, problem: null },
+    male: { ready: false, problem: 'no voice is configured for Arabic (male): add "ar-male" to VAPI_BUILDER_VOICES' } } }
+  : { needs_persona_gender: false, ready, voices: { neutral: { ready, problem: ready ? null : 'VAPI_BUILDER_VOICE_ID missing' } } });
+const LANGUAGES_API = [
+  { code: 'en', version: 1, status: 'approved', name: 'English', native_name: 'English', direction: 'ltr', voice: voice(true) },
+  { code: 'hi', version: 1, status: 'approved', name: 'Hindi', native_name: 'हिन्दी', direction: 'ltr', voice: voice(true) },
+  { code: 'ar', version: 1, status: 'draft', name: 'Arabic', native_name: 'العربية', direction: 'rtl', voice: voice(false, true) },
+];
 const config = (payload) => ({ id: 'c1', name: 'Riya', current_version: 3, published_version: 3, active: true,
   latest: { payload, status: 'published', prompt: 'p', tools: [] } });
 
 // CRA's Jest config resets mocks before each test, so the answers are set here.
 beforeEach(() => {
+  api.listBuilderConfigs.mockResolvedValue({ data: [] });
+  api.getAssistants.mockResolvedValue({ data: [] });
   api.getKnowledgeFiles.mockResolvedValue({ data: [] });
   api.getCatalogItems.mockResolvedValue({ data: { items: [] } });
   api.getCatalogTable.mockResolvedValue({ data: { columns: [] } });
   api.getCatalogSettings.mockResolvedValue({ data: { preset: null } });
   api.getLeadFieldRegistry.mockResolvedValue({ data: { usages: [], standard: [], custom: [], unusable: [] } });
   api.previewBuilderConfig.mockResolvedValue({ data: { prompt: 'p', generated_prompt: 'p', first_message: 'Hi!', tools: [] } });
+  api.getBuilderLanguages.mockResolvedValue({ data: LANGUAGES_API });
+});
+
+it('shows admin-assigned agents in the tenant list without edit actions', async () => {
+  api.getAssistants.mockResolvedValue({ data: [{
+    id: 77, name: 'Imported Riya', vapi_assistant_id: 'vapi-assigned-77', status: 'imported', is_live: true,
+  }] });
+  render(<AssistantBuilder />);
+  expect(await screen.findByRole('heading', { name: 'Assigned agents' })).toBeInTheDocument();
+  const card = await screen.findByRole('button', { name: /Imported Riya assigned by admin/ });
+  expect(card).toHaveTextContent('Contact your admin for changes');
+  expect(within(card).queryByText('Edit')).not.toBeInTheDocument();
+  fireEvent.click(card);
+  expect(require('sonner').toast.info).toHaveBeenCalledWith('Assigned to you by the admin', {
+    description: 'Contact your admin for changes to this agent.',
+  });
 });
 
 it('loads a legacy config untouched: customer details off, nothing to save, null lead_fields sent', async () => {
@@ -184,4 +214,75 @@ describe('the preset note', () => {
     fireEvent.change(screen.getByLabelText('Industry'), { target: { value: 'real estate' } });
     await waitFor(() => expect(screen.queryByRole('note')).not.toBeInTheDocument());
   });
+});
+
+
+describe('languages from the server', () => {
+  const openNew = async () => {
+    api.listBuilderConfigs.mockResolvedValue({ data: [] });
+    render(<AssistantBuilder />);
+    fireEvent.click(await screen.findByRole('button', { name: /Create agent/ }));
+    await waitFor(() => expect(api.getBuilderLanguages).toHaveBeenCalled());
+  };
+
+  it('lists exactly what the API returns, drafts marked, and a stored language it no longer offers', async () => {
+    await openNew();
+    const select = (await screen.findAllByRole('combobox')).find((el) => within(el).queryByText(/العربية/));
+    expect(within(select).getByText('English')).toBeInTheDocument();
+    expect(within(select).getByText('Arabic · العربية (draft)')).toBeInTheDocument();
+    expect(within(select).queryByText(/French/)).toBeNull();
+  });
+
+  it('writes an Arabic opener right to left, asks for the gender and says whether a voice is ready', async () => {
+    const arabic = { ...LEGACY, assistant: { ...LEGACY.assistant, language: 'ar', persona_gender: 'female',
+      first_message: '{agent_name} معكم من Apex Motors، عندكم دقيقتين؟' } };
+    api.listBuilderConfigs.mockResolvedValue({ data: [config(arabic)] });
+    api.getBuilderConfig.mockResolvedValue({ data: config(arabic) });
+    api.previewBuilderConfig.mockResolvedValue({ data: { prompt: 'p', generated_prompt: 'p', tools: [],
+      first_message: 'Riya معكم من Apex Motors، عندكم دقيقتين؟' } });
+    render(<AssistantBuilder />);
+    fireEvent.click(await screen.findByText('Riya'));
+    const box = await screen.findByLabelText('Custom opening line');
+    await waitFor(() => expect(box).toHaveAttribute('dir', 'rtl'));  // explicit: "auto" would read {agent_name} as ltr
+    expect(screen.getByText(/Awaiting native review/)).toBeInTheDocument();
+    expect(screen.getByText(/Required for Arabic/)).toBeInTheDocument();
+    expect(screen.getByTestId('voice-status')).toHaveTextContent('Voice ready');  // the female Arabic voice is set
+    const matches = await screen.findAllByText(/Riya معكم من Apex Motors/, {}, { timeout: 3000 });
+    const card = matches[0].closest('p');  // the preview card's line (the build may wrap the text in a span)
+    expect(card).toHaveAttribute('dir', 'rtl');  // mixed Arabic and Latin, read right to left
+  });
+
+  it('shows each refusal where it belongs: the language, the gender and the missing catalog words', async () => {
+    api.previewBuilderConfig.mockRejectedValue({ response: { status: 422, data: { detail: [
+      "assistant.language: 'hinglish' is not a language this builder speaks; pick one of English (en), Hindi (hi). The published agent keeps working as it is until you save.",
+      'assistant.persona_gender: Arabic needs the agent\'s gender (its verbs follow it)',
+      'catalog words: the agent says or reads label, field:fuel_type, demo_label, which have no Arabic text; add them in Catalog settings (words, demo label, field labels), or write your own opening line',
+    ] } } });
+    const legacy = { ...LEGACY, assistant: { ...LEGACY.assistant, language: 'hinglish' } };
+    api.listBuilderConfigs.mockResolvedValue({ data: [config(legacy)] });
+    api.getBuilderConfig.mockResolvedValue({ data: config(legacy) });
+    render(<AssistantBuilder />);
+    fireEvent.click(await screen.findByText('Riya'));
+    // Under the language field and in the preview panel.
+    expect((await screen.findAllByText(/'hinglish' is not a language this builder speaks/, {}, { timeout: 3000 })).length)
+      .toBeGreaterThan(0);
+    expect(screen.getAllByText('hinglish (not available: pick a language)').length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/needs the agent's gender/).length).toBeGreaterThan(0);
+    const notice = screen.getAllByText('Add these words in Arabic first')[0].closest('[role="alert"]');
+    expect(within(notice).getByText('fuel_type')).toBeInTheDocument();
+    expect(within(notice).getByText(/Catalog → field ⋯ → Field settings/)).toBeInTheDocument();
+    expect(within(notice).getByText('demo label')).toBeInTheDocument();
+  });
+});
+
+
+it('a Hindi or English agent needs no gender and keeps its "not set" choice', async () => {
+  api.listBuilderConfigs.mockResolvedValue({ data: [config(LEGACY)] });
+  api.getBuilderConfig.mockResolvedValue({ data: config(LEGACY) });
+  render(<AssistantBuilder />);
+  fireEvent.click(await screen.findByText('Riya'));
+  await waitFor(() => expect(screen.getByTestId('voice-status')).toHaveTextContent('Voice ready'));
+  expect(screen.getByText(/Match the voice/)).toBeInTheDocument();
+  expect(screen.getAllByText('Not set (neutral)').length).toBeGreaterThan(0);
+  expect(screen.getByLabelText('Custom opening line')).toHaveAttribute('dir', 'ltr');
 });

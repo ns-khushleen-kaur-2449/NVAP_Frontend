@@ -1,6 +1,7 @@
 import { Building2, Mail, MapPin, Phone } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
+import ScoreChips from '@/components/leads/ScoreChips';
 
 const present = (value) => value !== null && value !== undefined && String(value).trim() !== '';
 const joined = (parts) => parts.filter(present).join(' · ');
@@ -53,10 +54,12 @@ export default function ProspectResultRow({ prospect, selection = null }) {
           {role && <p className="text-xs text-muted-foreground break-words">{role}</p>}
         </div>
         <div className="shrink-0 text-right">
-          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Score</p>
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Lead score</p>
           <p className="text-sm font-semibold" aria-label={hasScore ? `Score ${prospect.score}` : 'No score yet'}>
             {hasScore ? prospect.score : '—'}
           </p>
+          {/* Temperature, assessment and freshness from the backend; the number stays as it is. */}
+          <ScoreChips chips={prospect} className="mt-1 max-w-[16rem] justify-end" />
         </div>
       </div>
 

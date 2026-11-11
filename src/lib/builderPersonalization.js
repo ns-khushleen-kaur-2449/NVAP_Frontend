@@ -1,6 +1,7 @@
 // Lead-field selection, opener placeholders and prompt display for the Agent Builder.
 // Mirrors app/features/assistant_builder/lead_fields.py and first_message.py; the backend
-// validates everything again on save (422), this only keeps the form honest.
+// validates everything again on save (422), this only keeps the form honest. Nothing here assumes a language:
+// the words an agent says come from its language pack on the server.
 
 /** What each usage lets the agent do, one short line each. */
 export const USAGES = [
@@ -12,13 +13,13 @@ export const USAGES = [
 
 export const MASK_LABELS = {
   none: 'Full value',
-  email_hint: 'How it ends ("…gmail dot com")',
+  email_hint: 'Full value, spelled out', // saved before: the agent now always gets the full email
   last4: 'Last 4 digits',
 };
 
-// Masked by default: the agent only knows how an email or number ends (it asks for the full
-// email when it books). The backend's own default for email is unmasked; the UI chooses safer.
-const SAFE_MASKS = { email: 'email_hint', phone: 'last4' };
+// A phone number is masked by default (the agent only knows how it ends). An email is always the full address,
+// which the agent reads back spelled out: a partial hint was once passed to a tool as the address.
+const SAFE_MASKS = { phone: 'last4' };
 const SAFE_USAGES = { first_name: 'greet', last_name: 'greet', email: 'confirm_only', phone: 'confirm_only' };
 
 /** New agents start by greeting leads by first name, and nothing else. */
@@ -52,12 +53,16 @@ export function registryGroups(registry, selected = []) {
 
 const greets = (leadFields, key) => leadFields.some((f) => f.key === key && f.usage === 'greet');
 
+/** Every problem in one list, for the preview panel. */
+export const allProblems = (problems) => [...problems.first_message, ...problems.default_call_reason, ...problems.lead_fields,
+  ...problems.language, ...problems.persona_gender, ...problems.catalog_words, ...problems.general];
+
 /** Placeholders a custom first message may use: the name ones only when first name is selected to greet. */
 export function placeholdersFor(leadFields = []) {
   const named = greets(leadFields, 'first_name');
   return [
     ...(named ? [
-      { token: '{salutation}', label: 'Greeting', hint: '"Hi Rahul", or "Hi there" when we don\'t know the name' },
+      { token: '{salutation}', label: 'Greeting', hint: 'The greeting with the first name, in the agent\'s language; without a name when we don\'t know it' },
       { token: '{customer_name}', label: 'First name', hint: 'Left out when we don\'t know it' },
     ] : []),
     { token: '{agent_name}', label: 'Agent name' },
@@ -70,13 +75,20 @@ export function placeholdersFor(leadFields = []) {
  * A 422 from preview or save, split by field. The builder answers either a list of plain
  * strings ("first_message: ...") or Pydantic errors ({loc, msg}).
  */
+// Plain-string 422s by their prefix (app/features/assistant_builder/languages.py, speech.py, first_message.py).
+const STRING_FIELDS = [['first_message', 'first_message'], ['assistant.language:', 'language'],
+  ['assistant.persona_gender:', 'persona_gender'], ['catalog words:', 'catalog_words']];
+
 export function problemsFrom(error) {
   const detail = error?.response?.data?.detail;
-  const result = { first_message: [], lead_fields: [], default_call_reason: [], general: [] };
+  const result = { first_message: [], lead_fields: [], default_call_reason: [], language: [], persona_gender: [],
+    catalog_words: [], general: [] };
   const items = typeof detail === 'string' ? [detail] : Array.isArray(detail) ? detail : [];
   for (const item of items) {
     if (typeof item === 'string') {
-      (item.startsWith('first_message') ? result.first_message : result.general).push(item);
+      const [prefix, field] = STRING_FIELDS.find(([p]) => item.startsWith(p)) || [];
+      if (field === 'language' || field === 'persona_gender') result[field].push(item.slice(prefix.length).trim());
+      else (field ? result[field] : result.general).push(item);  // catalog words keep their full text (parsed later)
       continue;
     }
     const loc = (item?.loc || []).filter((p) => p !== 'body');

@@ -28,6 +28,7 @@ import CampaignEditDialog from './CampaignEditDialog';
 import CampaignPitchCard from './CampaignPitchCard';
 import CallLogDetail from './CallLogDetail';
 import { IdChip } from './VoiceCampaigns';
+import ScoreChips from '@/components/leads/ScoreChips';
 
 const REFRESH_MS = 30000;
 const TABS = [{ id: 'overview', label: 'Overview' }, { id: 'contacts', label: 'Contacts' }, { id: 'activity', label: 'Activity' }];
@@ -284,7 +285,10 @@ function ContactsTab({ campaign, contacts, user, onChanged, onOpenCall }) {
                 </td>
                 <td className="ops-num px-3 py-2.5">{c.attempts ?? 0}{c.max_attempts ? ` / ${c.max_attempts}` : ''}</td>
                 <td className="ops-num px-3 py-2.5">{formatDuration(c.duration_seconds)}</td>
-                <td className="ops-num px-3 py-2.5">{c.lead_score ?? '—'}</td>
+                <td className="px-3 py-2.5">
+                  <span className="ops-num">{c.lead_score ?? '—'}</span>
+                  <ScoreChips chips={c} className="mt-1" />
+                </td>
                 <td className="px-3 py-2.5">
                   {c.last_outcome ? callStatusMeta(c.last_outcome).label : '—'}
                   {c.call_id && (

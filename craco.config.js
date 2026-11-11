@@ -98,8 +98,9 @@ webpackConfig.devServer = (devServerConfig) => {
   return devServerConfig;
 };
 
-// Wrap with visual edits (automatically adds babel plugin, dev server, and overlay in dev mode)
-if (isDevServer) {
+// Wrap with visual edits (automatically adds babel plugin, dev server, and overlay in dev mode).
+// Not under Jest (NODE_ENV=test): its babel plugin wraps rendered values in extra elements.
+if (isDevServer && process.env.NODE_ENV !== "test") {
   try {
     const { withVisualEdits } = require("@emergentbase/visual-edits/craco");
     webpackConfig = withVisualEdits(webpackConfig);

@@ -89,9 +89,13 @@ export const reactivateUser = (id) => api.post(`/api/users/${id}/reactivate`);
 export const moveUserToTeam = (id, managerUserId) => api.put(`/api/users/${id}/team`, { manager_user_id: managerUserId });
 export const listTeams = () => api.get('/api/teams');
 export const listTenants = () => api.get('/api/tenants');
+export const listAdminTenants = (params) => api.get('/api/admin/tenants', { params });
 export const createTenantWithAdmin = (data) => api.post('/api/tenants/with-admin', data);
-export const suspendTenant = (id) => api.post(`/api/tenants/${id}/suspend`);
-export const activateTenant = (id) => api.post(`/api/tenants/${id}/activate`);
+// A reason is required; it is kept in the admin audit trail.
+export const suspendTenant = (id, reason) => api.post(`/api/tenants/${id}/suspend`, { reason });
+export const activateTenant = (id, reason) => api.post(`/api/tenants/${id}/activate`, { reason });
+export const initiateTenantOffboarding = (id, reason) => api.post(`/api/admin/tenants/${id}/offboarding`, { reason });
+export const cancelTenantOffboarding = (id, reason) => api.post(`/api/admin/tenants/${id}/offboarding/cancel`, { reason });
 export const getRoleDashboard = () => api.get('/api/v1/dashboard');
 // Users the caller may see (was /api/auth/users, which never existed).
 export const listUsers = () => authApi.get('/api/users', { params: { page_size: 100 } });
@@ -99,6 +103,26 @@ export const listUsers = () => authApi.get('/api/users', { params: { page_size: 
 // ── Dashboard & Admin ──
 export const getDashboardStats = () => api.get('/api/dashboard/stats');
 export const getSystemHealth = () => api.get('/api/admin/system-health');
+
+// ── Platform control area (/api/admin, Super Admin only) ──
+export const getAdminOverview = () => api.get('/api/admin/overview');
+export const getAdminAuditLogs = (params) => api.get('/api/admin/audit-logs', { params });
+export const listPlatformUsers = (params) => api.get('/api/admin/users', { params });
+export const createPlatformUser = (data) => api.post('/api/admin/users', data);
+export const updatePlatformUserStatus = (id, status, reason) => api.patch(`/api/admin/users/${id}/status`, { status, reason });
+// Agent Fetch: a safe preview by Vapi id or this platform's numeric id; assign ties it to one tenant (reason required).
+export const lookupAgent = (ref) => api.post('/api/admin/agents/lookup',
+  /^\d+$/.test(ref) ? { assistant_id: Number(ref) } : { vapi_assistant_id: ref });
+export const fetchAdminAgent = (vapiAssistantId) => api.post('/api/admin/agents/fetch', { vapi_assistant_id: vapiAssistantId });
+export const importAdminAgent = (vapiAssistantId, reason) => api.post('/api/admin/agents/import', { vapi_assistant_id: vapiAssistantId, reason });
+export const listAdminAgents = () => api.get('/api/admin/agents');
+export const getAdminAgent = (id) => api.get(`/api/admin/agents/${id}`);
+export const refreshAdminAgent = (id, reason) => api.post(`/api/admin/agents/${id}/refresh`, { reason });
+export const assignAdminAgent = (id, tenantId, reason) => api.post(`/api/admin/agents/${id}/assign`, { tenant_id: tenantId, reason });
+export const previewAdminAgentTools = (id, selectedTools) => api.post(`/api/admin/agents/${id}/tools/preview`, { selected_tools: selectedTools });
+export const applyAdminAgentTools = (id, selectedTools, reason) => api.post(`/api/admin/agents/${id}/tools/apply`, { selected_tools: selectedTools, reason });
+export const assignAgent = (ref, tenantId, reason) =>
+  api.post(`/api/admin/agents/${encodeURIComponent(ref)}/assign`, { tenant_id: tenantId, reason });
 
 // ── Prospects (the only person record; "leads" are prospects with leads_only=true) ──
 export const getProspects = (params) => api.get('/api/v1/prospects', { params });
@@ -368,7 +392,7 @@ export const getCatalogItems = () => api.get('/api/v1/catalog/items');
 export const getCatalogTable = (params) => api.get('/api/v1/catalog/table', { params });
 // The tenant's catalog settings as they apply (currency, words, preset, ...); Tenant Admins and Managers.
 // A Super Admin passes { tenant_id }. Changes need a reason; every mutating catalog response carries
-// `agents` ({ republish_scheduled, delay_seconds, drafts }).
+// `agents` ({ republish_scheduled, delay_seconds, drafts, missing_words? }).
 export const getCatalogSettings = (params) => api.get('/api/v1/catalog/settings', { params });
 export const updateCatalogSettings = (data, params) => api.patch('/api/v1/catalog/settings', data, { params });
 export const getCatalogSettingsHistory = (params) => api.get('/api/v1/catalog/settings/history', { params });
@@ -415,13 +439,15 @@ export const previewTool = (data) => api.post('/api/v1/tools/preview', data);
 // Create (or re-sync) the six appointment tools in Vapi; safe to re-run.
 export const registerAppointmentTools = () => api.post('/api/v1/tools/register');
 export const getToolTenants = (id) => api.get(`/api/v1/tools/${id}/tenants`);
-export const setToolTenants = (id, tenantIds) => api.put(`/api/v1/tools/${id}/tenants`, { tenant_ids: tenantIds });
+export const setToolTenants = (id, tenantIds, reason) => api.put(`/api/v1/tools/${id}/tenants`, { tenant_ids: tenantIds, reason });
 // Tools on one assistant (tools granted to its tenant; Tenant Admin attaches/detaches).
 export const listAssistantTools = (assistantId) => api.get(`/api/v1/assistants/${assistantId}/tools`);
 // Tools an Assistant Builder agent can be given (granted to the tenant), each with the tool types it needs.
 export const listBuilderTools = () => api.get('/api/v1/assistant-builder/tools');
 // The lead fields an agent may know: standard Prospect fields plus this tenant's custom.<key> fields.
 export const getLeadFieldRegistry = () => api.get('/api/v1/assistant-builder/lead-fields');
+// The languages an agent may speak (approved packs; drafts for test tenants), each with its voice readiness.
+export const getBuilderLanguages = () => api.get('/api/v1/assistant-builder/languages');
 export const attachAssistantTool = (assistantId, toolId) => api.post(`/api/v1/assistants/${assistantId}/tools/${toolId}`);
 export const detachAssistantTool = (assistantId, toolId) => api.delete(`/api/v1/assistants/${assistantId}/tools/${toolId}`);
 
@@ -528,6 +554,9 @@ export const getIntentReviewQueue = (params) => api.get('/api/intent-assessment/
 export const getIntentAssessment = (id, params) => api.get(`/api/intent-assessment/${id}`, { params });
 // One call log's assessment (database or Vapi id): { assessment | null, review | null }; anyone who may see it.
 export const getCallIntentAssessment = (callId) => api.get(`/api/intent-assessment/calls/${callId}`);
+// A prospect's assessment status (latest call, accepted intent, label, secondary badge), with or without a score.
+export const getProspectAssessmentStatus = (prospectId) =>
+  api.get(`/api/intent-assessment/prospects/${prospectId}/status`);
 // decision: approved | rejected; 409 when someone already reviewed it.
 // edits (optional, with approved): the reviewer's corrections - primary_intent, secondary_intents,
 // buying_signals, rationale, confidence (0-100), opt_out_confirmed. Omitted fields keep the AI value.
@@ -548,12 +577,19 @@ export const approveConversionDecision = (decisionId, data) =>
   api.post(`/api/ai/conversion/decisions/${decisionId}/approve`, data);
 export const rejectConversionDecision = (decisionId, data) =>
   api.post(`/api/ai/conversion/decisions/${decisionId}/reject`, data);
+// Evaluate a prospect again now (a new decision); data: { tenant_id?, idempotency_key }.
+export const reassessConversion = (prospectId, data) =>
+  api.post(`/api/ai/conversion/prospects/${prospectId}/reassess`, data);
 
 // ── Lead scoring parameters (Tenant Admin / Super Admin edit with a reason; Manager views; Super Admin passes tenant_id) ──
 // update body: { disabled: [parameter], reason, expected_config_hash } — 409 when the hash is out of date.
 export const getLeadScoringConfig = (params) => api.get('/api/lead-scoring/config', { params });
 export const updateLeadScoringConfig = (data, params) => api.put('/api/lead-scoring/config', data, { params });
 export const getLeadScoringConfigHistory = (params) => api.get('/api/lead-scoring/config/history', { params });
+// Counts of the tenant's prospects by classification, freshness, assessment and Data Completeness (read only).
+export const getLeadScoringOverview = (params) => api.get('/api/lead-scoring/overview', { params });
+// One pass of the score refresh for the tenant (Tenant Admin / Super Admin): { scored, fresh, no_fit_data, missing, failed }.
+export const rescoreLeadScores = (params) => api.post('/api/lead-scores/rescore', null, { params });
 
 // ── Tenant rules (Tenant Admin edits with a reason; Manager views; Super Admin passes tenant_id) ──
 export const getContactRules = (params) => api.get('/api/v1/contact-rules', { params });
@@ -619,6 +655,27 @@ export function downloadBlob(blob, filename) {
 }
 
 // ── Report Agent: Audio ──
+// Zoho CRM integration (Tenant Admin; Super Admin supplies tenant_id).
+const ZOHO_BASE = '/api/v1/integrations/zoho';
+export const connectZoho = (data = {}) => api.post(`${ZOHO_BASE}/connect`, data);
+export const getZohoConnections = (params) => api.get(`${ZOHO_BASE}/connections`, { params });
+export const getZohoConnection = (id, params) => api.get(`${ZOHO_BASE}/connections/${id}`, { params });
+export const disconnectZoho = (id, params) => api.delete(`${ZOHO_BASE}/connections/${id}`, { params });
+export const getZohoHealth = (id, params) => api.get(`${ZOHO_BASE}/connections/${id}/health`, { params });
+export const getZohoWebhookSetup = (id, params) => api.get(`${ZOHO_BASE}/connections/${id}/webhook-setup`, { params });
+// `secret` is deliberately returned only by these two calls. Never persist it.
+export const provisionZohoWebhookSecret = (id, params) => api.post(`${ZOHO_BASE}/connections/${id}/webhook-secret`, {}, { params });
+export const rotateZohoWebhookSecret = (id, data = {}, params) => api.post(`${ZOHO_BASE}/connections/${id}/webhook-secret/rotate`, data, { params });
+export const getZohoFields = (params) => api.get(`${ZOHO_BASE}/fields`, { params });
+export const getZohoMappings = (params) => api.get(`${ZOHO_BASE}/mappings`, { params });
+export const saveZohoMappings = (connectionId, data, params) => api.put(`${ZOHO_BASE}/mappings`, data, { params: { connection_id: connectionId, ...params } });
+export const importZohoLeads = (connectionId, params) => api.post(`${ZOHO_BASE}/sync/import`, { module: 'Leads' }, { params: { connection_id: connectionId, ...params } });
+export const getZohoJobs = (params) => api.get(`${ZOHO_BASE}/sync/jobs`, { params });
+export const getZohoInboundEvents = (params) => api.get(`${ZOHO_BASE}/sync/inbound-events`, { params });
+export const getZohoDeliveries = (params) => api.get(`${ZOHO_BASE}/sync/deliveries`, { params });
+export const retryZohoDelivery = (id, data = {}, params) => api.post(`${ZOHO_BASE}/sync/retry/${id}`, data, { params });
+export const getZohoTenantOverview = () => api.get(`${ZOHO_BASE}/admin/tenants/crm-overview`);
+
 export const uploadAudioFile = (file, executiveName) => {
   const fd = new FormData();
   fd.append('file', file);

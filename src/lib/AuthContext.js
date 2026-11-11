@@ -1,5 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { authLogin, authRegister, changePassword as changePasswordRequest, getMe } from '@/lib/api';
+import {
+  authLogin, authLoginMfa, authLogout, authRegister, changePassword as changePasswordRequest, getMe, verifyMfaEnrollment,
+} from '@/lib/api';
 import { creatableRoles as creatableRolesOf, hasPermission } from '@/lib/rbac';
 
 const AuthContext = createContext(null);
@@ -11,7 +13,16 @@ const USER_KEY = 'estateops_user';
 export const REQUIRED_ACTIONS = Object.freeze({
   CHANGE_PASSWORD: 'password_change_required',
   TENANT_SUSPENDED: 'tenant_suspended',
+  // A Super Admin without two-factor authentication: only the setup screen until it's done.
+  MFA_ENROLLMENT: 'mfa_enrollment_required',
 });
+
+// What the server says the user must do first, from /me or a sign-in response.
+const actionFor = (me) => {
+  if (me?.must_change_password) return REQUIRED_ACTIONS.CHANGE_PASSWORD;
+  if (me?.mfa?.required && !me?.mfa?.session_verified) return REQUIRED_ACTIONS.MFA_ENROLLMENT;
+  return null;
+};
 
 const readCachedUser = () => {
   const cached = localStorage.getItem(USER_KEY);
@@ -44,10 +55,13 @@ export function AuthProvider({ children }) {
     setUser(next);
     if (next) localStorage.setItem(USER_KEY, JSON.stringify(next));
     else localStorage.removeItem(USER_KEY);
-    setRequiredAction(next?.must_change_password ? REQUIRED_ACTIONS.CHANGE_PASSWORD : null);
+    setRequiredAction(actionFor(next));
   }, []);
 
   const logout = useCallback(() => {
+    // End the server session too; the token is dropped here whatever the answer.
+    const current = localStorage.getItem(TOKEN_KEY);
+    if (current) authLogout(current).catch(() => {});
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
     setToken(null);
@@ -84,16 +98,37 @@ export function AuthProvider({ children }) {
     return () => window.removeEventListener('auth:required-action', onRequiredAction);
   }, []);
 
-  const login = async (email, password) => {
-    const r = await authLogin({ email, password });
-    const newToken = r.data?.token || r.data?.access_token;
+  const startSession = async (data) => {
+    const newToken = data?.token || data?.access_token;
     if (!newToken) throw new Error('Login response missing token');
     localStorage.setItem(TOKEN_KEY, newToken);
     setToken(newToken);
-    // The login response already says who this is; /me adds permissions, tenant and team.
-    storeUser({ ...(r.data?.user || {}), must_change_password: Boolean(r.data?.must_change_password) });
+    // The login response already says who this is; /me adds permissions, tenant, team and MFA status.
+    storeUser({ ...(data?.user || {}), must_change_password: Boolean(data?.must_change_password),
+      mfa: data?.mfa_enrollment_required ? { required: true, session_verified: false } : undefined });
     await refreshMe();
-    return r.data;
+    return data;
+  };
+
+  /** Password step. A Super Admin with MFA gets `{ mfa_required, mfa_token }` back and no session yet. */
+  const login = async (email, password) => {
+    const r = await authLogin({ email, password });
+    if (r.data?.mfa_required) return r.data;
+    return startSession(r.data);
+  };
+
+  /** Second step: the challenge from `login` and a code or one recovery code. */
+  const completeMfaLogin = async (mfaToken, codes) => {
+    const r = await authLoginMfa(mfaToken, codes);
+    return startSession(r.data);
+  };
+
+  /** Finish two-factor setup: the server swaps this enrollment-only session for a verified one. */
+  const completeMfaEnrollment = async (code) => {
+    const r = await verifyMfaEnrollment(code);
+    localStorage.setItem(TOKEN_KEY, r.data.access_token);
+    setToken(r.data.access_token);
+    return r.data;  // { recovery_codes } are shown once by the caller, which then calls refreshMe()
   };
 
   // Kept for the old self-registration form; /register now redirects to /login.
@@ -113,7 +148,8 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider value={{
-      user, token, loading, login, register, logout, hasRole, can, refreshMe, changePassword,
+      user, token, loading, login, completeMfaLogin, completeMfaEnrollment, register, logout, hasRole, can, refreshMe,
+      changePassword,
       role: user?.role || null,
       creatableRoles: creatableRolesOf(user),
       requiredAction,

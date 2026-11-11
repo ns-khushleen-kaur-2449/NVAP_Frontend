@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Bookmark, Loader2, RefreshCw, Search, Sparkles } from 'lucide-react';
+import { ArrowRight, Bookmark, Loader2, RefreshCw, Search, Share2, Sparkles, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   AlertDialog,
@@ -17,8 +17,12 @@ import FilterBuilder from '@/components/prospecting/FilterBuilder';
 import Notice from '@/components/prospecting/Notice';
 import ProspectResults from '@/components/prospecting/ProspectResults';
 import SaveFilterDialog from '@/components/prospecting/SaveFilterDialog';
+import ShareProspectsDialog from '@/components/prospecting/ShareProspectsDialog';
 import useFilterBuilder from '@/components/prospecting/useFilterBuilder';
 import { DEFAULT_PAGE_SIZE, buildFilterPayload, describeApiError } from '@/components/prospecting/filterUtils';
+import {
+  MAX_CAMPAIGN_CONTACTS, addProspects, removeIds, toggleProspect, unselectableReason,
+} from '@/lib/prospectSelection';
 
 /**
  * Search leads: build a filter and search the prospects already in the database.
@@ -26,8 +30,16 @@ import { DEFAULT_PAGE_SIZE, buildFilterPayload, describeApiError } from '@/compo
  * Saved filters are listed in the Saved searches tab. `loadRequest` ({ saved }, a new
  * object each time) puts one of them into the builder here for editing, and
  * `onSaved` tells the page that the saved list has changed.
+ *
+ * Every prospect the user may see is listed as soon as the tab opens (a search with no
+ * conditions). With `onUseSelected`, results get checkboxes and the ticked prospects
+ * ([{ id, name, phone }], picked across pages) are handed to it, e.g. to the
+ * Lead-to-Campaign Builder. The campaign API re-checks every id; this only guides.
+ * `canShareProspects` (Tenant Admin, Manager) adds "Share with team" for the ticked prospects.
  */
-export default function AiFilterSearch({ savedFiltersAvailable = true, canShare = false, loadRequest = null, onSaved }) {
+export default function AiFilterSearch({
+  savedFiltersAvailable = true, canShare = false, loadRequest = null, onSaved, onUseSelected = null, canShareProspects = false,
+}) {
   const builder = useFilterBuilder();
   const { conditions, incomplete, parsing } = builder;
 
@@ -41,6 +53,9 @@ export default function AiFilterSearch({ savedFiltersAvailable = true, canShare 
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   // Only the newest search may update the screen.
   const latestSearch = useRef(0);
+  // Prospects ticked for a campaign: prospect_id -> { id, name, phone } (lib/prospectSelection).
+  const [selection, setSelection] = useState(() => new Map());
+  const [shareOpen, setShareOpen] = useState(false);
 
   // Saving the filter on screen.
   const [saveOpen, setSaveOpen] = useState(false);
@@ -90,6 +105,13 @@ export default function AiFilterSearch({ savedFiltersAvailable = true, canShare 
     }
   };
 
+  // Show everything the user may see straight away; a filter then narrows it.
+  const runSearchRef = useRef(runSearch);
+  runSearchRef.current = runSearch;
+  useEffect(() => {
+    runSearchRef.current({ payload: buildFilterPayload('all', []), ids: [] });
+  }, []);
+
   const canSearch = !incomplete && !searching && !parsing;
   const searchNow = () => {
     if (!canSearch) return;
@@ -100,6 +122,29 @@ export default function AiFilterSearch({ savedFiltersAvailable = true, canShare 
   const changePageSize = (nextPageSize) => searched && runSearch(searched, { nextPageSize });
 
   const filterChanged = builder.differsFrom(searched);
+  const showingAll = Boolean(searched) && (searched.payload?.conditions || []).length === 0;
+
+  const capMessage = `A campaign can have at most ${MAX_CAMPAIGN_CONTACTS.toLocaleString()} contacts.`;
+  const selectable = Boolean(onUseSelected) || canShareProspects;
+  const rowSelection = selectable ? {
+    isSelected: (id) => selection.has(id),
+    disabledReason: unselectableReason,
+    onToggle: (prospect) => {
+      const result = toggleProspect(selection, prospect);
+      if (result.capped) toast.error(capMessage);
+      setSelection(result.selection);
+    },
+    onTogglePage: (items, checked) => {
+      if (!checked) {
+        setSelection(removeIds(selection, items.map((item) => item.prospect_id)));
+        return;
+      }
+      const result = addProspects(selection, items);
+      if (result.capped) toast.error(`${capMessage} ${result.capped} not added.`);
+      setSelection(result.selection);
+    },
+  } : null;
+  const selectedCount = selection.size;
 
   // Loading puts the saved conditions into the builder to edit; nothing is searched yet.
   const loadSaved = (saved) => {
@@ -233,7 +278,33 @@ export default function AiFilterSearch({ savedFiltersAvailable = true, canShare 
 
       {(results || searching || searchError) && (
         <section className="space-y-3" aria-label="Search results">
-          <h3 className="text-sm font-semibold">Results</h3>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <h3 className="text-sm font-semibold">{showingAll ? 'All prospects' : 'Results'}</h3>
+            {selectable && (
+              <div className="flex flex-wrap items-center gap-2" role="status" aria-live="polite">
+                <span className="text-sm flex items-center gap-1.5">
+                  <Users className="w-4 h-4 text-primary" aria-hidden="true" />
+                  <span><span className="font-semibold">{selectedCount.toLocaleString()}</span> selected</span>
+                </span>
+                {selectedCount > 0 && (
+                  <Button type="button" variant="link" size="sm" className="h-auto p-0" onClick={() => setSelection(new Map())}>
+                    Clear
+                  </Button>
+                )}
+                {canShareProspects && (
+                  <Button type="button" size="sm" variant="outline" disabled={selectedCount === 0} onClick={() => setShareOpen(true)}>
+                    <Share2 className="w-4 h-4 mr-1.5" /> Share with team
+                  </Button>
+                )}
+                {onUseSelected && (
+                  <Button type="button" size="sm" disabled={selectedCount === 0} className="bg-primary text-primary-foreground"
+                    onClick={() => onUseSelected(Array.from(selection.values()))}>
+                    Add to Lead-to-Campaign Builder <ArrowRight className="w-4 h-4 ml-1.5" />
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
 
           {searchError && (
             <div role="alert">
@@ -258,6 +329,7 @@ export default function AiFilterSearch({ savedFiltersAvailable = true, canShare 
             onSortChange={changeSort}
             onPageSizeChange={changePageSize}
             onPageChange={changePage}
+            selection={rowSelection}
           />
         </section>
       )}
@@ -277,6 +349,10 @@ export default function AiFilterSearch({ savedFiltersAvailable = true, canShare 
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {canShareProspects && (
+        <ShareProspectsDialog open={shareOpen} onOpenChange={setShareOpen} prospectIds={Array.from(selection.keys())} />
+      )}
 
       {savedFiltersAvailable && (
         <SaveFilterDialog

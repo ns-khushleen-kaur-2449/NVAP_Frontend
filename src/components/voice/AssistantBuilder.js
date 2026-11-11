@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -13,6 +13,7 @@ import { Field, FieldMessages, OptionSelect, Section, TagInput, withCurrent } fr
 import LanguageField from './builder/LanguageField';
 import LeadFieldsSection from './builder/LeadFieldsSection';
 import OpenerSection from './builder/OpenerSection';
+import PromptModeSection from './builder/PromptModeSection';
 import { CatalogWordsProblem, OpenerPreview, PromptText } from './builder/PreviewParts';
 import {
   User, Building2, MessageSquare, ShieldCheck, Book, StickyNote, Cpu,
@@ -26,6 +27,8 @@ import {
   getKnowledgeFiles, getCatalogItems, getLeadFieldRegistry, getCatalogTable, getCatalogSettings, getBuilderLanguages,
   getAssistants,
 } from '../../lib/api';
+import { AuthContext } from '../../lib/AuthContext';
+import { ROLES } from '../../lib/rbac';
 import { DEFAULT_LEAD_FIELDS, allProblems, problemsFrom } from '../../lib/builderPersonalization';
 import { directionOf, languageOf, needsGender } from '../../lib/builderLanguages';
 import { formatCurrency } from '../../lib/utils';
@@ -160,8 +163,14 @@ const defaultForm = () => ({
   tools: [],
   voice_stack: { stt: 'deepgram-nova-3', llm: 'groq', tts: '11labs' },
   custom_instructions: '',
-  // Hand-edited system prompt; empty means use the generated one.
+  // Hand-edited system prompt; empty means use the generated one. Setting or changing it is Super Admin only.
   prompt_override: '',
+  prompt_override_reason: '',
+  // guided | custom (Tenant Admin only): in custom mode the client's instructions and opener replace the
+  // generated conversation layers; the platform's safety layers and tools stay.
+  prompt_mode: 'guided',
+  custom_system_prompt: '',
+  custom_first_message: '',
   // Customer details on calls (lead_fields). New agents start on; agents saved before this
   // existed load with it off and keep their opener and call details until someone turns it on.
   personalized: true,
@@ -196,6 +205,10 @@ export const formFromPayload = (payload) => {
     tools: payload.tools || [],
     custom_instructions: payload.custom_instructions || '',
     prompt_override: payload.prompt_override || '',
+    prompt_override_reason: payload.prompt_override_reason || '',
+    prompt_mode: payload.prompt_mode || 'guided',
+    custom_system_prompt: payload.custom_system_prompt || '',
+    custom_first_message: payload.custom_first_message || '',
     personalized: Array.isArray(payload.lead_fields),
     lead_fields: (payload.lead_fields || []).map((f) => ({ key: f.key, usage: f.usage, mask: f.mask || 'none', label: f.label || '' })),
     policy: { ...base.policy, ...(payload.policy || {}) },
@@ -229,6 +242,11 @@ export const toPayload = (form) => ({
   voice_stack: form.voice_stack,
   custom_instructions: form.custom_instructions.trim() || null,
   prompt_override: form.prompt_override.trim() || null,
+  prompt_override_reason: form.prompt_override_reason.trim() || null,
+  prompt_mode: form.prompt_mode,
+  // Kept in guided mode too, so switching back and forth doesn't lose the text (guided ignores it).
+  custom_system_prompt: form.custom_system_prompt.trim() || null,
+  custom_first_message: form.custom_first_message.trim() || null,
   // null keeps the agent's pre-selection behaviour (see LeadFieldsSection).
   lead_fields: form.personalized
     ? form.lead_fields.map((f) => ({ key: f.key, usage: f.usage, mask: f.mask, label: f.label.trim() || null }))
@@ -248,7 +266,16 @@ const missingFields = (form) => [
   !form.target_customer.trim() && 'Target customer',
   !form.business.vertical.trim() && 'Industry',
   form.pitch.mode === 'selected' && !form.pitch.item_ids.length && 'Products to feature',
+  form.prompt_mode === 'custom' && !form.custom_system_prompt.trim() && 'Your instructions',
 ].filter(Boolean);
+
+// Text that stops being used when the prompt mode changes (the warning before switching).
+export const unusedAfterSwitch = (form, next) => (next === 'custom'
+  ? [form.assistant.first_message.trim() && 'the opening line', form.custom_instructions.trim() && 'business notes',
+    form.pitch.mode !== 'none' && 'what to pitch', form.qualification.length > 0 && 'what to qualify',
+    form.prompt_override.trim() && 'the hand-edited prompt (it still takes precedence)']
+  : [form.custom_system_prompt.trim() && 'your instructions', form.custom_first_message.trim() && 'your opening line']
+).filter(Boolean);
 
 const errorDetail = (e, fallback) => {
   const detail = e?.response?.data?.detail;
@@ -268,6 +295,10 @@ function StatusBadge({ status }) {
 }
 
 export default function AssistantBuilder() {
+  const user = useContext(AuthContext)?.user;
+  // The backend enforces these (custom_prompt.validate); the UI only hides or locks.
+  const canUseCustomMode = user?.role === ROLES.TENANT_ADMIN;
+  const canEditRawPrompt = false;
   const [view, setView] = useState('list'); // 'list' | 'editor'
   const [configs, setConfigs] = useState([]);
   const [assignedAgents, setAssignedAgents] = useState([]);
@@ -310,6 +341,7 @@ export default function AssistantBuilder() {
     return { ...payload, prompt_override: promptOverrideFrom(promptDraft, preview?.generated_prompt) };
   }, [payload, editingPrompt, promptDraft, preview]);
   const isDirty = savedSnapshot !== JSON.stringify(savePayload);
+  const custom = form.prompt_mode === 'custom';
   const language = form.assistant.language;
   const direction = directionOf(languages, language);
   const genderRequired = needsGender(languages, language);
@@ -440,6 +472,14 @@ export default function AssistantBuilder() {
   const resetPrompt = () => {
     update('prompt_override', '');
     setEditingPrompt(false);
+  };
+
+  const switchMode = (next) => {
+    const unused = unusedAfterSwitch(form, next);
+    if (unused.length && !window.confirm(
+      `Switch to ${next === 'custom' ? 'custom' : 'guided'} prompt mode? This won't be used any more: ${unused.join(', ')}. `
+      + 'It is kept, so you can switch back.')) return;
+    update('prompt_mode', next);
   };
 
   const update = (path, value) => {
@@ -718,10 +758,21 @@ export default function AssistantBuilder() {
               </Field>
             </Section>
 
+            <PromptModeSection
+              mode={form.prompt_mode}
+              onMode={switchMode}
+              prompt={form.custom_system_prompt}
+              onPrompt={(v) => update('custom_system_prompt', v)}
+              canEdit={canUseCustomMode}
+              errors={problems.custom_prompt}
+            />
+
             <OpenerSection
               personalized={form.personalized}
-              firstMessage={form.assistant.first_message}
-              onFirstMessage={(v) => update('assistant.first_message', v)}
+              firstMessage={custom ? form.custom_first_message : form.assistant.first_message}
+              onFirstMessage={(v) => (custom
+                ? canUseCustomMode && update('custom_first_message', v)
+                : update('assistant.first_message', v))}
               leadFields={form.lead_fields}
               mentionsReason={form.policy.opener_mentions_reason}
               onMentionsReason={(v) => update('policy.opener_mentions_reason', v)}
@@ -729,7 +780,7 @@ export default function AssistantBuilder() {
               onDefaultReason={(v) => update('assistant.default_call_reason', v)}
               generated={preview?.first_message}
               dir={direction}
-              errors={problems}
+              errors={custom ? { ...problems, first_message: problems.custom_first_message } : problems}
               warnings={preview?.first_message_warnings || []}
             />
 
@@ -774,7 +825,14 @@ export default function AssistantBuilder() {
               </Field>
             </Section>
 
-            <Section icon={MessageSquare} title="Conversation" description="How the agent talks and what it needs to find out">
+            {custom && (
+              <p className="text-sm text-muted-foreground rounded-lg border border-dashed border-border px-4 py-3" role="note">
+                Custom prompt mode: conversation style, what to qualify, what to pitch and business notes aren't used.
+                Put them in your instructions. They're kept if you switch back to guided.
+              </p>
+            )}
+
+            {!custom && <Section icon={MessageSquare} title="Conversation" description="How the agent talks and what it needs to find out">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Field label="Tone">
                   <OptionSelect value={form.assistant.tone} onChange={(v) => update('assistant.tone', v)} options={TONES} />
@@ -805,9 +863,9 @@ export default function AssistantBuilder() {
                   suggestions={qualificationSuggestions(catalogColumns, form.assistant.language)}
                 />
               </Field>
-            </Section>
+            </Section>}
 
-            <Section icon={Sparkles} title="What to pitch" description="What the agent should bring up with the customer. Only names are shared; prices and stock still come from the catalog.">
+            {!custom && <Section icon={Sparkles} title="What to pitch" description="What the agent should bring up with the customer. Only names are shared; prices and stock still come from the catalog.">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {PITCH_MODES.map((m) => (
                   <button
@@ -889,7 +947,7 @@ export default function AssistantBuilder() {
                   />
                 </Field>
               )}
-            </Section>
+            </Section>}
 
             <Section icon={ShieldCheck} title="Guardrails" description="Protected rules layered on top of the core safety rules">
               <div className="space-y-2">
@@ -928,7 +986,7 @@ export default function AssistantBuilder() {
               )}
             </Section>
 
-            <Section icon={StickyNote} title="Business notes" description="Offers, policies and preferences. Lower priority than the guardrails.">
+            {!custom && <Section icon={StickyNote} title="Business notes" description="Offers, policies and preferences. Lower priority than the guardrails.">
               <Textarea
                 dir="auto"
                 value={form.custom_instructions}
@@ -940,7 +998,7 @@ export default function AssistantBuilder() {
               <p className="text-[11px] text-muted-foreground text-right">
                 {form.custom_instructions.length}/{CUSTOM_INSTRUCTIONS_MAX}
               </p>
-            </Section>
+            </Section>}
 
             <Section icon={Cpu} title="Voice stack" description="Managed by the platform; the voice and model are set on the server.">
               <div className="grid grid-cols-3 gap-2 text-sm">
@@ -958,7 +1016,7 @@ export default function AssistantBuilder() {
         <div className="w-[420px] shrink-0 hidden lg:flex flex-col bg-card">
           <Tabs defaultValue="prompt" className="flex flex-col h-full">
             <TabsList className="m-3 mb-0 grid grid-cols-3">
-              <TabsTrigger value="prompt">Generated prompt</TabsTrigger>
+              <TabsTrigger value="prompt">{custom ? 'Final prompt' : 'Generated prompt'}</TabsTrigger>
               <TabsTrigger value="versions" disabled={!config}>Versions</TabsTrigger>
               <TabsTrigger value="tools">Tools{form.tools.length ? ` (${form.tools.length})` : ''}</TabsTrigger>
             </TabsList>
@@ -967,7 +1025,9 @@ export default function AssistantBuilder() {
               <ScrollArea className="h-full">
                 <div className="p-4 space-y-4">
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>Live preview of what the agent will be told</span>
+                    <span>{custom
+                      ? 'Live preview: platform rules, tools and your instructions, as the agent gets them'
+                      : 'Live preview of what the agent will be told'}</span>
                     {previewLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                   </div>
                   {missing.length > 0 ? (
@@ -999,9 +1059,12 @@ export default function AssistantBuilder() {
                                   <RotateCcw className="w-3.5 h-3.5 mr-1" /> Reset
                                 </Button>
                               )}
-                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={startPromptEdit} title="Edit prompt">
-                                <Pencil className="w-3.5 h-3.5" />
-                              </Button>
+                              {canEditRawPrompt && (
+                                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={startPromptEdit}
+                                  title="Edit the whole prompt (Super Admin)">
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </Button>
+                              )}
                             </div>
                           )}
                         </div>
@@ -1021,8 +1084,14 @@ export default function AssistantBuilder() {
                                 <Button size="sm" onClick={applyPromptEdit} disabled={!promptDraft.trim()}>Apply</Button>
                               </div>
                             </div>
+                            <Field label="Reason for the change" required hint="Recorded in the admin audit log.">
+                              <Input value={form.prompt_override_reason} maxLength={500}
+                                onChange={(e) => update('prompt_override_reason', e.target.value)}
+                                placeholder="e.g. Client-approved script for the March campaign" aria-label="Reason for the prompt edit"
+                                className="bg-muted border-border" />
+                            </Field>
                             <p className="text-[11px] text-muted-foreground">
-                              Save or Publish keeps your edits (no need to Apply first), and they are published as written. They don't update when you change the form; use Reset to regenerate.
+                              Save or Publish keeps your edits (no need to Apply first), and they are published as written, replacing the platform's rules except the tools section. They don't update when you change the form; use Reset to regenerate.
                             </p>
                           </div>
                         ) : (

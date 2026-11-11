@@ -11,13 +11,14 @@ import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { 
   PhoneCall, Users, Search, Play, CheckCircle2, Filter, ChevronDown, 
   X, Calendar, IndianRupee, Clock,
-  ArrowUpDown, UserPlus, Sparkles
+  ArrowUpDown, UserPlus, Sparkles, Upload
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatCurrency, timeAgo } from '../../lib/utils';
 import { StageBadge } from '../shared/StatusBadges';
 import CampaignLaunchDialog from './CampaignLaunchDialog';
 import AddLeadDialog from './AddLeadDialog';
+import ImportLeadsDialog from './ImportLeadsDialog';
 import AiFilterPickerDialog from './AiFilterPickerDialog';
 import { activeLabel, applyLeadFilters, buildLeadFilters, detailField, detailValue } from '../../lib/leadFilters';
 
@@ -34,10 +35,45 @@ const DATE_ADDED_OPTIONS = [
   { value: 'month', label: 'Last 30 days' },
 ];
 
+// When a lead was added, in ms; null when the date is missing or unreadable.
+const addedAt = (lead) => {
+  const time = lead?.created_at ? new Date(lead.created_at).getTime() : NaN;
+  return Number.isFinite(time) ? time : null;
+};
+
+/** Sort by date added (`direction` -1 newest first, 1 oldest first); undated leads go last, ties by name. */
+export function compareAdded(a, b, direction) {
+  const left = addedAt(a);
+  const right = addedAt(b);
+  if (left !== right) {
+    if (left === null) return 1;
+    if (right === null) return -1;
+    return (left - right) * direction;
+  }
+  return (a.name || '').localeCompare(b.name || '');
+}
+
 // `canCreateCampaigns` mirrors the backend's campaign-creation roles; it only hides controls.
-export default function LeadCampaignBuilder({ onCampaignStarted, onLeadCreated, leads = [], assistants = [], loading = false, canCreateCampaigns = true }) {
+// `fromProspecting` ([{ id, name, phone, email, city, stage, created_at }]) are prospects ticked on
+// the Prospecting page. They are added to the table (many are not leads yet, so the leads list
+// lacks them) and ticked. `onFromProspectingDone(ids)` drops those ids (all of them without ids).
+export default function LeadCampaignBuilder({
+  onCampaignStarted, onLeadCreated, leads: leadList = [], assistants = [], loading = false, canCreateCampaigns = true,
+  fromProspecting = null, onFromProspectingDone,
+}) {
+  // The table: picked prospects first (those not already listed), then the leads.
+  const leads = useMemo(() => {
+    if (!fromProspecting?.length) return leadList;
+    const listed = new Set(leadList.map((lead) => lead.id));
+    const extra = fromProspecting.filter((p) => !listed.has(p.id)).map((p) => ({
+      id: p.id, name: p.name || '', phone: p.phone || '', email: p.email || '', city: p.city || '',
+      stage: (p.stage || '').toLowerCase(), status: 'prospect', created_at: p.created_at, from_prospecting: true,
+    }));
+    return [...extra, ...leadList];
+  }, [leadList, fromProspecting]);
   const [searchQuery, setSearchQuery] = useState('');
   const [addLeadOpen, setAddLeadOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [selectedLeads, setSelectedLeads] = useState(new Set());
   const [showFilters, setShowFilters] = useState(false);
   const [sortBy, setSortBy] = useState('newest');
@@ -107,10 +143,9 @@ export default function LeadCampaignBuilder({ onCampaignStarted, onLeadCreated, 
       });
     }
 
-    if (sortBy === 'newest') {
-      result = [...result].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-    } else if (sortBy === 'oldest') {
-      result = [...result].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    if (sortBy === 'newest' || sortBy === 'oldest') {
+      const direction = sortBy === 'newest' ? -1 : 1;
+      result = [...result].sort((a, b) => compareAdded(a, b, direction));
     }
 
     return result;
@@ -144,8 +179,28 @@ export default function LeadCampaignBuilder({ onCampaignStarted, onLeadCreated, 
 
   const handleCreated = (campaign) => {
     if (importedIds) setImportedIds(null);
-    else setSelectedLeads(new Set());
+    else {
+      // Picked prospects that were launched are done; unticked ones stay for later.
+      const launched = Array.from(selectedLeads);
+      setSelectedLeads(new Set());
+      if (fromProspecting?.length) onFromProspectingDone?.(launched.filter((id) => pickedIds.includes(id)));
+    }
     onCampaignStarted?.(campaign);
+  };
+
+  const pickedIds = useMemo(() => (fromProspecting || []).map((p) => p.id), [fromProspecting]);
+  // A new hand-off ticks its prospects (keeping anything already ticked).
+  // Picked prospects are ticked when the page opens and when more arrive; unticking one sticks.
+  const seenPicks = React.useRef(null);
+  useEffect(() => {
+    const seen = seenPicks.current;
+    seenPicks.current = new Set(pickedIds);
+    const fresh = seen ? pickedIds.filter((id) => !seen.has(id)) : pickedIds;
+    if (fresh.length) setSelectedLeads((current) => new Set([...current, ...fresh]));
+  }, [pickedIds]);
+  const discardPicked = () => {
+    setSelectedLeads((current) => new Set([...current].filter((id) => !pickedIds.includes(id))));
+    onFromProspectingDone?.(pickedIds);
   };
 
   const launchImported = (ids) => {
@@ -169,6 +224,25 @@ export default function LeadCampaignBuilder({ onCampaignStarted, onLeadCreated, 
   return (
     <Card className="border border-border shadow-sm flex flex-col h-full bg-card rounded-xl overflow-visible">
       <CardContent className="flex-1 flex flex-col min-h-0 p-0 overflow-visible">
+        {fromProspecting?.length > 0 && (
+          <div className="px-4 py-3 border-b border-border flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between bg-primary/5"
+            role="region" aria-label="Prospects from Prospecting">
+            <div className="min-w-0">
+              <p className="text-sm font-medium flex items-center gap-1.5">
+                <Users className="w-4 h-4 text-primary shrink-0" aria-hidden="true" />
+                {pickedIds.length.toLocaleString()} prospect{pickedIds.length === 1 ? '' : 's'} added from Prospecting
+              </p>
+              <p className="text-xs text-muted-foreground">They are in the list below, ticked and ready to launch (marked “From Prospecting”).</p>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <Button type="button" variant="outline" size="sm" asChild>
+                <Link to="/prospecting">Back to Prospecting</Link>
+              </Button>
+              <Button type="button" variant="ghost" size="sm" onClick={discardPicked}>Remove them</Button>
+            </div>
+          </div>
+        )}
+
         {/* Filters Top Bar */}
         <div className="px-4 py-3 border-b border-border flex items-center justify-between overflow-x-auto no-scrollbar bg-muted/30">
           <div className="flex items-center gap-3">
@@ -347,6 +421,10 @@ export default function LeadCampaignBuilder({ onCampaignStarted, onLeadCreated, 
                <Sparkles className="w-3.5 h-3.5" />
                Import from AI Filtering
              </Button>
+             <Button size="sm" variant="outline" onClick={() => setImportOpen(true)} className="h-9 gap-1.5">
+               <Upload className="w-3.5 h-3.5" />
+               Import leads
+             </Button>
              <Button
                size="sm"
                onClick={() => setAddLeadOpen(true)}
@@ -402,7 +480,10 @@ export default function LeadCampaignBuilder({ onCampaignStarted, onLeadCreated, 
                           className="block font-semibold text-foreground truncate hover:text-primary hover:underline">
                           {lead.name || 'Unnamed'}
                         </Link>
-                        <div className="text-[10px] text-muted-foreground mt-0.5">Added {timeAgo(lead.created_at)}</div>
+                        <div className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-1.5">
+                          {lead.created_at && <span>Added {timeAgo(lead.created_at)}</span>}
+                          {lead.from_prospecting && <Badge variant="outline" className="h-4 px-1 text-[9px]">From Prospecting</Badge>}
+                        </div>
                       </div>
                       <div className="col-span-3 text-muted-foreground truncate">
                         <div className="text-xs font-medium">{lead.phone || '-'}</div>
@@ -452,6 +533,17 @@ export default function LeadCampaignBuilder({ onCampaignStarted, onLeadCreated, 
         open={pickerOpen}
         onOpenChange={setPickerOpen}
         onConfirm={launchImported}
+      />
+
+      <ImportLeadsDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        onImported={async (result) => {
+          // The new leads appear in the list (refreshed) and are ticked, ready to launch.
+          await onLeadCreated?.();
+          const ids = result?.prospect_ids || [];
+          if (ids.length) setSelectedLeads((current) => new Set([...current, ...ids]));
+        }}
       />
 
       <AddLeadDialog

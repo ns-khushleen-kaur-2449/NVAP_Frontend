@@ -2,16 +2,20 @@ import { Link, NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Users, Sparkles,  PhoneCall, Inbox as InboxIcon, CalendarClock, Package,
   Layers, Phone, Mic, BookOpen, UploadCloud, Megaphone, ClipboardCheck,
-  ChevronDown, ChevronLeft, ChevronRight, Settings, LogOut, GitCompareArrows, ShieldCheck,
+  ChevronDown, ChevronLeft, ChevronRight, Settings, LogOut, GitCompareArrows, ShieldCheck, Crown, BarChart3,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
+import { getBillingSubscription } from '@/lib/api';
+import { BILLING_CHANGED } from '@/components/billing/billingUi';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useAuth } from '@/lib/AuthContext';
 import ThemeToggle from '@/components/shared/ThemeToggle';
 import BrandLockup, { NetsmartzMark } from '@/components/shared/BrandLockup';
-import { canUseAdmin, canViewAssistants } from '@/lib/rbac';
+import {
+  canManageBilling, canUseAdmin, canViewAssistants, canViewOperations, featureEnabled, voiceTabEnabled,
+} from '@/lib/rbac';
 
 const APP_NAV = [
   { path: '/dashboard',   label: 'Dashboard',    icon: LayoutDashboard },
@@ -20,15 +24,17 @@ const APP_NAV = [
 // Secondary surfaces, listed below Voice Agent.
 const PENDING_NAV = [
   // Operations: appointments for everyone; callbacks, do-not-call and intent review only for
-  // Tenant Admins, Managers and (view only) Super Admins (pages/Operations.jsx gates each tab).
-  { path: '/operations',  label: 'Operations',   icon: ClipboardCheck },
+  // Tenant Admins and Managers (pages/Operations.jsx gates each tab).
+  { path: '/operations',  label: 'Operations',   icon: ClipboardCheck,
+    requires: (user) => canViewOperations(user) || featureEnabled(user, 'appointment_booking') },
   { path: '/prospecting', label: 'Prospecting',  icon: Users },
   { path: '/conversion',  label: 'Conversion',   icon: GitCompareArrows },
   // Hidden from the menu for now; the /strategist page and route still work.
   // { path: '/strategist',  label: 'AI Strategist', icon: Sparkles },
   { path: '/inbox',       label: 'Inbox',        icon: InboxIcon },
-  { path: '/catalog',     label: 'Catalog',      icon: Package },
+  { path: '/catalog',     label: 'Catalog',      icon: Package, requires: (user) => featureEnabled(user, 'product_catalog') },
   { path: '/meetings',    label: 'Meetings',     icon: CalendarClock },
+  { path: '/reports',     label: 'Reports & Analytics', icon: BarChart3 },
 ];
 
 // Voice Agent's own internal views — reached as /voice_agent?tab=<id>, read by
@@ -87,6 +93,27 @@ export function Sidebar() {
   const location = useLocation();
   const { user, logout } = useAuth();
 
+  // The organisation's current plan, shown above Logout for its Tenant Admin. Re-read when they leave the
+  // billing page, so a plan they just bought shows without a reload. A failure only hides the label.
+  const [plan, setPlan] = useState(null);
+  const billingAdmin = canManageBilling(user);
+  const onBilling = location.pathname.startsWith('/billing');
+  useEffect(() => {
+    if (!billingAdmin) return undefined;
+    let stopped = false;
+    Promise.resolve(getBillingSubscription())
+      .then(({ data }) => { if (!stopped) setPlan({ key: data.plan, name: data.plan_name }); })
+      .catch(() => { if (!stopped) setPlan(null); });
+    return () => { stopped = true; };
+  }, [billingAdmin, onBilling]);
+  useEffect(() => {
+    if (!billingAdmin) return undefined;
+    const update = (e) => setPlan(e.detail);
+    window.addEventListener(BILLING_CHANGED, update);
+    return () => window.removeEventListener(BILLING_CHANGED, update);
+  }, [billingAdmin]);
+  const topPlan = plan?.key === 'pro_plus';
+
   const params = new URLSearchParams(location.search);
   const onVoiceAgent = location.pathname.startsWith('/voice_agent');
   // const onReportAgent = REPORT_TABS.some(
@@ -104,11 +131,12 @@ export function Sidebar() {
         )}
       >
         <div className={cn('flex shrink-0 items-center border-b border-[var(--line)]', collapsed ? 'h-14 justify-center px-2' : 'px-5 py-4')}>
-          <Link to="/welcome" aria-label="SmartSDR by Netsmartz — home" className={cn('flex items-center text-[var(--ink)]', !collapsed && 'w-full')}>
+          {/* The logo is only a brand mark: it does not navigate anywhere. */}
+          <div role="img" aria-label="SmartSDR by Netsmartz" className={cn('flex items-center text-[var(--ink)]', !collapsed && 'w-full')}>
             {collapsed
               ? <NetsmartzMark size={30} />
               : <BrandLockup layout="stacked" size="sm" wordAlign="end" className="flex w-full" />}
-          </Link>
+          </div>
         </div>
 
         <ScrollArea className="flex-1 px-3 py-2">
@@ -150,7 +178,7 @@ export function Sidebar() {
 
             {(voiceOpen || collapsed) && (
               <div className={collapsed ? '' : 'pl-4 flex flex-col gap-0.5'}>
-                {VOICE_TABS.filter((tab) => !tab.requires || tab.requires(user)).map((tab) => {
+                {VOICE_TABS.filter((tab) => (!tab.requires || tab.requires(user)) && voiceTabEnabled(user, tab.id)).map((tab) => {
                   const isActive = tab.path
                     ? location.pathname.startsWith(tab.path)
                     : onVoiceAgent && currentTab === tab.id;
@@ -237,13 +265,6 @@ export function Sidebar() {
             </Link>
           )}
           */}
-          {/* The Super Admin's platform control area (/admin: overview, tools). */}
-          {canUseAdmin(user) && (
-            <NavLink to="/admin" aria-label={collapsed ? 'Platform admin' : undefined} className={({ isActive }) => itemClass(isActive, collapsed)}>
-              <ShieldCheck className="h-4 w-4 shrink-0 text-[var(--mist)] group-hover:text-[var(--pine)]" />
-              {!collapsed && <span>Platform admin</span>}
-            </NavLink>
-          )}
           {/* Users, Teams and Tenants open from Settings → General → Administration (lib/adminNav.js), not from here. */}
           <NavLink to="/settings" aria-label={collapsed ? 'Settings' : undefined} className={({ isActive }) => itemClass(isActive, collapsed)}>
             <Settings className="h-4 w-4 shrink-0 text-[var(--mist)] group-hover:text-[var(--pine)]" />
@@ -253,6 +274,29 @@ export function Sidebar() {
             {!collapsed && user?.email && <span className="text-xs text-[var(--mist)] truncate">{user.email}</span>}
             <ThemeToggle className="h-8 w-8 shrink-0" />
           </div>
+          {/* Upgrade Plan — the organisation's subscription; only its Tenant Admin sees it. Sits just above Logout. */}
+          {billingAdmin && plan && !collapsed && (
+            <p data-testid="current-plan" className="px-3 pt-1 text-xs text-[var(--mist)]">
+              You are on the <span className="font-semibold text-[var(--pine)]">{plan.name}</span> plan
+            </p>
+          )}
+          {billingAdmin && (
+            <NavLink
+              to="/billing"
+              aria-label={collapsed ? (topPlan ? 'Manage Plan' : 'Upgrade Plan') : undefined}
+              title={collapsed ? (topPlan ? `${plan.name} plan` : plan ? `${plan.name} plan - upgrade` : 'Upgrade Plan') : undefined}
+              className={({ isActive }) => cn(
+                'group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-all duration-200 hover:translate-x-0.5',
+                isActive
+                  ? 'bg-[var(--pine)] text-white shadow-[0_10px_24px_-12px_rgba(248,114,23,0.6)]'
+                  : 'text-[var(--pine)] hover:bg-[rgba(248,114,23,0.12)]',
+                collapsed && 'justify-center px-2 hover:translate-x-0'
+              )}
+            >
+              <Crown className="h-4 w-4 shrink-0 transition-transform duration-200 group-hover:-rotate-12 group-hover:scale-110" />
+              {!collapsed && <span>{topPlan ? 'Manage Plan' : 'Upgrade Plan'}</span>}
+            </NavLink>
+          )}
           <button
             type="button"
             aria-label={collapsed ? 'Logout' : undefined}

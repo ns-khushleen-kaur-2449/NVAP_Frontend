@@ -11,6 +11,7 @@ import CatalogBrochures, { CompanyBrochure } from '@/components/catalog/CatalogB
 import { BrochureControl } from '@/components/admin/brochureControls';
 import ChangeNotice from '@/components/catalog/ChangeNotice';
 import ImportReport from '@/components/catalog/ImportReport';
+import ImportMappingDialog from '@/components/catalog/ImportMappingDialog';
 import FieldMenu from '@/components/catalog/FieldMenu';
 import FieldSettingsDialog from '@/components/catalog/FieldSettingsDialog';
 import MatchingOrderSheet from '@/components/catalog/MatchingOrderSheet';
@@ -18,7 +19,7 @@ import PresetPicker from '@/components/catalog/PresetPicker';
 import CatalogSettingsSheet from '@/components/catalog/CatalogSettingsSheet';
 import { matchingNote } from '@/lib/catalogFields';
 import {
-  addCatalogField, addCatalogItem, deleteCatalogField, getCatalogTable, importCatalog, renameCatalogField,
+  addCatalogField, addCatalogItem, deleteCatalogField, getCatalogTable, importCatalog, previewCatalogImport, renameCatalogField,
   setCatalogVisibility, updateCatalogField, updateCatalogItem, uploadCatalogItemBrochure,
 } from '@/lib/api';
 
@@ -237,9 +238,7 @@ export function templateCsv(columns) {
 export default function CatalogPage() {
   const { user } = useAuth();
   const editable = canEditCatalog(user);
-  // A Super Admin has no tenant: the table needs one, the settings let them pick it.
-  const superAdmin = user?.role === 'super_admin';
-  const settingsViewer = superAdmin || editable;
+  const settingsViewer = editable;
   // Brochures follow the /api/v1/scheduling rules: Tenant Admins upload, Managers view, Sales Reps don't see them.
   const showBrochures = editable;
   const brochureAdmin = user?.role === 'tenant_admin';
@@ -264,7 +263,6 @@ export default function CatalogPage() {
   const fileInput = useRef(null);
 
   const load = useCallback(async () => {
-    if (superAdmin) { setLoading(false); return; }
     try {
       const res = await getCatalogTable(inactive ? { include_inactive: true } : {});
       setData(res?.data || { columns: [], rows: [] });
@@ -273,7 +271,7 @@ export default function CatalogPage() {
     } finally {
       setLoading(false);
     }
-  }, [inactive, superAdmin]);
+  }, [inactive]);
   useEffect(() => { load(); }, [load]);
 
   const columns = useMemo(() => (showUnused ? data.columns
@@ -346,19 +344,35 @@ export default function CatalogPage() {
     }
   };
 
+  // A chosen file is read first (nothing saved), then the user matches its columns and imports.
+  const [pending, setPending] = useState(null); // { file, preview }
   const upload = async (file) => {
     if (!file) return;
     setImporting(true);
     try {
-      const res = await importCatalog(file);
+      const res = await previewCatalogImport(file);
+      setPending({ file, preview: res.data });
+    } catch (e) {
+      toast.error(errorText(e, 'Could not read that file'));
+    } finally {
+      setImporting(false);
+      if (fileInput.current) fileInput.current.value = '';
+    }
+  };
+  const importMapped = async (mapping) => {
+    if (!pending) return;
+    setImporting(true);
+    try {
+      const res = await importCatalog(pending.file, mapping);
       setReport(res.data);
-      toast.success('Catalog imported');
+      setPending(null);
+      if (res.data?.imported || res.data?.updated) toast.success('Catalog imported');
+      else toast.error('Nothing was imported; see the report.');
       await load();
     } catch (e) {
       toast.error(errorText(e, 'Failed to import the catalog'));
     } finally {
       setImporting(false);
-      if (fileInput.current) fileInput.current.value = '';
     }
   };
 
@@ -386,11 +400,9 @@ export default function CatalogPage() {
               <Settings2 className="w-4 h-4 mr-1" /> Catalog settings
             </Button>
           )}
-          {!superAdmin && (
-            <Button variant="outline" size="sm" onClick={() => setOrdering(true)} disabled={!data.columns.length}>
+                      <Button variant="outline" size="sm" onClick={() => setOrdering(true)} disabled={!data.columns.length}>
               <ListOrdered className="w-4 h-4 mr-1" /> Matching order
             </Button>
-          )}
         {editable && (
           <>
             {/* Tenant Admins apply a preset; Managers see what one holds. */}
@@ -416,6 +428,15 @@ export default function CatalogPage() {
 
       {report && <ImportReport report={report} onFieldSettings={setSettingsKey} />}
 
+      <ImportMappingDialog
+        open={Boolean(pending)}
+        onOpenChange={(open) => { if (!open) setPending(null); }}
+        fileName={pending?.file?.name}
+        preview={pending?.preview}
+        importing={importing}
+        onImport={importMapped}
+      />
+
       {change && <ChangeNotice notes={change.notes} agents={change.agents} onDismiss={() => setChange(null)} />}
 
       {showBrochures && <CompanyBrochure canEdit={brochureAdmin} />}
@@ -439,11 +460,7 @@ export default function CatalogPage() {
         <span className="text-xs text-muted-foreground">{rows.length} product{rows.length === 1 ? '' : 's'}</span>
       </div>
 
-      {superAdmin ? (
-        <div className="border border-dashed border-border rounded-lg p-12 text-center text-sm text-muted-foreground">
-          Products belong to a tenant. Open Catalog settings to pick a tenant and view or change its settings.
-        </div>
-      ) : loading ? (
+      {loading ? (
         <div className="flex justify-center py-10"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div>
       ) : data.rows.length === 0 ? (
         <div className="border border-dashed border-border rounded-lg p-12 text-center text-sm text-muted-foreground">
@@ -456,7 +473,7 @@ export default function CatalogPage() {
           {editable ? ' Click the eye on a column to change it.' : ''}
         </p>
       )}
-      {!superAdmin && !loading && data.rows.length > 0 && (
+      {!loading && data.rows.length > 0 && (
         <div className="overflow-x-auto rounded-lg border border-border">
           <table className="min-w-full text-sm" aria-label="Catalog">
             <thead className="bg-muted/60 text-xs text-muted-foreground">

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import AssistantBuilder, {
-  formFromPayload, industryName, industryValue, presetMismatch, qualificationSuggestions, toPayload,
+  formFromPayload, industryName, industryValue, presetMismatch, qualificationSuggestions, toPayload, unusedAfterSwitch,
 } from './AssistantBuilder';
 import * as api from '../../lib/api';
 
@@ -285,4 +285,68 @@ it('a Hindi or English agent needs no gender and keeps its "not set" choice', as
   expect(screen.getByText(/Match the voice/)).toBeInTheDocument();
   expect(screen.getAllByText('Not set (neutral)').length).toBeGreaterThan(0);
   expect(screen.getByLabelText('Custom opening line')).toHaveAttribute('dir', 'ltr');
+});
+
+describe('custom prompt mode', () => {
+  const { AuthContext } = require('../../lib/AuthContext');
+  const asRole = (role) => render(
+    <AuthContext.Provider value={{ user: { role } }}><AssistantBuilder /></AuthContext.Provider>);
+  const CUSTOM = { ...LEGACY, prompt_mode: 'custom', custom_system_prompt: 'Ask about their last service.',
+    custom_first_message: 'Hi, Riya from Apex here. Got a minute?' };
+  const open = async (role, payload) => {
+    api.listBuilderConfigs.mockResolvedValue({ data: [config(payload)] });
+    api.getBuilderConfig.mockResolvedValue({ data: config(payload) });
+    asRole(role);
+    fireEvent.click(await screen.findByText('Riya'));
+    await screen.findByRole('heading', { name: 'Prompt mode' });
+  };
+
+  it('round-trips the mode and both custom texts; older payloads load as guided', () => {
+    expect(toPayload(formFromPayload(LEGACY))).toMatchObject({ prompt_mode: 'guided', custom_system_prompt: null,
+      custom_first_message: null, prompt_override_reason: null });
+    expect(toPayload(formFromPayload(CUSTOM))).toMatchObject({ prompt_mode: 'custom',
+      custom_system_prompt: CUSTOM.custom_system_prompt, custom_first_message: CUSTOM.custom_first_message });
+  });
+
+  it('lists what stops being used before switching', () => {
+    expect(unusedAfterSwitch(formFromPayload(LEGACY), 'custom')).toEqual(['the opening line', 'what to qualify']);
+    expect(unusedAfterSwitch(formFromPayload(CUSTOM), 'guided')).toEqual(['your instructions', 'your opening line']);
+  });
+
+  it('a Tenant Admin edits the custom prompt and opener; guided-only sections are hidden', async () => {
+    await open('tenant_admin', CUSTOM);
+    expect(screen.getByLabelText('Custom system prompt')).toHaveValue(CUSTOM.custom_system_prompt);
+    expect(screen.getByLabelText('Custom opening line')).toHaveValue(CUSTOM.custom_first_message);
+    expect(screen.queryByRole('heading', { name: 'What to pitch' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Business notes' })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Guardrails' })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Custom system prompt'), { target: { value: 'Be brief.' } });
+    await waitFor(() => expect(api.previewBuilderConfig.mock.calls.at(-1)[0].custom_system_prompt).toBe('Be brief.'),
+      { timeout: 3000 });
+  });
+
+  it('a Manager sees custom mode read-only', async () => {
+    await open('manager', CUSTOM);
+    expect(screen.getByLabelText('Custom system prompt')).toHaveAttribute('readonly');
+    expect(screen.getByRole('radio', { name: /Guided/ })).toBeDisabled();
+    expect(screen.getByText(/Only a Tenant Admin can change the prompt mode/)).toBeInTheDocument();
+  });
+
+  it('asks before switching modes when text would stop being used', async () => {
+    await open('tenant_admin', LEGACY);
+    const confirm = jest.spyOn(window, 'confirm').mockReturnValue(false);
+    fireEvent.click(screen.getByRole('radio', { name: /Custom prompt/ }));
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('the opening line'));
+    expect(screen.queryByLabelText('Custom system prompt')).not.toBeInTheDocument();
+    confirm.mockReturnValue(true);
+    fireEvent.click(screen.getByRole('radio', { name: /Custom prompt/ }));
+    expect(screen.getByLabelText('Custom system prompt')).toBeInTheDocument();
+    confirm.mockRestore();
+  });
+
+  it('only a Super Admin gets the whole-prompt editor', async () => {
+    await open('tenant_admin', LEGACY);
+    await screen.findByText('Live preview of what the agent will be told');
+    expect(screen.queryByTitle('Edit the whole prompt (Super Admin)')).not.toBeInTheDocument();
+  });
 });

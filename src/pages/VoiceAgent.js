@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -9,13 +9,15 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { toast } from 'sonner';
 import { getProspects, getAssistants, previewCampaignCsv, getCsvCallResults, initiateSmartsdrCall, createKnowledgeBase, getKnowledgeFiles } from '../lib/api';
 import { toLeadRow } from '../lib/prospects';
+import { dropPicks, loadPicks, mergePicks, savePicks } from '../lib/builderPicks';
 import CallLogsList from '../components/voice/CallLogsList';
 import LeadCampaignBuilder from '../components/voice/LeadCampaignBuilder';
 import CampaignLaunchDialog from '../components/voice/CampaignLaunchDialog';
 import AssistantBuilder from '../components/voice/AssistantBuilder';
 import AssistantChangeRequests from '../components/voice/AssistantChangeRequests';
 import { useAuth } from '@/lib/AuthContext';
-import { canCreateCampaigns, canOperate, canUseAssistantRequests } from '@/lib/rbac';
+import { FeatureOff } from '@/components/auth/FeatureRoute';
+import { canCreateCampaigns, canOperate, canUseAssistantRequests, voiceTabEnabled } from '@/lib/rbac';
 import ReasonDialog from '@/components/ops/ReasonDialog';
 import SingleCallBlock from '@/components/ops/SingleCallBlock';
 import { Loader2, PhoneCall, BookOpen, Mic, UploadCloud, Phone, RotateCw, Layers, Info, FileText, Database, Search, Copy, Check, ClipboardCheck } from 'lucide-react';
@@ -67,7 +69,25 @@ export default function VoiceAgentPage() {
   // Active sidebar tab
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
+  // Prospects sent from Prospecting ([{ id, name, phone, ... }]). They stay (lib/builderPicks) until
+  // launched or removed; each new hand-off adds to them. The history state is cleared once read, so
+  // a reload or Back does not add the same ones again.
+  const userId = user?.id ?? null;
+  const [fromProspecting, setFromProspecting] = useState(
+    () => mergePicks(loadPicks(userId), location.state?.fromProspecting),
+  );
+  useEffect(() => {
+    setFromProspecting((current) => mergePicks(loadPicks(userId), current));
+  }, [userId]);
+  useEffect(() => {
+    const picked = location.state?.fromProspecting;
+    if (!picked) return;
+    setFromProspecting((current) => mergePicks(current, picked));
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  }, [location, navigate]);
+  useEffect(() => { savePicks(userId, fromProspecting); }, [userId, fromProspecting]);
   // Hides launch controls only; POST /api/campaigns enforces the same rule.
   const canLaunchCampaigns = canCreateCampaigns(user);
   // The voice dashboard now lives on the main /dashboard page.
@@ -491,6 +511,8 @@ export default function VoiceAgentPage() {
           assistants={assistants}
           loading={loadingCampaignData}
           canCreateCampaigns={canLaunchCampaigns}
+          fromProspecting={fromProspecting}
+          onFromProspectingDone={(ids) => setFromProspecting((current) => (ids ? dropPicks(current, ids) : []))}
         />
       </div>
     </div>
@@ -698,6 +720,7 @@ export default function VoiceAgentPage() {
   };
 
   const renderContent = () => {
+    if (!voiceTabEnabled(user, activeTab)) return <FeatureOff name={TABS.find((t) => t.id === activeTab)?.label || 'This feature'} />;
     switch (activeTab) {
       case 'single':     return <>{renderSingleCall()}{renderOverride()}</>;
       case 'csv':        return renderCsvCampaign();

@@ -102,3 +102,17 @@ it('still sorts by the number and filters by status, whatever the chips say', as
   fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'pending' } });
   expect(names()).toEqual(['Provisional Priya', 'Stale Sam', 'No-score Noor']);
 });
+
+it('lists every pre-flight problem when a resume is refused', async () => {
+  api.getVoiceCampaign.mockResolvedValue({ data: { ...CAMPAIGN, status: 'paused', paused_by_kind: 'user', allowed_actions: ['resume'] } });
+  api.resumeVoiceCampaign.mockRejectedValue({ response: { status: 409, data: { detail:
+    "Can't resume this campaign:\nRiya was saved without customer details, so its calls don't receive campaign details.\nNo contact left to call (all done, invalid or do-not-call)." } } });
+  renderWithAuth(null, { user: USERS.tenant_admin, path: '/voice-campaigns/c1',
+    routes: [<Route key="detail" path="/voice-campaigns/:campaignId" element={<VoiceCampaignDetail />} />] });
+  fireEvent.click(await screen.findByRole('button', { name: 'Resume' }));
+  const dialog = await screen.findByRole('dialog');
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Resume' }));
+  expect(await screen.findByText("Can't resume this campaign.")).toBeInTheDocument();
+  expect(screen.getByText(/saved without customer details/)).toBeInTheDocument();
+  expect(screen.getByText(/No contact left to call/)).toBeInTheDocument();
+});

@@ -6,14 +6,39 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import ReasonDialog from '@/components/ops/ReasonDialog';
-import { errorText } from '@/components/admin/userBits';
+import CallingBoundDialog from '@/components/admin/CallingBoundDialog';
+import TenantSettingsDialog from '@/components/admin/TenantSettingsDialog';
+import { errorText, EMAIL_IN_USE, EmailInUse } from '@/components/admin/userBits';
 import {
-  activateTenant, cancelTenantOffboarding, createTenantWithAdmin, initiateTenantOffboarding, listAdminTenants, suspendTenant,
+  activateTenant, cancelTenantOffboarding, createTenantWithAdmin, initiateTenantOffboarding, listAdminTenants,
+  setTenantApolloAccess, suspendTenant,
 } from '@/lib/api';
 import { generateTemporaryPassword } from '@/lib/passwords';
+
+const STATUS_STYLES = {
+  active: 'text-[11px] bg-emerald-500/10 text-emerald-600 border-emerald-500/25',
+  suspended: 'text-[11px] bg-red-500/10 text-red-600 border-red-500/25',
+};
+const statusLabel = (status) => (status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Unknown');
+
+/** The plan from Stripe billing; a tenant with no paid plan is Free. */
+function PlanCell({ plan }) {
+  if (!plan) return <span className="text-muted-foreground">Unknown</span>;
+  const unpaid = plan.key && plan.status && !['active', 'trialing'].includes(plan.status);
+  return (
+    <div>
+      <p className="font-medium">{plan.name}{plan.interval ? <span className="text-xs text-muted-foreground"> · {plan.interval}</span> : null}</p>
+      {unpaid && <p className="text-xs text-amber-700">{plan.status.replace(/_/g, ' ')}</p>}
+      {plan.cancel_at_period_end && plan.current_period_end && (
+        <p className="text-xs text-muted-foreground">Ends {new Date(plan.current_period_end).toLocaleDateString()}</p>
+      )}
+    </div>
+  );
+}
 
 function NewTenantDialog({ open, onOpenChange, onCreated }) {
   const [form, setForm] = useState(null);
@@ -81,8 +106,9 @@ function NewTenantDialog({ open, onOpenChange, onCreated }) {
               <Input value={form.admin_name} onChange={(e) => set({ admin_name: e.target.value })} className="mt-1" />
             </label>
             <label className="block text-xs font-medium text-muted-foreground">First admin email
-              <Input type="email" value={form.admin_email} onChange={(e) => set({ admin_email: e.target.value })} className="mt-1" />
+              <Input type="email" aria-invalid={error === EMAIL_IN_USE} aria-describedby={error === EMAIL_IN_USE ? 'new-tenant-email-error' : undefined} value={form.admin_email} onChange={(e) => set({ admin_email: e.target.value })} className="mt-1" />
             </label>
+            <EmailInUse error={error} id="new-tenant-email-error" />
             <label className="block text-xs font-medium text-muted-foreground">Temporary password
               <div className="flex gap-2 mt-1">
                 <Input value={form.password} onChange={(e) => set({ password: e.target.value })} />
@@ -90,7 +116,7 @@ function NewTenantDialog({ open, onOpenChange, onCreated }) {
                   onClick={() => set({ password: generateTemporaryPassword() })}><RefreshCw className="w-4 h-4" /></Button>
               </div>
             </label>
-            {error && <p className="text-xs text-red-600" role="alert">{error}</p>}
+            {error && error !== EMAIL_IN_USE && <p className="text-xs text-red-600" role="alert">{error}</p>}
             <DialogFooter>
               <Button onClick={save} disabled={saving} className="bg-primary text-primary-foreground">
                 {saving && <Loader2 className="w-4 h-4 mr-1 animate-spin" />} Create tenant
@@ -103,13 +129,16 @@ function NewTenantDialog({ open, onOpenChange, onCreated }) {
   );
 }
 
-/** Super Admin: every tenant, with its users; create, suspend and activate. */
+/** Super Admin: every tenant, with its users; create, suspend and activate, and grant Apollo access. */
 export default function TenantsPage() {
   const [tenants, setTenants] = useState(null);
   const [creating, setCreating] = useState(false);
   const [confirming, setConfirming] = useState(null);
   const [offboarding, setOffboarding] = useState(null);
   const [cancelling, setCancelling] = useState(null);
+  const [apolloChange, setApolloChange] = useState(null);
+  const [bounding, setBounding] = useState(null);
+  const [settingsOf, setSettingsOf] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -164,6 +193,24 @@ export default function TenantsPage() {
     }
   };
 
+  // Grant or revoke Apollo access; the backend applies it to the tenant's next Apollo request and audits it.
+  // The switch shows the saved value only, so it changes after the reload.
+  const changeApolloAccess = async (tenant, reason) => {
+    const grant = !tenant.apollo_access_enabled;
+    setBusyId(tenant.tenant_id);
+    try {
+      await setTenantApolloAccess(tenant.tenant_id, grant, reason);
+      toast.success(grant ? `Apollo access granted to ${tenant.name}` : `Apollo access revoked for ${tenant.name}`);
+      await load();
+      return true;
+    } catch (e) {
+      toast.error(errorText(e, 'Could not change Apollo access'));
+      return false;
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   return (
     <div className="max-w-6xl mx-auto space-y-6" data-testid="tenants-page">
       <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -183,36 +230,50 @@ export default function TenantsPage() {
         {!tenants ? (
           <div className="flex justify-center py-10"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div>
         ) : tenants.length === 0 ? (
-          <p className="text-sm text-muted-foreground py-8 text-center">No tenants yet.</p>
+          <p className="text-sm text-muted-foreground py-8 text-center">{query || statusFilter ? 'No tenants match this search.' : 'No tenants yet.'}</p>
         ) : (
           <div className="rounded-lg border border-border overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Tenant</TableHead><TableHead>Status</TableHead><TableHead>Users</TableHead>
-                  <TableHead>Admins</TableHead><TableHead>Active agents</TableHead><TableHead>Calls</TableHead><TableHead>Plan</TableHead><TableHead>Created</TableHead><TableHead className="text-right">Actions</TableHead>
+                  <TableHead>Tenant</TableHead><TableHead>Tenant Admin</TableHead><TableHead>Status</TableHead><TableHead>Apollo</TableHead><TableHead>Users</TableHead>
+                  <TableHead>Admins</TableHead><TableHead>Active agents</TableHead><TableHead>Dial attempts (all time)</TableHead><TableHead>Plan</TableHead><TableHead>Created</TableHead><TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {tenants.map((tenant) => (
                   <TableRow key={tenant.tenant_id} data-testid={`tenant-row-${tenant.tenant_id}`}>
                     <TableCell><p className="font-medium text-sm">{tenant.name}</p><p className="text-xs text-muted-foreground">{tenant.default_timezone}</p></TableCell>
+                    <TableCell className="text-sm" data-testid={`tenant-admins-${tenant.tenant_id}`}>
+                      {(tenant.tenant_admins || []).length === 0
+                        ? <span className="text-muted-foreground">None</span>
+                        : tenant.tenant_admins.map((admin) => (
+                          <div key={admin.email}><p className="font-medium">{admin.name}</p><p className="text-xs text-muted-foreground">{admin.email}</p></div>
+                        ))}
+                    </TableCell>
                     <TableCell>
-                      <Badge variant="outline" className={tenant.status === 'active'
-                        ? 'text-[11px] bg-emerald-500/10 text-emerald-600 border-emerald-500/25'
-                        : 'text-[11px] bg-red-500/10 text-red-600 border-red-500/25'}>
-                        {tenant.status === 'active' ? 'Active' : 'Suspended'}
+                      <Badge variant="outline" className={STATUS_STYLES[tenant.status] || 'text-[11px]'}>
+                        {statusLabel(tenant.status)}
                       </Badge>
                       {tenant.offboarding_started_at && <div className="mt-1 text-xs text-amber-700">Offboarding · {new Date(tenant.offboarding_started_at).toLocaleDateString()}</div>}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Switch checked={tenant.apollo_access_enabled === true} disabled={busyId === tenant.tenant_id}
+                          aria-label={`Apollo access for ${tenant.name}`} onCheckedChange={() => setApolloChange(tenant)} />
+                        <span className="text-xs text-muted-foreground">{tenant.apollo_access_enabled ? 'Enabled' : 'Disabled'}</span>
+                      </div>
                     </TableCell>
                     <TableCell className="text-sm">{tenant.active_user_count} active / {tenant.user_count}</TableCell>
                     <TableCell className="text-sm">{tenant.admin_count}</TableCell>
                     <TableCell className="text-sm">{tenant.active_assistant_count}</TableCell>
                     <TableCell className="text-sm">{tenant.call_count}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">Not configured</TableCell>
+                    <TableCell className="text-sm" data-testid={`tenant-plan-${tenant.tenant_id}`}><PlanCell plan={tenant.plan} /></TableCell>
                     <TableCell className="text-sm">{new Date(tenant.created_at).toLocaleDateString()}</TableCell>
                     <TableCell className="text-right">
-                      <Button asChild variant="ghost" size="sm"><Link to={`/admin/tenant-users?tenant_id=${tenant.tenant_id}`}>Users</Link></Button>
+                      <Button asChild variant="ghost" size="sm"><Link to={`/admin/tenant-users?tenant_id=${tenant.tenant_id}`}>Admins</Link></Button>
+                      <Button variant="ghost" size="sm" onClick={() => setSettingsOf(tenant)}>Settings</Button>
+                      <Button variant="ghost" size="sm" onClick={() => setBounding(tenant)}>Calling hours</Button>
                       {tenant.offboarding_started_at
                         ? <Button variant="ghost" size="sm" disabled={busyId === tenant.tenant_id} onClick={() => setCancelling(tenant)}>Cancel offboarding</Button>
                         : <Button variant="ghost" size="sm" disabled={busyId === tenant.tenant_id} onClick={() => setOffboarding(tenant)}>Offboard</Button>}
@@ -230,6 +291,8 @@ export default function TenantsPage() {
       </Card>
 
       <NewTenantDialog open={creating} onOpenChange={setCreating} onCreated={load} />
+      <CallingBoundDialog tenant={bounding} onOpenChange={(open) => !open && setBounding(null)} />
+      <TenantSettingsDialog tenant={settingsOf} onOpenChange={(open) => { if (!open) { setSettingsOf(null); load(); } }} />
       <ReasonDialog
         open={Boolean(confirming)}
         onOpenChange={(open) => !open && setConfirming(null)}
@@ -260,6 +323,19 @@ export default function TenantsPage() {
         confirmLabel="Cancel offboarding"
         reasonPlaceholder="Why is offboarding being cancelled?"
         onConfirm={(reason) => changeOffboarding(cancelling, reason, true)}
+      />
+      <ReasonDialog
+        open={Boolean(apolloChange)}
+        onOpenChange={(open) => !open && setApolloChange(null)}
+        title={apolloChange ? (apolloChange.apollo_access_enabled
+          ? `Revoke Apollo access for ${apolloChange.name}?` : `Grant Apollo access to ${apolloChange.name}?`) : ''}
+        description={apolloChange && (apolloChange.apollo_access_enabled
+          ? 'Apollo Preview stops working for its users from their next request. Nothing else changes.'
+          : 'Its Tenant Admins, Managers and Sales Reps can use Apollo Preview from their next request. Searches use the platform Apollo account.')}
+        confirmLabel={apolloChange?.apollo_access_enabled ? 'Revoke access' : 'Grant access'}
+        danger={apolloChange?.apollo_access_enabled}
+        reasonPlaceholder="Why? At least 3 characters; it is kept in the platform audit trail."
+        onConfirm={(reason) => changeApolloAccess(apolloChange, reason)}
       />
     </div>
   );

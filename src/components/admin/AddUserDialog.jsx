@@ -5,11 +5,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { authRegister, listTeams, listTenants } from '@/lib/api';
+import { authRegister, getUserSeats, listTeams, listTenants } from '@/lib/api';
 import { useAuth } from '@/lib/AuthContext';
 import { ROLES, roleLabel } from '@/lib/rbac';
 import { generateTemporaryPassword } from '@/lib/passwords';
-import { errorText } from '@/components/admin/userBits';
+import { errorText, EMAIL_IN_USE, EmailInUse } from '@/components/admin/userBits';
 
 const fieldClass = 'mt-1';
 
@@ -28,6 +28,7 @@ export default function AddUserDialog({ open, onOpenChange, onCreated, defaultRo
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [created, setCreated] = useState(null);
+  const [seats, setSeats] = useState(null);
 
   const isSuperAdmin = actor?.role === ROLES.SUPER_ADMIN;
   const isTenantAdmin = actor?.role === ROLES.TENANT_ADMIN;
@@ -38,6 +39,7 @@ export default function AddUserDialog({ open, onOpenChange, onCreated, defaultRo
     setForm({ name: '', email: '', password: generateTemporaryPassword(), role, tenant_id: '', manager_user_id: '' });
     setError(null);
     setCreated(null);
+    Promise.resolve(getUserSeats()).then((r) => setSeats(r?.data || null)).catch(() => setSeats(null));
     if (isSuperAdmin) {
       listTenants().then((r) => setTenants((r.data.tenants || []).filter((t) => t.status === 'active'))).catch(() => setTenants([]));
     }
@@ -51,6 +53,7 @@ export default function AddUserDialog({ open, onOpenChange, onCreated, defaultRo
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
   const needsTenant = isSuperAdmin;
   const needsTeam = isTenantAdmin && form.role === ROLES.REP;
+  const seat = seats?.[form.role];
 
   const save = async () => {
     const problems = [];
@@ -101,8 +104,9 @@ export default function AddUserDialog({ open, onOpenChange, onCreated, defaultRo
               <Input value={form.name} onChange={(e) => set({ name: e.target.value })} className={fieldClass} />
             </label>
             <label className="block text-xs font-medium text-muted-foreground">Email
-              <Input type="email" value={form.email} onChange={(e) => set({ email: e.target.value })} className={fieldClass} />
+              <Input type="email" aria-invalid={error === EMAIL_IN_USE} aria-describedby={error === EMAIL_IN_USE ? 'add-user-email-error' : undefined} value={form.email} onChange={(e) => set({ email: e.target.value })} className={fieldClass} />
             </label>
+            <EmailInUse error={error} id="add-user-email-error" />
             <label className="block text-xs font-medium text-muted-foreground">Temporary password
               <div className="flex gap-2 mt-1">
                 <Input value={form.password} onChange={(e) => set({ password: e.target.value })} />
@@ -119,6 +123,12 @@ export default function AddUserDialog({ open, onOpenChange, onCreated, defaultRo
                 </SelectContent>
               </Select>
             </div>
+            {seat && (
+              <p className={`text-xs ${seat.full ? 'text-destructive' : 'text-muted-foreground'}`} data-testid="seat-count">
+                {roleLabel(form.role)} seats: {seat.used} used{seat.limit === null ? '' : ` of ${seat.limit}`}
+                {seat.full ? '. No free seats: contact the platform administrator.' : ''}
+              </p>
+            )}
             {needsTenant && (
               <div>
                 <span className="text-xs font-medium text-muted-foreground">Tenant</span>
@@ -142,9 +152,9 @@ export default function AddUserDialog({ open, onOpenChange, onCreated, defaultRo
                 {!managers.length && <p className="text-[11px] text-amber-600 mt-1">Create a Manager first: a team is a Manager and their Sales Reps.</p>}
               </div>
             )}
-            {error && <p className="text-xs text-red-600" role="alert">{error}</p>}
+            {error && error !== EMAIL_IN_USE && <p className="text-xs text-red-600" role="alert">{error}</p>}
             <DialogFooter>
-              <Button onClick={save} disabled={saving || !creatableRoles.length} className="bg-primary text-primary-foreground">
+              <Button onClick={save} disabled={saving || !creatableRoles.length || Boolean(seat?.full)} className="bg-primary text-primary-foreground">
                 {saving && <Loader2 className="w-4 h-4 mr-1 animate-spin" />} Create user
               </Button>
             </DialogFooter>

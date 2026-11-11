@@ -11,6 +11,7 @@ import ThemeToggle from '@/components/shared/ThemeToggle';
 import { NetsmartzLogo, SmartSDRWordmark } from '@/components/shared/BrandLockup';
 import { cn } from '@/lib/utils';
 import { homePath } from '@/lib/rbac';
+import { CodeInput, codeError } from '@/components/auth/MfaParts';
 
 // "Remember me" keeps the email address on this device so the field is filled
 // in next time. Sign-in itself always persists (see AuthContext), so this
@@ -73,7 +74,7 @@ function NeuralNetwork({ animate, className }) {
 }
 
 export default function LoginPage() {
-  const { login, user, token } = useAuth();
+  const { login, completeMfaLogin, user, token } = useAuth();
   const navigate = useNavigate();
   const [email,        setEmail]        = useState(readRememberedEmail);
   const [password,     setPassword]     = useState('');
@@ -81,6 +82,11 @@ export default function LoginPage() {
   const [loading,      setLoading]      = useState(false);
   const [remember,     setRemember]     = useState(() => Boolean(readRememberedEmail()));
   const [showResetHelp, setShowResetHelp] = useState(false);
+  // A Super Admin's second step: { token } from the password step; recovery: typing a recovery code instead.
+  const [mfa, setMfa] = useState(null);
+  const [mfaCode, setMfaCode] = useState('');
+  const [useRecovery, setUseRecovery] = useState(false);
+  const [mfaError, setMfaError] = useState(null);
   const [reducedMotion] = useState(() => Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches));
 
   useEffect(() => { if (user || token) navigate(homePath(user), { replace: true }); }, [user, token, navigate]);
@@ -92,14 +98,43 @@ export default function LoginPage() {
     try {
       const signedIn = await login(email, password);
       writeRememberedEmail(remember ? email.trim() : '');
+      if (signedIn?.mfa_required) {
+        setMfa({ token: signedIn.mfa_token });
+        setPassword('');
+        return;
+      }
       toast.success('Welcome back!');
       navigate(homePath(signedIn?.user));
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Login failed. Please try again.');
+      toast.error(err.response?.status === 429 ? 'Too many sign-in attempts. Wait a few minutes, then try again.'
+        : err.response?.data?.detail || 'Login failed. Please try again.');
     } finally {
       setLoading(false);
     }
   };
+
+  const handleMfa = async (e) => {
+    e.preventDefault();
+    if (!mfaCode.trim()) return;
+    setLoading(true);
+    setMfaError(null);
+    try {
+      const signedIn = await completeMfaLogin(mfa.token, useRecovery ? { recoveryCode: mfaCode.trim() } : { code: mfaCode });
+      toast.success('Welcome back!');
+      navigate(homePath(signedIn?.user));
+    } catch (err) {
+      const message = codeError(err);
+      setMfaCode('');
+      if (err.response?.status === 401 && err.response?.data?.detail === 'Sign in again') {
+        setMfa(null);  // the challenge expired or was used: start again from the password
+        toast.error(message);
+      } else setMfaError(message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const restart = () => { setMfa(null); setMfaCode(''); setMfaError(null); setUseRecovery(false); };
 
   // Field colours live in CSS variables so the autofill override below can
   // repaint Chrome's blue autofill background with the same surface colour.
@@ -187,6 +222,37 @@ export default function LoginPage() {
               'dark:border-[rgba(248,114,23,0.16)] dark:bg-[#0E0C0B] dark:shadow-[0_30px_70px_-30px_rgba(0,0,0,0.85)]',
               '[--field:#FFFFFF] [--field-line:var(--line)] dark:[--field:#14171C] dark:[--field-line:rgba(248,114,23,0.18)]',
             )}>
+            {mfa ? (
+              <form onSubmit={handleMfa} className="space-y-5" data-testid="login-mfa-form">
+                <div>
+                  <h1 className="mk-display text-[1.9rem] font-semibold leading-tight text-[var(--ink)]">Two-factor check</h1>
+                  <p className="mt-1.5 text-sm text-[var(--mist)]">
+                    {useRecovery ? 'Enter one of your recovery codes. Each works once.'
+                      : 'Enter the 6-digit code from your authenticator app.'}
+                  </p>
+                </div>
+                {useRecovery ? (
+                  <input id="login-recovery-code" value={mfaCode} onChange={(e) => setMfaCode(e.target.value)}
+                    autoComplete="off" autoFocus placeholder="abcde-12345" aria-label="Recovery code" maxLength={20}
+                    className={cn(fieldClass, 'pl-4 font-mono tracking-wider')} />
+                ) : (
+                  <CodeInput id="login-mfa-code" value={mfaCode} onChange={setMfaCode} disabled={loading} />
+                )}
+                {mfaError && <p role="alert" className="text-sm text-red-600">{mfaError}</p>}
+                <button type="submit" disabled={loading || (useRecovery ? !mfaCode.trim() : mfaCode.length !== 6)}
+                  className="h-12 w-full rounded-xl bg-[var(--pine)] text-sm font-bold text-white transition-colors hover:bg-[var(--pine-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pine)] disabled:cursor-not-allowed disabled:opacity-60"
+                  data-testid="login-mfa-submit">
+                  {loading ? 'Checking…' : 'Verify'}
+                </button>
+                <div className="flex items-center justify-between text-sm">
+                  <button type="button" onClick={() => { setUseRecovery((v) => !v); setMfaCode(''); setMfaError(null); }}
+                    className="font-semibold text-[var(--pine)] hover:underline underline-offset-4">
+                    {useRecovery ? 'Use my authenticator app' : 'Use a recovery code'}
+                  </button>
+                  <button type="button" onClick={restart} className="text-[var(--mist)] hover:text-[var(--ink)]">Start over</button>
+                </div>
+              </form>
+            ) : (<>
             <h1 className="mk-display text-[1.9rem] font-semibold leading-tight text-[var(--ink)]">Welcome back</h1>
             <p className="mt-1.5 text-sm text-[var(--mist)]">Sign in to your Voice Agent workspace.</p>
 
@@ -257,6 +323,7 @@ export default function LoginPage() {
                 ) : 'Sign In'}
               </button>
             </form>
+            </>)}
           </motion.div>
         </div>
       </section>

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Download, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { applyCatalogPreset, getCatalogPresets, getCatalogSettings } from '@/lib/api';
+import { applyCatalogPreset, downloadBlob, downloadCatalogPresetTemplate, getCatalogPresets, getCatalogSettings } from '@/lib/api';
 import { FIELD_TYPE_OPTIONS, WORD_LABELS, refusalText, wordText } from '@/lib/catalogFields';
 
 const WORDS = { ...WORD_LABELS, default_category: 'New products’ category' };
@@ -52,6 +52,22 @@ export default function PresetPicker({ open, onOpenChange, columns, canApply, on
 
   const preset = presets?.find((p) => p.name === chosen);
   const preview = useMemo(() => (preset ? presetPreview(preset, columns, settings) : null), [preset, columns, settings]);
+
+  // Anyone who can open the picker may download a preset's template: its columns plus example products.
+  const [downloading, setDownloading] = useState(false);
+  const downloadTemplate = async () => {
+    if (!preset) return;
+    setDownloading(true);
+    setError('');
+    try {
+      const res = await downloadCatalogPresetTemplate(preset.name);
+      downloadBlob(res.data, `catalog_template_${preset.name}.csv`);
+    } catch (e) {
+      setError(refusalText(e, 'Failed to download the template'));
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   const apply = async () => {
     setBusy(true);
@@ -123,6 +139,17 @@ export default function PresetPicker({ open, onOpenChange, columns, canApply, on
                 {preview.demo && (
                   <p><span className="font-medium">The visit is called:</span> <span dir="auto">{preview.demo.text}</span>{preview.demo.yours && <Kept />}</p>
                 )}
+              </div>
+            )}
+            {preset && (
+              <div className="flex flex-col gap-2 rounded-lg border border-dashed border-border p-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs text-muted-foreground">
+                  A CSV with these columns and two example products. Replace the examples with yours, then use Import CSV.
+                </p>
+                <Button type="button" variant="outline" size="sm" onClick={downloadTemplate} disabled={downloading} className="shrink-0">
+                  {downloading ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Download className="w-4 h-4 mr-1.5" />}
+                  Download template
+                </Button>
               </div>
             )}
             {!canApply && <p className="text-xs text-muted-foreground">Only a Tenant Admin can apply a preset.</p>}

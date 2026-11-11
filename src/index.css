@@ -441,6 +441,17 @@
   --ops-warn: #f5c26b;
   --ops-info: #8ab8f0;
 }
+/* Chart series for Reporting & Analytics, in this fixed order (never cycled). Validated as a set for
+   colour-blind separation on the card surface in each theme; the dark column is its own steps, not a flip.
+   Status colours (--ops-good/warn/bad) stay reserved for states and are never a series. */
+.ops {
+  --viz-1: #2a78d6; --viz-2: #eb6834; --viz-3: #1baf7a; --viz-4: #eda100; --viz-5: #e87ba4;
+  --viz-muted: #b8aea4;
+}
+.dark .ops {
+  --viz-1: #3987e5; --viz-2: #d95926; --viz-3: #199e70; --viz-4: #c98500; --viz-5: #d55181;
+  --viz-muted: #6b6259;
+}
 .ops-card {
   border: 1px solid hsl(var(--border));
   border-radius: 14px;

@@ -1,14 +1,14 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { Route } from 'react-router-dom';
 import { USERS, renderWithAuth } from '@/test/renderWithAuth';
-import { SuperAdminGoesTo } from '@/components/auth/SuperAdminRoute';
+import { SuperAdminBoundary, SuperAdminGoesTo } from '@/components/auth/SuperAdminRoute';
 import { adminRoutes } from './adminRoutes';
 
 jest.mock('@/lib/api');
 jest.mock('@/components/admin/ToolsManager', () => () => <div>tools-manager</div>);
 jest.mock('@/components/shared/ThemeToggle', () => () => null);
 jest.mock('@/pages/admin/Tenants', () => () => <div>tenants-page</div>);
-jest.mock('@/pages/admin/Users', () => () => <div>users-page</div>);
+jest.mock('@/pages/admin/TenantAdmins', () => () => <div>tenant-admins-page</div>);
 jest.mock('@/pages/admin/PlatformUsers', () => () => <div>platform-users-page</div>);
 jest.mock('@/pages/admin/AgentImport', () => () => <div>agents-page</div>);
 jest.mock('@/pages/admin/Agents', () => () => <div>agents-list-page</div>);
@@ -45,6 +45,14 @@ describe('SuperAdminRoute', () => {
     expect(api.getAdminOverview).not.toHaveBeenCalled();
   });
 
+  test.each(['tenant_admin', 'manager', 'rep'])('a %s never reaches the tenant list or its Apollo controls', (role) => {
+    renderAdmin('/admin/tenants', USERS[role]);
+    expect(screen.getByText('forbidden-page')).toBeInTheDocument();
+    expect(screen.queryByTestId('tenants-page')).not.toBeInTheDocument();
+    expect(api.listAdminTenants).not.toHaveBeenCalled();
+    expect(api.setTenantApolloAccess).not.toHaveBeenCalled();
+  });
+
   test('a signed-out visitor is sent to the login page', () => {
     renderAdmin('/admin/tools', null);
     expect(screen.getByText('login-page')).toBeInTheDocument();
@@ -61,13 +69,32 @@ describe('SuperAdminRoute', () => {
   });
 });
 
+describe('SuperAdminBoundary', () => {
+  const inside = (path, user) => renderWithAuth(<SuperAdminBoundary><div>tenant-page</div></SuperAdminBoundary>, {
+    path, user, routes: [<Route key="o" path="/admin/overview" element={<div>overview-page</div>} />],
+  });
+
+  test.each(['/dashboard', '/leads', '/voice_agent', '/voice-campaigns', '/reports', '/settings', '/catalog', '/meetings', '/inbox'])(
+    'a Super Admin is sent from %s to the overview', (path) => {
+      renderWithAuth(<SuperAdminBoundary><div>tenant-page</div></SuperAdminBoundary>, { path, user: USERS.super_admin,
+        routes: [<Route key="o" path="/admin/overview" element={<div>overview-page</div>} />] });
+      expect(screen.getByText('overview-page')).toBeInTheDocument();
+      expect(screen.queryByText('tenant-page')).not.toBeInTheDocument();
+    });
+
+  test('a tenant user stays on their page', () => {
+    inside('/dashboard', USERS.tenant_admin);
+    expect(screen.getByText('tenant-page')).toBeInTheDocument();
+  });
+});
+
 describe('AdminLayout', () => {
   test('the sidebar has Overview, Tenants, Users, Audit Logs, Agents and Tools, and Tools shows the tools manager', () => {
     renderAdmin('/admin/tools', USERS.super_admin);
     const nav = screen.getByRole('navigation', { name: 'Platform admin' });
-    expect(within(nav).getAllByRole('link').map((link) => link.textContent)).toEqual(['Overview', 'Tenants', 'Platform users', 'Tenant users', 'CRM integrations', 'Audit Logs', 'Agents', 'Tools']);
+    expect(within(nav).getAllByRole('link').map((link) => link.textContent)).toEqual(['Overview', 'Tenants', 'Platform users', 'Tenant admins', 'User hierarchy', 'CRM integrations', 'Operations', 'Usage', 'Controls', 'Audit Logs', 'Agents', 'Tools', 'Security']);
     expect(screen.getByText('tools-manager')).toBeInTheDocument();
-    expect(screen.getAllByRole('link', { name: /back to app/i })[0]).toHaveAttribute('href', '/dashboard');
+    expect(screen.queryByRole('link', { name: /back to app/i })).not.toBeInTheDocument();
   });
 });
 
@@ -101,7 +128,7 @@ describe('Overview page', () => {
 });
 
 describe('Tenants and Users in the platform area', () => {
-  test.each([['/admin/tenants', 'tenants-page'], ['/admin/users', 'platform-users-page'], ['/admin/tenant-users', 'users-page'], ['/admin/agents/import', 'agents-page'],
+  test.each([['/admin/tenants', 'tenants-page'], ['/admin/users', 'platform-users-page'], ['/admin/tenant-users', 'tenant-admins-page'], ['/admin/agents/import', 'agents-page'],
     ['/admin/agents', 'agents-list-page']])('%s opens for a Super Admin', (path, page) => {
     renderAdmin(path, USERS.super_admin);
     expect(screen.getByText(page)).toBeInTheDocument();
@@ -111,7 +138,7 @@ describe('Tenants and Users in the platform area', () => {
     ['/admin/tenants', '/admin/users', '/admin/tenant-users', '/admin/audit-logs', '/admin/agents/import'].forEach((path) => {
       const { unmount } = renderAdmin(path, USERS[role]);
       expect(screen.getByText('forbidden-page')).toBeInTheDocument();
-      expect(screen.queryByText(/tenants-page|users-page|platform-users-page|agents-page/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/tenants-page|tenant-admins-page|platform-users-page|agents-page/)).not.toBeInTheDocument();
       unmount();
     });
   });

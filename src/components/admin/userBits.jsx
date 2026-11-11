@@ -50,3 +50,11 @@ export function errorText(error, fallback) {
   if (Array.isArray(detail)) return detail.map((d) => d.msg || String(d)).join('; ');
   return fallback;
 }
+
+// The backend's one answer to a taken email (409). It never says which account or tenant has it.
+export const EMAIL_IN_USE = 'This email is already in use';
+
+/** The message under the email field when the email is taken, else nothing. */
+export function EmailInUse({ error, id }) {
+  return error === EMAIL_IN_USE ? <p id={id} role="alert" className="mt-1 text-xs text-red-600">{error} Use a different email.</p> : null;
+}

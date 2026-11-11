@@ -1,8 +1,9 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { Link, Route } from 'react-router-dom';
 import { renderWithAuth, USERS } from '@/test/renderWithAuth';
 import LeadsPage from './Leads';
 import * as api from '@/lib/api';
+import { currentScore } from '@/test/leadScoreFixtures';
 
 jest.mock('@/lib/api');
 
@@ -116,9 +117,124 @@ describe('Editing a lead', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Edit/ }));
     expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
     fireEvent.change(screen.getByLabelText('Budget max'), { target: { value: 'lots' } });
-    expect(screen.getByText('Budgets must be numbers.')).toBeInTheDocument();
+    expect(screen.getByText('Number fields must be numbers.')).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Budget max'), { target: { value: '1200000' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Prospect not found');
+  });
+});
+
+describe('Adding a lead', () => {
+  it('sends the job title and department as lead columns, not details', async () => {
+    renderWithAuth(<LeadsPage />, { user: USERS.rep, path: '/leads' });
+    fireEvent.click(await screen.findByTestId('add-lead-button'));
+    fireEvent.change(screen.getByTestId('lead-name-input'), { target: { value: 'Asha Rao' } });
+    fireEvent.change(screen.getByPlaceholderText('Phone'), { target: { value: '9876543210' } });
+    fireEvent.change(screen.getByPlaceholderText('Job Title'), { target: { value: 'Sales Manager' } });
+    fireEvent.change(screen.getByLabelText('Department'), { target: { value: 'Sales' } });
+    fireEvent.click(screen.getByTestId('create-lead-submit'));
+    await waitFor(() => expect(api.createProspect).toHaveBeenCalledTimes(1));
+    const body = api.createProspect.mock.calls[0][0];
+    expect(body).toMatchObject({ full_name: 'Asha Rao', phone: '+919876543210', job_title: 'Sales Manager', department: 'Sales' });
+    expect(body.custom_fields).not.toHaveProperty('job_title');
+    expect(body.custom_fields).not.toHaveProperty('department');
+  });
+});
+
+describe('A lead whose score is being calculated', () => {
+  const lead = (summary) => ({ prospect_id: 'p9', full_name: 'Asha Rao', phone: '+919876543210', is_lead: true,
+    lead_score_summary: summary });
+  const PENDING = { lead_score: null, status: null, calculated_at: null, classification: 'pending_calculation',
+    temperature_display: null, freshness_indicator: null, recalculation_due: false };
+  const SCORED = { lead_score: 40, status: 'current', calculated_at: '2026-11-06T10:00:00Z', classification: 'provisional',
+    temperature_display: { label: 'PROVISIONAL', provisional: true, reason: null }, freshness_indicator: null,
+    recalculation_due: false };
+  const listOf = (...leads) => ({ data: { prospects: leads, total: leads.length } });
+
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it('is read again until its score is calculated, then no more', async () => {
+    api.getProspects
+      .mockResolvedValueOnce(listOf(lead(PENDING)))
+      .mockResolvedValueOnce(listOf(lead(PENDING)))
+      .mockResolvedValue(listOf(lead(SCORED)));
+    renderWithAuth(<LeadsPage />, { user: USERS.rep, path: '/leads' });
+    await waitFor(() => expect(api.getProspects).toHaveBeenCalledTimes(2));
+    await act(async () => { jest.advanceTimersByTime(10000); });
+    await waitFor(() => expect(within(screen.getByTestId('score-cell-p9')).getByText('40')).toBeInTheDocument());
+    const calls = api.getProspects.mock.calls.length;
+    await act(async () => { jest.advanceTimersByTime(120000); });
+    expect(api.getProspects).toHaveBeenCalledTimes(calls);
+  });
+
+  it('is not polled when no lead is pending, and stops after a few checks', async () => {
+    api.getProspects.mockResolvedValue(listOf(lead(SCORED)));
+    renderWithAuth(<LeadsPage />, { user: USERS.rep, path: '/leads' });
+    await waitFor(() => expect(api.getProspects).toHaveBeenCalledTimes(1));
+    await act(async () => { jest.advanceTimersByTime(60000); });
+    expect(api.getProspects).toHaveBeenCalledTimes(1);
+
+    api.getProspects.mockResolvedValue(listOf(lead(PENDING)));
+    fireEvent.click(screen.getByTestId('add-lead-button'));
+    fireEvent.change(screen.getByTestId('lead-name-input'), { target: { value: 'Ravi' } });
+    fireEvent.click(screen.getByTestId('create-lead-submit'));
+    for (let i = 0; i < 10; i += 1) {
+      await act(async () => { jest.advanceTimersByTime(10000); });
+    }
+    // The list after creating, then at most six checks while the lead stays pending.
+    expect(api.getProspects.mock.calls.length).toBeLessThanOrEqual(1 + 1 + 6);
+    expect(api.getProspects.mock.calls.length).toBeGreaterThan(2);
+    // Checks over, still not calculated: the row keeps saying so.
+    expect(within(screen.getByTestId('score-cell-p9')).getByText('Pending Calculation')).toBeInTheDocument();
+  });
+
+  it('shows the open lead as due for recalculation right after an edit, then its new current score', async () => {
+    const DUE = { ...SCORED, freshness_indicator: 'recalculation_due', recalculation_due: true };
+    const AFTER = { ...SCORED, lead_score: 52, calculated_at: '2026-11-06T11:00:00Z' };
+    api.getProspects.mockResolvedValue(listOf(lead(SCORED)));
+    api.getProspect.mockResolvedValue({ data: lead(SCORED) });
+    api.getLeadScore
+      .mockResolvedValueOnce({ data: currentScore({ lead_score: 40 }) })
+      .mockResolvedValueOnce({ data: currentScore({ lead_score: 40, freshness_indicator: 'recalculation_due',
+        recalculation: { due: true, reasons: ['details_changed'] } }) })
+      .mockResolvedValue({ data: currentScore({ lead_score: 52, calculated_at: '2026-11-06T11:00:00Z' }) });
+    renderWithAuth(<LeadsPage />, { user: USERS.rep, path: '/leads?prospect=p9' });
+    await waitFor(() => expect(screen.getByTestId('score-status')).toHaveTextContent('Current'));
+
+    api.updateProspect.mockResolvedValue({ data: lead(DUE) });
+    fireEvent.click(await screen.findByRole('button', { name: /Edit/ }));
+    const dialog = within(await screen.findByRole('dialog'));
+    fireEvent.change(dialog.getByLabelText('Job title'), { target: { value: 'Sales Director' } });
+    // The worker has not finished at the first re-read; it has by the next.
+    api.getProspects.mockResolvedValueOnce(listOf(lead(DUE))).mockResolvedValue(listOf(lead(AFTER)));
+    fireEvent.click(dialog.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(screen.getByTestId('score-status')).toHaveTextContent('Recalculation due'));
+    // On the list row and in the open panel alike.
+    expect(screen.getAllByTestId('freshness-chip').map((chip) => chip.textContent))
+      .toEqual(['RECALCULATION DUE', 'RECALCULATION DUE']);
+
+    await act(async () => { jest.advanceTimersByTime(10000); });
+    await waitFor(() => expect(screen.getByTestId('score-status')).toHaveTextContent('Current'));
+    expect(api.getLeadScore).toHaveBeenCalledTimes(3);
+    expect(within(screen.getByTestId('score-cell-p9')).getByText('52')).toBeInTheDocument();
+  });
+
+  it('waits for the recalculation of the lead just edited, but not for other scores due one', async () => {
+    const DUE = { ...SCORED, freshness_indicator: 'recalculation_due', recalculation_due: true };
+    api.getProspects.mockResolvedValue(listOf(lead(DUE)));
+    api.getProspect.mockResolvedValue({ data: lead(DUE) });
+    renderWithAuth(<LeadsPage />, { user: USERS.rep, path: '/leads?prospect=p9' });
+    await waitFor(() => expect(api.getProspects).toHaveBeenCalledTimes(1));
+    await act(async () => { jest.advanceTimersByTime(60000); });
+    expect(api.getProspects).toHaveBeenCalledTimes(1); // due, but no edit here queued anything to wait for
+
+    api.updateProspect.mockResolvedValue({ data: { ...lead(DUE), full_name: 'Asha R.' } });
+    fireEvent.click(await screen.findByRole('button', { name: /Edit/ }));
+    const dialog = within(await screen.findByRole('dialog'));
+    fireEvent.change(dialog.getByLabelText('Name'), { target: { value: 'Asha R.' } });
+    api.getProspects.mockResolvedValue(listOf(lead({ ...SCORED, lead_score: 52, calculated_at: '2026-11-06T11:00:00Z' })));
+    fireEvent.click(dialog.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(within(screen.getByTestId('score-cell-p9')).getByText('52')).toBeInTheDocument());
   });
 });

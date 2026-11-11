@@ -1,5 +1,5 @@
-import { Link, NavLink, Outlet } from 'react-router-dom';
-import { ArrowLeft, LogOut, ShieldCheck } from 'lucide-react';
+import { NavLink, Outlet } from 'react-router-dom';
+import { LogOut, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/AuthContext';
 import { PLATFORM_NAV, visibleNavItems } from '@/lib/adminNav';
@@ -47,11 +47,6 @@ export default function AdminLayout() {
         </nav>
 
         <div className="hidden md:block border-t border-[var(--line)] px-3 py-3 space-y-1">
-          {/* The tenant app (dashboard, Settings, operations views) stays one click away. */}
-          <Link to="/dashboard" className={itemClass({ isActive: false })}>
-            <ArrowLeft className="h-4 w-4 shrink-0" />
-            <span>Back to app</span>
-          </Link>
           <div className="flex items-center justify-between gap-2 px-1 pt-1">
             {user?.email && <span className="text-xs text-[var(--mist)] truncate">{user.email}</span>}
             <ThemeToggle className="h-8 w-8 shrink-0" />
@@ -64,11 +59,11 @@ export default function AdminLayout() {
       </aside>
 
       <main className="flex-1 min-w-0">
-        <div className="md:hidden flex items-center justify-between px-4 pt-3">
-          <Link to="/dashboard" className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
-            <ArrowLeft className="h-4 w-4" /> Back to app
-          </Link>
+        <div className="md:hidden flex items-center justify-end gap-2 px-4 pt-3">
           <ThemeToggle className="h-8 w-8" />
+          <button type="button" onClick={logout} className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
+            <LogOut className="h-4 w-4" /> Logout
+          </button>
         </div>
         <div className="page-content">
           <Outlet />

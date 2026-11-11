@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import BrochureRequests from '@/components/admin/BrochureRequests';
 import { useAuth } from '@/lib/AuthContext';
+import { featureEnabled } from '@/lib/rbac';
 import { listLeadEmails } from '@/lib/api';
 
 // GET /api/v1/lead-emails: every email sent (or queued) to a lead, newest first.
@@ -77,8 +78,8 @@ function EmailRow({ row, onOpenRequests }) {
 
 /** Every email sent to your leads: what went, why, from which call, and whether it arrived. */
 export default function InboxPage() {
-  const { hasRole } = useAuth();
-  const canRequests = hasRole(...REQUEST_ROLES);
+  const { hasRole, user } = useAuth();
+  const canRequests = hasRole(...REQUEST_ROLES) && featureEnabled(user, 'send_brochure');
   const [params, setParams] = useSearchParams();
   const kind = params.get('view') === REQUESTS && !canRequests ? '' : (params.get('view') || '');
   const setKind = (value) => {

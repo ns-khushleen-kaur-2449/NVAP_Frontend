@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Link } from 'react-router-dom';
 import LeadTimelineDialog from '@/components/shared/LeadTimelineDialog';
 import IntentAssessmentDetails from '@/components/ops/IntentAssessmentDetails';
+import CallbackFollowUp from '@/components/voice/CallbackFollowUp';
 import OpsStatusBadge from '@/components/ops/StatusBadge';
 import { useCallLogDetail } from '@/hooks/useCallLogs';
 import { useAuth } from '@/lib/AuthContext';
@@ -328,6 +329,8 @@ export default function CallLogDetail({ callId, onBack }) {
       {d.lead_id && (
         <LeadTimelineDialog leadId={d.lead_id} leadName={d.customer_name} open={timelineOpen} onOpenChange={setTimelineOpen} />
       )}
+
+      <CallbackFollowUp callId={d.id} assistantId={d.assistant_id} />
 
       {/* Title card */}
       <Card className="bg-card rounded-xl border border-border shadow-sm">

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { STEP_UP_REQUIRED, requestStepUp } from '@/lib/stepUp';
 
 /**
  * All domains are served by the unified backend at REACT_APP_BACKEND_URL.
@@ -46,16 +47,21 @@ const _addAuthInterceptor = (instance) => {
     const isLogin = config.url?.includes('/auth/login');
     if (!isLogin && isValidToken(token)) {
       config.headers.Authorization = `Bearer ${token}`;
-    } else if (config.headers.Authorization) {
+    } else if (config.headers.Authorization && (isLogin || !config._explicitToken)) {
       delete config.headers.Authorization;
     }
     return config;
   });
   instance.interceptors.response.use(
     (response) => response,
-    (error) => {
-      // A 403 the user must act on (temporary password, suspended organisation): AuthContext shows the screen.
+    async (error) => {
       const action = error.response?.headers?.['x-auth-required-action'];
+      // A high-risk action without a fresh step-up: ask for a code, then send the same request once more.
+      if (error.response?.status === 403 && action === STEP_UP_REQUIRED && error.config && !error.config._steppedUp) {
+        if (await requestStepUp()) return instance({ ...error.config, _steppedUp: true });
+        return Promise.reject(error);
+      }
+      // A 403 the user must act on (temporary password, suspended organisation, MFA setup): AuthContext shows the screen.
       if (error.response?.status === 403 && action) {
         window.dispatchEvent(new CustomEvent('auth:required-action', { detail: action }));
       }
@@ -80,6 +86,22 @@ export const authRegister = (data) => authApi.post('/api/auth/register', data);
 export const getMe = () => authApi.get('/api/auth/me');
 export const changePassword = (currentPassword, newPassword) =>
   authApi.post('/api/auth/change-password', { current_password: currentPassword, new_password: newPassword });
+// Super Admin two-factor sign-in, setup and step-up (app/features/auth/mfa.py).
+export const authLoginMfa = (mfaToken, { code, recoveryCode } = {}) => authApi.post('/api/auth/login/mfa',
+  recoveryCode ? { mfa_token: mfaToken, recovery_code: recoveryCode } : { mfa_token: mfaToken, code });
+// Sent with the token being signed out explicitly: the stored copy is removed at the same moment.
+export const authLogout = (token) => authApi.post('/api/auth/logout', null,
+  { headers: { Authorization: `Bearer ${token}` }, _explicitToken: true });
+export const getMfaStatus = () => authApi.get('/api/auth/mfa');
+export const startMfaEnrollment = () => authApi.post('/api/auth/mfa/enroll');
+export const verifyMfaEnrollment = (code) => authApi.post('/api/auth/mfa/enroll/verify', { code });
+export const regenerateRecoveryCodes = () => authApi.post('/api/auth/mfa/recovery-codes');
+export const verifyStepUp = (code) => authApi.post('/api/auth/step-up', { code });
+export const listOwnSessions = () => api.get('/api/admin/security/sessions');
+export const listUserSessions = (userId) => api.get(`/api/admin/users/${userId}/sessions`);
+export const revokeSession = (sessionId, reason) => api.post(`/api/admin/security/sessions/${sessionId}/revoke`,
+  reason ? { reason } : {});
+export const resetUserMfa = (userId, reason) => api.post(`/api/admin/users/${userId}/mfa/reset`, { reason });
 
 // ── Admin: users, teams, tenants, role dashboard ──
 export const listAdminUsers = (params) => api.get('/api/users', { params });
@@ -88,14 +110,16 @@ export const deactivateUser = (id) => api.post(`/api/users/${id}/deactivate`);
 export const reactivateUser = (id) => api.post(`/api/users/${id}/reactivate`);
 export const moveUserToTeam = (id, managerUserId) => api.put(`/api/users/${id}/team`, { manager_user_id: managerUserId });
 export const listTeams = () => api.get('/api/teams');
-export const listTenants = () => api.get('/api/tenants');
+export const listTenants = () => api.get('/api/admin/tenants/all');
 export const listAdminTenants = (params) => api.get('/api/admin/tenants', { params });
-export const createTenantWithAdmin = (data) => api.post('/api/tenants/with-admin', data);
+export const createTenantWithAdmin = (data) => api.post('/api/admin/tenants/with-admin', data);
 // A reason is required; it is kept in the admin audit trail.
-export const suspendTenant = (id, reason) => api.post(`/api/tenants/${id}/suspend`, { reason });
-export const activateTenant = (id, reason) => api.post(`/api/tenants/${id}/activate`, { reason });
+export const suspendTenant = (id, reason) => api.post(`/api/admin/tenants/${id}/suspend`, { reason });
+export const activateTenant = (id, reason) => api.post(`/api/admin/tenants/${id}/activate`, { reason });
 export const initiateTenantOffboarding = (id, reason) => api.post(`/api/admin/tenants/${id}/offboarding`, { reason });
 export const cancelTenantOffboarding = (id, reason) => api.post(`/api/admin/tenants/${id}/offboarding/cancel`, { reason });
+// Grant (true) or revoke (false) a tenant's Apollo Preview access → the tenant, with apollo_access_enabled.
+export const setTenantApolloAccess = (id, enabled, reason) => api.put(`/api/admin/tenants/${id}/apollo-access`, { enabled, reason });
 export const getRoleDashboard = () => api.get('/api/v1/dashboard');
 // Users the caller may see (was /api/auth/users, which never existed).
 export const listUsers = () => authApi.get('/api/users', { params: { page_size: 100 } });
@@ -105,7 +129,32 @@ export const getDashboardStats = () => api.get('/api/dashboard/stats');
 export const getSystemHealth = () => api.get('/api/admin/system-health');
 
 // ── Platform control area (/api/admin, Super Admin only) ──
-export const getAdminOverview = () => api.get('/api/admin/overview');
+export const getAdminOverview = (params) => api.get('/api/admin/overview', { params });
+export const listTenantAdmins = (params) => api.get('/api/admin/tenant-admins', { params });
+export const createTenantAdmin = (data) => api.post('/api/admin/tenant-admins', data);
+export const deactivateTenantAdmin = (id) => api.post(`/api/admin/tenant-admins/${id}/deactivate`);
+export const reactivateTenantAdmin = (id) => api.post(`/api/admin/tenant-admins/${id}/reactivate`);
+export const getAdminControls = () => api.get('/api/admin/controls');
+export const pauseAllDialing = (reason) => api.post('/api/admin/controls/pause', { reason });
+export const resumeAllDialing = (reason) => api.post('/api/admin/controls/resume', { reason });
+export const pauseTenantDialing = (id, reason) => api.post(`/api/admin/tenants/${id}/pause`, { reason });
+export const resumeTenantDialing = (id, reason) => api.post(`/api/admin/tenants/${id}/resume`, { reason });
+export const disableAdminAgent = (id, reason) => api.post(`/api/admin/agents/${id}/disable`, { reason });
+export const enableAdminAgent = (id, reason) => api.post(`/api/admin/agents/${id}/enable`, { reason });
+export const getTenantSettings = (id) => api.get(`/api/admin/tenants/${id}/settings`);
+export const setTenantLimits = (id, data) => api.put(`/api/admin/tenants/${id}/limits`, data);
+export const setTenantFeature = (id, key, enabled, reason) => api.put(`/api/admin/tenants/${id}/features`, { key, enabled, reason });
+export const getAdminOperations = () => api.get('/api/admin/operations');
+export const retryOperation = (kind, id, reason) => api.post(`/api/admin/operations/${kind}/${id}/retry`, { reason });
+export const getAdminUsage = (params) => api.get('/api/admin/usage', { params });
+export const getUserHierarchy = (params) => api.get('/api/admin/hierarchy', { params });
+export const grantSeatOverride = (id, role, extraSeats, reason) => api.post(`/api/admin/tenants/${id}/seat-override`, { role, extra_seats: extraSeats, reason });
+export const getOrphans = () => api.get('/api/admin/orphans');
+export const reassignOrphan = (type, id, data) => api.post(`/api/admin/orphans/${type}/${id}/reassign`, data);
+export const getUserSeats = () => api.get('/api/users/seats');
+export const getIntegrationStatus = () => api.get('/api/admin/integrations');
+export const getTenantCallingBound = (id) => api.get(`/api/admin/tenants/${id}/calling-bound`);
+export const updateTenantCallingBound = (id, data) => api.put(`/api/admin/tenants/${id}/calling-bound`, data);
 export const getAdminAuditLogs = (params) => api.get('/api/admin/audit-logs', { params });
 export const listPlatformUsers = (params) => api.get('/api/admin/users', { params });
 export const createPlatformUser = (data) => api.post('/api/admin/users', data);
@@ -115,7 +164,7 @@ export const lookupAgent = (ref) => api.post('/api/admin/agents/lookup',
   /^\d+$/.test(ref) ? { assistant_id: Number(ref) } : { vapi_assistant_id: ref });
 export const fetchAdminAgent = (vapiAssistantId) => api.post('/api/admin/agents/fetch', { vapi_assistant_id: vapiAssistantId });
 export const importAdminAgent = (vapiAssistantId, reason) => api.post('/api/admin/agents/import', { vapi_assistant_id: vapiAssistantId, reason });
-export const listAdminAgents = () => api.get('/api/admin/agents');
+export const listAdminAgents = (params) => api.get('/api/admin/agents', { params });
 export const getAdminAgent = (id) => api.get(`/api/admin/agents/${id}`);
 export const refreshAdminAgent = (id, reason) => api.post(`/api/admin/agents/${id}/refresh`, { reason });
 export const assignAdminAgent = (id, tenantId, reason) => api.post(`/api/admin/agents/${id}/assign`, { tenant_id: tenantId, reason });
@@ -130,12 +179,32 @@ export const getProspect = (id) => api.get(`/api/v1/prospects/${id}`);
 export const createProspect = (data, params) => api.post('/api/v1/prospects', data, { params });
 export const updateProspect = (id, data) => api.patch(`/api/v1/prospects/${id}`, data);
 export const deleteProspect = (id) => api.delete(`/api/v1/prospects/${id}`);
+// Import leads from a CSV (features/prospects/csv_import.py): read first, then import with { column: use }.
+export const previewLeadImport = (file) => {
+  const form = new FormData();
+  form.append('file', file);
+  return api.post('/api/v1/prospects/import/preview', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+};
+// `stageValues` (optional): { value in the file: STAGE } for the column mapped to "stage".
+export const importLeads = (file, mapping, stageValues) => {
+  const form = new FormData();
+  form.append('file', file);
+  form.append('mapping', JSON.stringify(mapping));
+  if (stageValues) form.append('stage_values', JSON.stringify(stageValues));
+  return api.post('/api/v1/prospects/import', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+};
 export const getLeadScore = (id) => api.get(`/api/lead-scores/${id}`);
 export const getLeadScoreHistory = (id, params) => api.get(`/api/lead-scores/${id}/history`, { params });
 export const calculateLeadScore = (id) => api.post(`/api/lead-scores/${id}`);
 export const changeProspectStage = (id, stage, reason) =>
   api.post(`/api/v1/prospects/${id}/stage`, { stage: String(stage).toUpperCase(), reason });
 export const getProspectStageEvents = (id) => api.get(`/api/v1/prospects/${id}/stage-events`);
+// Sharing prospects with people on your team (Tenant Admin: Managers and Sales Reps; Manager: own team).
+export const getShareTargets = () => api.get('/api/v1/prospects/share-targets');
+export const shareProspects = (prospectIds, userIds) =>
+  api.post('/api/v1/prospects/shares', { prospect_ids: prospectIds, user_ids: userIds });
+export const getProspectShares = (id) => api.get(`/api/v1/prospects/${id}/shares`);
+export const revokeProspectShare = (id, userId) => api.delete(`/api/v1/prospects/${id}/shares/${userId}`);
 export const createLeadEvent = (data) => api.post('/api/lead-events', data);
 
 // ── Properties ──
@@ -217,9 +286,12 @@ export const runSavedFilter = (filterId, { page = 1, pageSize = 25, sort = 'scor
 
 // ── Apollo Preview: a temporary, live look at Apollo's free search (/api/apollo) ──
 // Demo only. Results are masked and are never saved or imported. The backend decides
-// who may use it: Tenant Admins, Managers and Sales Reps of tenants it is enabled for.
-// → { enabled, reason } — reason is null when enabled, otherwise one of
-//   integration_disabled | not_configured | role_not_allowed | tenant_not_allowed
+// who may use it: Tenant Admins, Managers and Sales Reps of tenants a Super Admin has granted
+// access in Platform Admin → Tenants.
+// → { enabled, access_granted, service_ready, reason }. access_granted: the tenant's grant and the role allow
+//   it (decides whether Apollo Preview is offered); service_ready: an API key is configured (null without
+//   access); enabled: both. reason is null when enabled, otherwise role_not_allowed | tenant_not_allowed |
+//   access_check_failed (no access) or not_configured (access granted, service not set up).
 export const getApolloStatus = () => api.get('/api/apollo/status');
 // filter: the same { version, match, conditions } format as AI Filtering.
 // pageSize 1-25, page 1-20.
@@ -265,6 +337,8 @@ export const summarizeCall = (id) => api.post(`/api/agents/call-summarize/${id}`
 //         calling_config, start: 'now'|'scheduled'|'draft', scheduled_at,
 //         prospect_ids | contacts, source_filename }
 export const createVoiceCampaign = (data) => api.post('/api/campaigns', data);
+// "What the agent will tell leads": the form's unsaved offer values (voice_campaigns/offer.py; nothing is saved).
+export const previewCampaignOffer = (data) => api.post('/api/campaigns/offer-preview', data);
 // Parses a CSV/XLSX without storing anything; returns { filename, total, skipped_rows, contacts }.
 export const previewCampaignCsv = (file) => {
   const formData = new FormData();
@@ -400,10 +474,20 @@ export const getCatalogSettingsHistory = (params) => api.get('/api/v1/catalog/se
 export const getCatalogPricePreview = (params) => api.get('/api/v1/catalog/settings/price-preview', { params });
 export const getCatalogPresets = () => api.get('/api/v1/catalog/presets');
 export const applyCatalogPreset = (name) => api.post(`/api/v1/catalog/presets/${name}/apply`);
-export const importCatalog = (file) => {
+// A CSV import template for a preset: its columns plus example products (anyone who views the Catalog).
+export const downloadCatalogPresetTemplate = (name) =>
+  api.get(`/api/v1/catalog/presets/${name}/template`, { responseType: 'blob' });
+// `mapping` (optional): { column: use } from the column-matching step (catalog/import_mapping.py).
+export const importCatalog = (file, mapping) => {
   const form = new FormData();
   form.append('file', file);
+  if (mapping) form.append('mapping', JSON.stringify(mapping));
   return api.post('/api/v1/catalog/import', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+};
+export const previewCatalogImport = (file) => {
+  const form = new FormData();
+  form.append('file', file);
+  return api.post('/api/v1/catalog/import/preview', form, { headers: { 'Content-Type': 'multipart/form-data' } });
 };
 export const addCatalogItem = (data) => api.post('/api/v1/catalog/items', data);
 export const updateCatalogItem = (id, data) => api.patch(`/api/v1/catalog/items/${id}`, data);
@@ -429,17 +513,17 @@ export const retryBuilderConfig = (id, version) =>
   api.post(`/api/v1/assistant-builder/configs/${id}/retry/${version}`);
 
 // ── Tools (Super Admin: platform Vapi tools) ──
-export const listToolTypes = () => api.get('/api/v1/tools/types');
-export const listTools = () => api.get('/api/v1/tools');
-export const createTool = (data) => api.post('/api/v1/tools', data);
-export const updateTool = (id, data) => api.patch(`/api/v1/tools/${id}`, data);
-export const syncTool = (id) => api.post(`/api/v1/tools/${id}/sync`);
-export const deleteTool = (id) => api.delete(`/api/v1/tools/${id}`);
-export const previewTool = (data) => api.post('/api/v1/tools/preview', data);
+export const listToolTypes = () => api.get('/api/admin/tools/types');
+export const listTools = () => api.get('/api/admin/tools');
+export const createTool = (data) => api.post('/api/admin/tools', data);
+export const updateTool = (id, data) => api.patch(`/api/admin/tools/${id}`, data);
+export const syncTool = (id) => api.post(`/api/admin/tools/${id}/sync`);
+export const deleteTool = (id) => api.delete(`/api/admin/tools/${id}`);
+export const previewTool = (data) => api.post('/api/admin/tools/preview', data);
 // Create (or re-sync) the six appointment tools in Vapi; safe to re-run.
-export const registerAppointmentTools = () => api.post('/api/v1/tools/register');
-export const getToolTenants = (id) => api.get(`/api/v1/tools/${id}/tenants`);
-export const setToolTenants = (id, tenantIds, reason) => api.put(`/api/v1/tools/${id}/tenants`, { tenant_ids: tenantIds, reason });
+export const registerAppointmentTools = () => api.post('/api/admin/tools/register');
+export const getToolTenants = (id) => api.get(`/api/admin/tools/${id}/tenants`);
+export const setToolTenants = (id, tenantIds, reason) => api.put(`/api/admin/tools/${id}/tenants`, { tenant_ids: tenantIds, reason });
 // Tools on one assistant (tools granted to its tenant; Tenant Admin attaches/detaches).
 export const listAssistantTools = (assistantId) => api.get(`/api/v1/assistants/${assistantId}/tools`);
 // Tools an Assistant Builder agent can be given (granted to the tenant), each with the tool types it needs.
@@ -532,6 +616,18 @@ export const getUnreadNotificationCount = () => api.get('/api/v1/notifications/u
 export const markNotificationRead = (id) => api.post(`/api/v1/notifications/${id}/read`);
 export const markAllNotificationsRead = () => api.post('/api/v1/notifications/read-all');
 
+// Did the lead ask for a callback on this call, and was one scheduled?
+// { requested, unscheduled, callback_task_id, scheduled_call_id, prospect_id }
+export const getCallCallbackFollowUp = (callId) => api.get(`/api/call-logs/${encodeURIComponent(callId)}/callback-follow-up`);
+
+// ── Hand-offs: callbacks a person must make (Tenant Admin / Manager) ──
+// params: { status: open | done | cancelled }
+export const getCallbackHandoffs = (params) => api.get('/api/v1/callback-handoffs', { params });
+export const getCallbackHandoffCount = () => api.get('/api/v1/callback-handoffs/count');
+export const getCallbackHandoffEvents = (id) => api.get(`/api/v1/callback-handoffs/${id}/events`);
+// action: done | cancel | schedule-call {scheduled_time, assistant_id?}; every body carries a reason.
+export const callbackHandoffAction = (id, action, body) => api.post(`/api/v1/callback-handoffs/${id}/${action}`, body);
+
 // ── Scheduled calls and callbacks (Tenant Admin / Manager) ──
 export const getScheduledCalls = (params) => api.get('/api/v1/scheduled-calls', { params });
 export const getScheduledCallEvents = (id) => api.get(`/api/v1/scheduled-calls/${id}/events`);
@@ -596,7 +692,6 @@ export const getContactRules = (params) => api.get('/api/v1/contact-rules', { pa
 export const updateContactRules = (data, params) => api.put('/api/v1/contact-rules', data, { params });
 export const getContactRulesHistory = (params) => api.get('/api/v1/contact-rules/history', { params });
 export const getCallingBound = (params) => api.get('/api/v1/contact-rules/calling-bound', { params });
-export const updateCallingBound = (data, params) => api.put('/api/v1/contact-rules/calling-bound', data, { params });
 export const getAppointmentRules = (params) => api.get('/api/v1/appointment-rules', { params });
 export const updateAppointmentRules = (data, params) => api.put('/api/v1/appointment-rules', data, { params });
 export const getAppointmentRulesHistory = (params) => api.get('/api/v1/appointment-rules/history', { params });
@@ -674,7 +769,6 @@ export const getZohoJobs = (params) => api.get(`${ZOHO_BASE}/sync/jobs`, { param
 export const getZohoInboundEvents = (params) => api.get(`${ZOHO_BASE}/sync/inbound-events`, { params });
 export const getZohoDeliveries = (params) => api.get(`${ZOHO_BASE}/sync/deliveries`, { params });
 export const retryZohoDelivery = (id, data = {}, params) => api.post(`${ZOHO_BASE}/sync/retry/${id}`, data, { params });
-export const getZohoTenantOverview = () => api.get(`${ZOHO_BASE}/admin/tenants/crm-overview`);
 
 export const uploadAudioFile = (file, executiveName) => {
   const fd = new FormData();
@@ -739,6 +833,17 @@ export const scrapeKbUrl = (url, kbName) => reportApi.post('/scrape', { url, kb_
 // ── Chatbot: Chat ──
 export const askChatbot = (query, kbName, history = [], provider = 'groq') =>
   reportApi.post(provider === 'ollama' ? '/askus' : '/askgroq', { query, kb_name: kbName, history });
+
+// ── Billing (Stripe; Tenant Admin only, always for their own tenant) ──
+export const getBillingPlans = () => api.get('/api/v1/billing/plans');
+export const getBillingSubscription = () => api.get('/api/v1/billing/subscription');
+export const syncBillingSubscription = () => api.post('/api/v1/billing/sync');
+export const getBillingInvoices = () => api.get('/api/v1/billing/invoices');
+export const createCheckoutSession = (plan, interval = 'month') => api.post('/api/v1/billing/checkout-session', { plan, interval });
+export const createPortalSession = () => api.post('/api/v1/billing/portal-session');
+export const changeBillingPlan = (plan, interval = 'month') => api.post('/api/v1/billing/change-plan', { plan, interval });
+export const cancelBillingSubscription = () => api.post('/api/v1/billing/cancel');
+export const resumeBillingSubscription = () => api.post('/api/v1/billing/resume');
 
 export { authApi, reportApi, voiceApi, http, API_BASE };
 export default voiceApi;

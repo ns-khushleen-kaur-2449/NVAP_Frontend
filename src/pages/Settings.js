@@ -14,7 +14,7 @@ import OperationsSettings from '@/components/ops/OperationsSettings';
 import LeadScoringSettings from '@/components/ops/LeadScoringSettings';
 import ZohoIntegration from '@/components/integrations/ZohoIntegration';
 import { useAuth } from '@/lib/AuthContext';
-import { canUseAdmin, canViewOperations } from '@/lib/rbac';
+import { canUseAdmin, canViewOperations, featureEnabled } from '@/lib/rbac';
 import { getSettings, updateSettings } from '@/lib/api';
 
 // One tab per area, each only for the roles that use it; the open tab is ?tab= so links can point at one
@@ -23,10 +23,10 @@ import { getSettings, updateSettings } from '@/lib/api';
 export const SETTINGS_TABS = [
   { value: 'general', label: 'General', show: () => true },
   { value: 'calendar', label: 'Calendar', show: () => true },
-  { value: 'scheduling', label: 'Meeting scheduling', show: ({ hasRole }) => hasRole('tenant_admin', 'manager') },
+  { value: 'scheduling', label: 'Meeting scheduling', show: ({ hasRole, user }) => featureEnabled(user, 'appointment_booking') && hasRole('tenant_admin', 'manager') },
   { value: 'rules', label: 'Calling rules', show: ({ user }) => canViewOperations(user) },
-  { value: 'scoring', label: 'Lead scoring', show: ({ user }) => canViewOperations(user) },
-  { value: 'integrations', label: 'Integrations', show: ({ hasRole }) => hasRole('tenant_admin') },
+  { value: 'scoring', label: 'Lead scoring', show: ({ user }) => canViewOperations(user) && featureEnabled(user, 'lead_scoring') },
+  { value: 'integrations', label: 'Integrations', show: ({ hasRole, user }) => hasRole('tenant_admin') && featureEnabled(user, 'crm_zoho') },
 ];
 
 export default function SettingsPage() {

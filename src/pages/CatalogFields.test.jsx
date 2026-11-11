@@ -310,6 +310,22 @@ describe('Presets', () => {
     expect(screen.queryByRole('button', { name: /Presets/ })).not.toBeInTheDocument();
   });
 
+  it('downloads the chosen preset\'s template, for a Manager too', async () => {
+    api.downloadCatalogPresetTemplate.mockResolvedValue({ data: 'name,category,price\n' });
+    const dialog = await open(USERS.manager);
+    fireEvent.click(dialog.getByLabelText('property developer'));
+    fireEvent.click(dialog.getByRole('button', { name: 'Download template' }));
+    await waitFor(() => expect(api.downloadCatalogPresetTemplate).toHaveBeenCalledWith('shop_b'));
+    expect(api.downloadBlob).toHaveBeenCalledWith('name,category,price\n', 'catalog_template_shop_b.csv');
+  });
+
+  it('shows a failed template download', async () => {
+    api.downloadCatalogPresetTemplate.mockRejectedValue({ response: { status: 500, data: { detail: 'Boom' } } });
+    const dialog = await open(USERS.tenant_admin);
+    fireEvent.click(dialog.getByRole('button', { name: 'Download template' }));
+    expect(await dialog.findByRole('alert')).toHaveTextContent(/template|Boom/);
+  });
+
   it('shows a refused apply', async () => {
     api.applyCatalogPreset.mockRejectedValue({ response: { status: 403, data: { detail: 'Forbidden' } } });
     const dialog = await open(USERS.tenant_admin);
@@ -403,22 +419,16 @@ describe('Catalog settings', () => {
     expect(sheet.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
   });
 
-  it('lets a Super Admin pick the tenant and change its settings', async () => {
-    api.listTenants.mockResolvedValue({ data: { tenants: [{ tenant_id: 't-9', name: 'Raymond' }, { tenant_id: 't-8', name: 'Apex' }] } });
+  it('has no tenant picker: a Tenant Admin changes their own settings', async () => {
     api.updateCatalogSettings.mockResolvedValue({ data: { ...current, agents: agents({ republish_scheduled: false }) } });
-    const sheet = await open(USERS.super_admin);
-    expect(screen.queryByTestId('catalog-row-i-1')).not.toBeInTheDocument();
-    expect(api.getCatalogTable).not.toHaveBeenCalled(); // the table needs a tenant of one's own
-    await waitFor(() => expect(api.getCatalogSettings).toHaveBeenCalledWith({ tenant_id: 't-9' }));
-    fireEvent.change(sheet.getByLabelText('Tenant'), { target: { value: 't-8' } });
-    await waitFor(() => expect(api.getCatalogSettings).toHaveBeenCalledWith({ tenant_id: 't-8' }));
+    const sheet = await open(USERS.tenant_admin);
+    expect(sheet.queryByLabelText('Tenant')).not.toBeInTheDocument();
     fireEvent.change(await sheet.findByLabelText('Currency'), { target: { value: 'USD' } });
     fireEvent.click(sheet.getByRole('button', { name: 'Save' }));
     const confirm = within(await screen.findByRole('dialog', { name: 'Save catalog settings' }));
     fireEvent.change(confirm.getByLabelText(/Reason/), { target: { value: 'US branch' } });
     fireEvent.click(confirm.getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(api.updateCatalogSettings).toHaveBeenCalledWith(
-      { currency: 'USD', reason: 'US branch' }, { tenant_id: 't-8' }));
+    await waitFor(() => expect(api.updateCatalogSettings).toHaveBeenCalledWith({ currency: 'USD', reason: 'US branch' }, undefined));
   });
 
   it('gives a Sales Rep no settings', async () => {
@@ -433,7 +443,10 @@ describe('Import result', () => {
     api.importCatalog.mockResolvedValue({ data: report });
     renderWithAuth(<CatalogPage />, { user: USERS.tenant_admin });
     await screen.findByTestId('catalog-row-i-1');
+    api.previewCatalogImport.mockResolvedValue({ data: { row_count: 1, fields: [], targets: [], looks_like_people: false,
+      columns: [{ column: 'Name', samples: [], filled: 0, suggested: 'name' }] } });
     fireEvent.change(screen.getByLabelText('Catalog CSV file'), { target: { files: [new File(['Name\n'], 'f.csv', { type: 'text/csv' })] } });
+    fireEvent.click(within(await screen.findByRole('dialog', { name: 'Match your columns' })).getByRole('button', { name: 'Import' }));
     return screen.findByRole('status', { name: 'Import result' });
   };
 

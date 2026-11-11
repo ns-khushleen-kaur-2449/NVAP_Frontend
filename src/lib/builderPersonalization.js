@@ -5,7 +5,7 @@
 
 /** What each usage lets the agent do, one short line each. */
 export const USAGES = [
-  { value: 'greet', label: 'Greet', hint: 'May say it in the greeting and now and then after.' },
+  { value: 'greet', label: 'Greeting', hint: 'May say it in the greeting and now and then after.' },
   { value: 'context', label: 'Context', hint: 'May mention it to make the call personal.' },
   { value: 'confirm_only', label: 'Confirm only', hint: 'Confirms it when needed; never brings it up.' },
   { value: 'never_say', label: 'Never say', hint: 'Uses it to guide the call; never says it.' },
@@ -55,7 +55,8 @@ const greets = (leadFields, key) => leadFields.some((f) => f.key === key && f.us
 
 /** Every problem in one list, for the preview panel. */
 export const allProblems = (problems) => [...problems.first_message, ...problems.default_call_reason, ...problems.lead_fields,
-  ...problems.language, ...problems.persona_gender, ...problems.catalog_words, ...problems.general];
+  ...problems.language, ...problems.persona_gender, ...problems.catalog_words, ...problems.custom_first_message,
+  ...problems.custom_prompt, ...problems.general];
 
 /** Placeholders a custom first message may use: the name ones only when first name is selected to greet. */
 export function placeholdersFor(leadFields = []) {
@@ -76,13 +77,16 @@ export function placeholdersFor(leadFields = []) {
  * strings ("first_message: ...") or Pydantic errors ({loc, msg}).
  */
 // Plain-string 422s by their prefix (app/features/assistant_builder/languages.py, speech.py, first_message.py).
+// Custom prompt mode: app/features/assistant_builder/custom_prompt.py.
 const STRING_FIELDS = [['first_message', 'first_message'], ['assistant.language:', 'language'],
-  ['assistant.persona_gender:', 'persona_gender'], ['catalog words:', 'catalog_words']];
+  ['assistant.persona_gender:', 'persona_gender'], ['catalog words:', 'catalog_words'],
+  ['custom_first_message', 'custom_first_message'], ['custom_system_prompt', 'custom_prompt'],
+  ['prompt_mode:', 'custom_prompt'], ['prompt_override', 'custom_prompt']];
 
 export function problemsFrom(error) {
   const detail = error?.response?.data?.detail;
   const result = { first_message: [], lead_fields: [], default_call_reason: [], language: [], persona_gender: [],
-    catalog_words: [], general: [] };
+    catalog_words: [], custom_first_message: [], custom_prompt: [], general: [] };
   const items = typeof detail === 'string' ? [detail] : Array.isArray(detail) ? detail : [];
   for (const item of items) {
     if (typeof item === 'string') {
@@ -93,15 +97,16 @@ export function problemsFrom(error) {
     }
     const loc = (item?.loc || []).filter((p) => p !== 'body');
     const message = String(item?.msg || '').replace(/^Value error, /, '');
-    const field = ['first_message', 'lead_fields', 'default_call_reason'].find((f) => loc.includes(f));
+    const field = ['first_message', 'lead_fields', 'default_call_reason', 'custom_first_message'].find((f) => loc.includes(f));
     if (field) result[field].push(message);
+    else if (loc.includes('custom_system_prompt')) result.custom_prompt.push(`custom_system_prompt: ${message}`);
     else result.general.push(loc.length ? `${loc.join('.')}: ${message}` : message);
   }
   return result;
 }
 
 const PROTECTED = /<!-- smartsdr:([a-z-]+):start -->\n?([\s\S]*?)\n?<!-- smartsdr:\1:end -->/g;
-const BLOCK_TITLES = { tools: 'Tools you can use', 'call-flow': 'Call flow', language: 'Language' };
+const BLOCK_TITLES = { tools: 'Tools you can use', 'call-flow': 'Call flow', language: 'Language', custom: 'Your instructions' };
 
 /** The prompt as plain parts and protected blocks (between smartsdr markers), in order. */
 export function splitProtected(prompt = '') {

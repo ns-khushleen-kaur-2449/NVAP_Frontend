@@ -8,6 +8,7 @@ import usePolling from '@/hooks/usePolling';
 import {
   RANGES, formatClock, formatCount, formatDelta, formatDuration, formatRate, userTimeZone, windowFor,
 } from '@/lib/voiceDashboard';
+import AgentCalls from './dashboard/AgentCalls';
 import AgentTable from './dashboard/AgentTable';
 import AlertBanner from './dashboard/AlertBanner';
 import ConversionFunnel from './dashboard/ConversionFunnel';
@@ -59,7 +60,8 @@ export function KpiNotes({ kpis }) {
   );
 }
 
-export default function VoiceDashboard({ onNavigate }) {
+/** `superAdmin`: the "Calls by agent" card then asks which tenant to show (a Super Admin has none). */
+export default function VoiceDashboard({ onNavigate, superAdmin = false }) {
   const [range, setRange] = useState('today');
   const [agentId, setAgentId] = useState('all');
   const [data, setData] = useState(null);
@@ -198,6 +200,8 @@ export default function VoiceDashboard({ onNavigate }) {
             onAssignLeads={() => onNavigate?.('builder')}
             onManageAgents={() => onNavigate?.('create')}
           />
+
+          <AgentCalls range={range} superAdmin={superAdmin} />
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <div className="lg:col-span-2"><RecentCalls calls={data.recent_calls} onOpenCallLog={() => onNavigate?.('logs')} /></div>

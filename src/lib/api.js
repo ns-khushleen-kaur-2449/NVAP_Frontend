@@ -121,6 +121,8 @@ export const publishAgentAssistantVersion = (id, rowId, n) => api.post(`${assist
 export const rollbackAgentAssistantVersion = (id, rowId, n) => api.post(`${assistantVersions(id, rowId)}/${n}/rollback`);
 // Whether this server has the agent's code and can run it: { key, has_code, contract_version, ok, problems }.
 export const getAgentHealth = (id) => api.get(`/api/v1/agents/${id}/health`);
+// Calls per agent for [from, to): { from, to, tenant_id? } (a Super Admin must name the tenant). Counts only.
+export const getAgentMetrics = (params) => api.get('/api/v1/agents/metrics', { params });
 
 // ── Hiring agent (backend app/agents/hiring/router.py) ──
 // Every route checks the caller: hiring.view reads, hiring.manage changes records, hiring.call places calls, and

@@ -16,7 +16,7 @@ import AssistantBuilder from '../components/voice/AssistantBuilder';
 import VoiceDashboard from '../components/voice/VoiceDashboard';
 import AssistantChangeRequests from '../components/voice/AssistantChangeRequests';
 import { useAuth } from '@/lib/AuthContext';
-import { canCreateCampaigns, canOperate, canUseAssistantRequests, canViewAssistants } from '@/lib/rbac';
+import { canCreateCampaigns, canOperate, canUseAssistantRequests, canViewAssistants, isSuperAdmin } from '@/lib/rbac';
 import ReasonDialog from '@/components/ops/ReasonDialog';
 import SingleCallBlock from '@/components/ops/SingleCallBlock';
 import { Loader2, PhoneCall, BookOpen, Mic, UploadCloud, Phone, RotateCw, Layers, Info, FileText, Database, Search, Copy, Check, LayoutDashboard, ClipboardCheck } from 'lucide-react';
@@ -700,7 +700,7 @@ export default function VoiceAgentPage() {
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'dashboard':  return canSeeDashboard ? <VoiceDashboard onNavigate={setActiveTab} /> : renderBuilder();
+      case 'dashboard':  return canSeeDashboard ? <VoiceDashboard onNavigate={setActiveTab} superAdmin={isSuperAdmin(user)} /> : renderBuilder();
       case 'single':     return <>{renderSingleCall()}{renderOverride()}</>;
       case 'csv':        return renderCsvCampaign();
       case 'builder':    return renderBuilder();

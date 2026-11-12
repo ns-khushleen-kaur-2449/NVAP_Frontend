@@ -1,17 +1,11 @@
 [build]
-  command = "cross-env NODE_OPTIONS=--openssl-legacy-provider craco build"
+  command = "npm run build"
   publish = "build"
 
 [build.environment]
   NODE_VERSION = "18"
-  # REACT_APP_BACKEND_URL is deliberately NOT set here.
-  #
-  # It used to hard-code an ngrok tunnel, which is ephemeral — the deployed
-  # site broke every time the tunnel rotated, and the URL was baked into the
-  # committed bundle. Set it per-context in Netlify
-  # (Site configuration -> Environment variables), or in CI as an env var.
-  # If it is unset at build time, src/lib/api.js falls back to
-  # http://localhost:8000, which is correct for local builds only.
+  # Set REACT_APP_NVIP_API_URL and REACT_APP_NVIP_USE_MOCKS per deploy context in
+  # Netlify (Site configuration -> Environment variables), not here.
 
 [[redirects]]
   from = "/*"

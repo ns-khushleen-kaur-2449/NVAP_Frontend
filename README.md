@@ -1,70 +1,60 @@
-# Getting Started with Create React App
+# NVIP — Netsmartz Voice Intelligence Platform (frontend)
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+One portal for every NVIP voice agent: AI Receptionist / Router, Outbound Lead Gen,
+Inbound Voice SDR, Hiring / Recruitment and Real Estate. All agents run on the same
+platform (Twilio · Vapi · ElevenLabs · Nylas); each one is a configuration, not a
+separate app. See the NVIP Architecture, SRS & FRS document, §29 for the portal structure.
 
-## Available Scripts
+## Run it
 
-In the project directory, you can run:
+```bash
+npm install
+npm start          # http://localhost:3000
+```
 
-### `npm start`
+Without a backend it runs on built-in demo data. Open `/signin`, enter any email and
+pick a role to preview that role's workspace.
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+```bash
+npm test -- --watchAll=false   # tests
+npm run build                  # production build in /build
+```
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+Copy `.env.example` to `.env` to point at a real backend:
 
-### `npm test`
+| Variable | Meaning |
+|---|---|
+| `REACT_APP_NVIP_API_URL` | NVIP backend origin; requests go to `<origin>/api/v1/...` |
+| `REACT_APP_NVIP_USE_MOCKS` | `false` to call the backend instead of demo data |
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+## Structure
 
-### `npm run build`
+```
+src/
+  routes.jsx            all routes: public site, /signin, /app/* workspace
+  config/
+    agents.js           agent catalog: the one list of agent types, tiers, guardrails
+    navigation.js       sidebar per role; also decides route access
+    roles.js            platform admin, tenant admin, agent user, reporting
+  api/
+    client.js           axios client, auth header, mock switch
+    services.js         platform endpoints (doc §9), one function each
+    mocks.js            demo data
+  agents/               per-agent screens — the plug-in point for each agent's backend
+    index.js            registry: agent type → extra tabs on the agent page
+    <type>/index.jsx    that agent's tabs (Campaigns, Candidates, Listings…)
+  lib/                  lifecycle rules (§26), acceptance checklist (§18)
+  layouts/              public top-nav layout, workspace sidebar layout
+  pages/public/         marketplace, agent detail, pricing, demo/quote, sign-in
+  pages/workspace/      dashboard, my agents, agent page, orders, usage, team, integrations
+  components/           shared UI primitives
+```
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+### Adding an agent's backend
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+1. Put the agent's endpoints in `src/agents/<type>/api.js`, using `http` and `call`
+   from `src/api/client.js`.
+2. Replace the placeholder tabs in `src/agents/<type>/index.jsx` with real screens.
+   Each tab receives `{ instance, agent }`.
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
-
-### `npm run eject`
-
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
-
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
-
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
-
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
-
-## Learn More
-
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
-
-### Code Splitting
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+Routing, navigation and the agent page pick the tabs up automatically.

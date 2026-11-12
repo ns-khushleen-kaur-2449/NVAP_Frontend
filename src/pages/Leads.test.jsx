@@ -14,6 +14,7 @@ beforeEach(() => {
   api.getProspects.mockResolvedValue({ data: { prospects: [prospect], total: 1 } });
   api.getProspect.mockResolvedValue({ data: prospect });
   api.getProspectTimeline.mockResolvedValue({ data: { items: [], counts: {} } });
+  api.getConversionHistory.mockResolvedValue({ data: { items: [] } });
 });
 
 const routes = [

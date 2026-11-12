@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
-import { RefreshCw, Check, X } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import { getLeadScore, getLeadScoreHistory, calculateLeadScore, getProspectAssessmentStatus } from '@/lib/api';
 import { ScoreGauge } from '@/components/shared/ScoreGauge';
 import DataCompleteness from './DataCompleteness';
@@ -31,17 +31,6 @@ const AssessmentLine = ({ status }) => {
       {age && <span className="text-xs text-muted-foreground" data-testid="intent-age">{age}</span>}
     </div>
   );
-};
-
-const CHANNEL_LABEL = { call: 'Call', sms: 'SMS', email: 'Email' };
-const RESTRICTION_LABEL = {
-  stage_disqualified: 'Stage is Disqualified',
-  stage_do_not_contact: 'Stage is Do Not Contact',
-  intent_disqualified: 'Disqualified by intent assessment',
-  on_do_not_call_list: 'On the do-not-call list',
-  no_call_consent: 'No call consent',
-  no_sms_consent: 'No SMS consent',
-  no_email_consent: 'No email consent',
 };
 
 const label = (s) => String(s ?? '').replace(/_/g, ' ');
@@ -143,7 +132,6 @@ const LeadScorePanel = ({ prospectId, onScored, children }) => {
     setCalculating(false);
   };
 
-  const eligibility = score?.eligibility;
   const shown = score?.temperature_display;
   const displayLabel = shown?.label || null;
   const color = TEMPERATURE_COLOR[displayLabel] || FALLBACK_COLOR;
@@ -197,31 +185,9 @@ const LeadScorePanel = ({ prospectId, onScored, children }) => {
             <p className="mb-2 text-xs text-muted-foreground">
               Calculated {new Date(score.calculated_at).toLocaleString()} with the settings in force then.
             </p>
-            <WhyThisScore explanation={score.explanation} />
+            <WhyThisScore explanation={score.explanation} score={score} />
           </div>
 
-          {eligibility && (
-            <div className="mt-4 border-t border-border pt-3">
-              <p className={`text-xs font-medium ${eligibility.eligible_for_outreach ? '' : 'text-[hsl(38,92%,65%)]'}`}>
-                {eligibility.eligible_for_outreach ? 'Eligible for outreach' : 'Not eligible for outreach'}
-              </p>
-              {eligibility.channels && (
-                <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                  {Object.entries(eligibility.channels).map(([channel, allowed]) => (
-                    <span key={channel} className="inline-flex items-center gap-1">
-                      {allowed ? <Check className="w-3 h-3 text-[hsl(173,80%,36%)]" /> : <X className="w-3 h-3 text-[hsl(0,72%,52%)]" />}
-                      {CHANNEL_LABEL[channel] || label(channel)}
-                    </span>
-                  ))}
-                </div>
-              )}
-              {eligibility.restrictions?.length > 0 && (
-                <ul className="mt-1.5 text-xs text-[hsl(38,92%,65%)] space-y-0.5">
-                  {eligibility.restrictions.map((r) => <li key={r}>{RESTRICTION_LABEL[r] || label(r)}</li>)}
-                </ul>
-              )}
-            </div>
-          )}
 
           {events.length > 0 && (
             <div className="mt-4 border-t border-border pt-3" data-testid="score-history">

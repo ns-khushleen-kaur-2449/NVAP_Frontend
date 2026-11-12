@@ -21,6 +21,7 @@ import { formatCurrency, STAGE_OPTIONS } from '@/lib/utils';
 import { DEPARTMENTS, LIST_INCLUDE, toLeadRow } from '@/lib/prospects';
 import { StageBadge, PriorityBadge, StatusBadge } from '@/components/shared/StatusBadges';
 import LeadScorePanel from '@/components/leads/LeadScorePanel';
+import QualificationCard from '@/components/leads/QualificationCard';
 import TemperatureChip from '@/components/leads/TemperatureChip';
 import EngagementBadge from '@/components/leads/EngagementBadge';
 import ScoreFreshnessChip from '@/components/leads/ScoreFreshnessChip';
@@ -481,10 +482,8 @@ export default function LeadsPage() {
                   </div>
                 )}
 
-                {/* AI qualification and site visits used endpoints the backend no longer has. */}
-                <p className="mb-5 rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground">
-                  AI qualification is not available yet.
-                </p>
+                {/* The latest qualification result from conversion handling. */}
+                <QualificationCard prospectId={selectedLead.id} />
 
                 {/* Calls, stage changes, appointment and do-not-call events in one list. */}
                 <section aria-labelledby="prospect-timeline">

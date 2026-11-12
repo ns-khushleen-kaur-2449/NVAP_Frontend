@@ -70,8 +70,33 @@ it('says "Not recorded" for what a score from before snapshots did not save, and
 it('says the explanation is unavailable for a score without a recorded calculation', () => {
   render(<WhyThisScore explanation={{ available: false, reason: 'no_recorded_calculation' }} />);
   expect(screen.getByTestId('explanation-unavailable')).toHaveTextContent(
-    'Score explanation unavailable. This score has no recorded calculation (demo data). Recalculate to create one.');
+    'Why this score? Score explanation unavailable. This score has no recorded calculation (demo data). Recalculate to create one.');
   expect(screen.queryByTestId('why-this-score')).not.toBeInTheDocument();
+});
+
+it('explains a demo score in one line from what the score row records', () => {
+  render(<WhyThisScore explanation={{ available: false }}
+    score={{ lead_score: 87, intent_level: 'high_intent', recommended_action: 'qualification_review' }} />);
+  expect(screen.getByTestId('explanation-unavailable')).toHaveTextContent(
+    '87 is a demo value loaded with the seed data for a high intent lead, next step qualification review; '
+    + 'it was never calculated, so it has no factor breakdown.');
+});
+
+it('sums up a recorded calculation in one line', () => {
+  render(<WhyThisScore explanation={{
+    available: true, rounded: 72, temperature_at_calculation: 'WARM', configuration: {}, data_completeness: {},
+    groups: [
+      { group: 'fit', earned: 45, possible: 60, factors: [
+        { feature: 'seniority', value: 'director', indicator: 'strong', earned: 30, possible: 30 },
+        { feature: 'department', value: null, indicator: 'unavailable', earned: 0, possible: 15 },
+      ] },
+      { group: 'engagement', earned: 27, possible: 40, factors: [
+        { feature: 'intent_customer_status', value: 'medium_intent', indicator: 'partial', earned: 27, possible: 40 },
+      ] },
+    ],
+  }} />);
+  expect(screen.getByTestId('score-summary')).toHaveTextContent(
+    'Scored 72 (Warm): Fit 45 of 60, Engagement 27 of 40. Raised by Seniority (Director) and Call intent (Medium intent); held back by Department (unknown).');
 });
 
 it('marks an inconclusive assessment and keeps its recorded points', () => {

@@ -4,6 +4,7 @@ import {
   TREATMENT_TEXT,
   featureLabel,
   groupLabel,
+  summarizeScore,
   valueLabel,
 } from '@/lib/leadScoreLabels';
 
@@ -104,11 +105,24 @@ function SettingsUsed({ configuration, methodologyVersion }) {
  * sends it (`explanation` of a current score, `explanation_view` of a history item).
  * Built only from what that calculation recorded: settings changed later never change it.
  */
-export default function WhyThisScore({ explanation, historical = false }) {
+// One line for a score that was loaded, not calculated (seed/demo data): what is known about it.
+const demoScoreLine = (score) => {
+  if (!score) return 'This score has no recorded calculation (demo data). Recalculate to create one.';
+  const intent = score.intent_level ? ` for a ${valueLabel('intent_customer_status', score.intent_level).toLowerCase()} lead` : '';
+  const action = score.recommended_action ? `, next step ${score.recommended_action.replace(/_/g, ' ')}` : '';
+  const fix = score.recalculation?.due === false || score.freshness_indicator === 'out_of_date'
+    ? 'Add seniority, department or company size, then Recalculate to get a breakdown.'
+    : 'Recalculate to get a breakdown (it needs seniority, department or company size).';
+  return `${Math.round(score.lead_score)} is a demo value loaded with the seed data${intent}${action}; `
+    + `it was never calculated, so it has no factor breakdown. ${fix}`;
+};
+
+export default function WhyThisScore({ explanation, score = null, historical = false }) {
   if (!explanation?.available) {
     return (
       <p className="text-xs text-muted-foreground" data-testid="explanation-unavailable">
-        Score explanation unavailable. This score has no recorded calculation (demo data). Recalculate to create one.
+        <span className="font-semibold text-foreground">Why this score? </span>
+        Score explanation unavailable. {demoScoreLine(score)}
       </p>
     );
   }
@@ -120,7 +134,8 @@ export default function WhyThisScore({ explanation, historical = false }) {
   const completeness = explanation.data_completeness || {};
   return (
     <div data-testid={historical ? 'historical-explanation' : 'why-this-score'}>
-      <p className="text-xs font-semibold mb-2">Why this score?</p>
+      <p className="text-xs font-semibold mb-1">Why this score?</p>
+      <p className="text-xs mb-3" data-testid="score-summary">{summarizeScore(explanation)}</p>
 
       {explanation.groups ? (
         <div className="space-y-3">

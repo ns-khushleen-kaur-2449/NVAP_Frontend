@@ -177,6 +177,32 @@ export const CLASSIFICATION_LABELS = {
 export const PROVISIONAL_HELP =
   'Not enough reliable conversation information to rate this lead yet. The number is mainly based on fit.';
 
+// "Why this score?" in one sentence, from the recorded explanation only:
+// "Scored 72 (Warm): Fit 45 of 60, Engagement 27 of 40. Raised by Seniority (Director); held back by Department (unknown)."
+const points = (n) => (n == null ? '?' : String(Math.round(Number(n) * 10) / 10));
+const factorPhrase = (f) => `${featureLabel(f.feature)} (${
+  f.indicator === 'unavailable' ? 'unknown' : (valueLabel(f.feature, f.value) || 'unknown')})`;
+const listPhrase = (items) => (items.length > 1 ? `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}` : items[0]);
+
+export const summarizeScore = (explanation) => {
+  if (!explanation?.available) return null;
+  const groups = explanation.groups || [];
+  const factors = groups.length ? groups.flatMap((g) => g.factors || []) : (explanation.factors || []);
+  const share = (f) => (f.possible ? (f.earned || 0) / f.possible : 0);
+  const raised = factors.filter((f) => ['strong', 'partial'].includes(f.indicator) && f.earned > 0)
+    .sort((a, b) => (b.earned || 0) - (a.earned || 0)).slice(0, 2);
+  const heldBack = factors.filter((f) => ['weak', 'unavailable', 'inconclusive'].includes(f.indicator) && f.possible)
+    .sort((a, b) => share(a) - share(b) || (b.possible - (b.earned || 0)) - (a.possible - (a.earned || 0))).slice(0, 2);
+  const temperature = explanation.temperature_at_calculation;
+  const head = `Scored ${points(explanation.rounded)}${temperature ? ` (${humanize(String(temperature).toLowerCase())})` : ''}`;
+  const totals = groups.map((g) => `${groupLabel(g.group)} ${points(g.earned)} of ${points(g.possible)}`).join(', ');
+  const parts = [];
+  if (raised.length) parts.push(`raised by ${listPhrase(raised.map(factorPhrase))}`);
+  if (heldBack.length) parts.push(`held back by ${listPhrase(heldBack.map(factorPhrase))}`);
+  const why = parts.length ? ` ${humanize(parts.join('; '))}.` : '';
+  return `${head}${totals ? `: ${totals}.` : '.'}${why}`;
+};
+
 // Recalculation reasons and cap reasons as one readable sentence.
 export const describeReasons = (reasons = []) =>
   reasons.map((reason) => RECALCULATION_REASONS[reason] || humanize(reason)).join('; ');

@@ -179,6 +179,9 @@ export const getProspect = (id) => api.get(`/api/v1/prospects/${id}`);
 export const createProspect = (data, params) => api.post('/api/v1/prospects', data, { params });
 export const updateProspect = (id, data) => api.patch(`/api/v1/prospects/${id}`, data);
 export const deleteProspect = (id) => api.delete(`/api/v1/prospects/${id}`);
+// Managers and Tenant Admins: hide a lead from the Leads list (not scored or called) and bring it back.
+export const archiveProspect = (id) => api.post(`/api/v1/prospects/${id}/archive`);
+export const restoreProspect = (id) => api.post(`/api/v1/prospects/${id}/restore`);
 // Import leads from a CSV (features/prospects/csv_import.py): read first, then import with { column: use }.
 export const previewLeadImport = (file) => {
   const form = new FormData();

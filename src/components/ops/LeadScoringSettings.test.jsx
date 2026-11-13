@@ -219,6 +219,36 @@ it('saves with the reason and the config hash it loaded', async () => {
   await waitFor(() => expect(api.getLeadScoringConfig).toHaveBeenCalledTimes(2)); // reloaded
 });
 
+describe('After a save, with automatic refresh', () => {
+  const saveDepartmentOff = async () => {
+    api.updateLeadScoringConfig.mockResolvedValue({ data: { ...config(['department']).data, changed: true } });
+    await open(USERS.tenant_admin);
+    fireEvent.click(box('Department'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.change(await screen.findByLabelText(/Reason/), { target: { value: 'Not useful' } });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Save' }).pop());
+    await waitFor(() => expect(api.updateLeadScoringConfig).toHaveBeenCalledTimes(1));
+  };
+  const due = (total) => ({ data: { ...OVERVIEW, automatic_refresh_enabled: true,
+    score_freshness: { ...OVERVIEW.score_freshness, recalculation_due: { ...OVERVIEW.score_freshness.recalculation_due, total } } } });
+
+  it('follows the recalculation without "Recalculate scores" until nothing is due', async () => {
+    api.getLeadScoringOverview.mockResolvedValue(due(3));
+    await saveDepartmentOff();
+    expect(await screen.findByTestId('auto-refresh')).toHaveTextContent('Updating scores with the new settings');
+    api.getLeadScoringOverview.mockResolvedValue(due(0));  // the consumer recalculated them
+    await waitFor(() => expect(screen.queryByTestId('auto-refresh')).not.toBeInTheDocument(), { timeout: 5000 });
+    expect(screen.getByTestId('freshness-due')).toHaveTextContent('0');
+    expect(api.rescoreLeadScores).not.toHaveBeenCalled();
+  }, 10000);
+
+  it('does not follow anything when automatic refresh is off', async () => {
+    await saveDepartmentOff();  // OVERVIEW: automatic_refresh_enabled false
+    await waitFor(() => expect(api.getLeadScoringConfig).toHaveBeenCalledTimes(2));
+    expect(screen.queryByTestId('auto-refresh')).not.toBeInTheDocument();
+  });
+});
+
 it('reloads after a 409 conflict', async () => {
   api.updateLeadScoringConfig.mockRejectedValue({ response: { status: 409, data: { detail: { message: 'changed since read' } } } });
   await open(USERS.tenant_admin);

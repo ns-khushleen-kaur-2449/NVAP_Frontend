@@ -9,6 +9,7 @@ jest.mock('../../lib/api', () => ({
   getBuilderConfig: jest.fn(),
   createBuilderConfig: jest.fn(),
   updateBuilderConfig: jest.fn(),
+  deleteBuilderConfig: jest.fn(),
   previewBuilderConfig: jest.fn(),
   publishBuilderConfig: jest.fn(),
   rollbackBuilderConfig: jest.fn(),
@@ -376,5 +377,52 @@ describe('after Publish', () => {
     await waitFor(() => expect(require('sonner').toast.error).toHaveBeenCalled());
     expect(screen.getByRole('button', { name: /Save new version/ })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Agent Builder' })).not.toBeInTheDocument();
+  });
+});
+
+describe('deleting an agent', () => {
+  const { AuthContext } = require('../../lib/AuthContext');
+  const listAs = async (role) => {
+    api.listBuilderConfigs.mockResolvedValue({ data: [config(LEGACY)] });
+    render(<AuthContext.Provider value={{ user: { role } }}><AssistantBuilder /></AuthContext.Provider>);
+    await screen.findByText('Riya');
+  };
+
+  it('a Tenant Admin deletes after confirming; the card goes and the editor does not open', async () => {
+    api.deleteBuilderConfig.mockResolvedValue({});
+    await listAs('tenant_admin');
+    const confirm = jest.spyOn(window, 'confirm').mockReturnValue(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Riya' }));
+    await waitFor(() => expect(screen.queryByText('Riya')).not.toBeInTheDocument());
+    expect(api.deleteBuilderConfig).toHaveBeenCalledWith('c1');
+    expect(api.getBuilderConfig).not.toHaveBeenCalled();
+    expect(require('sonner').toast.success).toHaveBeenCalledWith('Riya deleted');
+    confirm.mockRestore();
+  });
+
+  it('nothing happens when the confirm is cancelled', async () => {
+    await listAs('tenant_admin');
+    const confirm = jest.spyOn(window, 'confirm').mockReturnValue(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Riya' }));
+    expect(api.deleteBuilderConfig).not.toHaveBeenCalled();
+    expect(screen.getByText('Riya')).toBeInTheDocument();
+    confirm.mockRestore();
+  });
+
+  it('a refusal (agent still in a campaign) is shown and the card stays', async () => {
+    api.deleteBuilderConfig.mockRejectedValue({ response: { status: 409,
+      data: { detail: 'Riya is still used by campaign "Diwali push".' } } });
+    await listAs('tenant_admin');
+    const confirm = jest.spyOn(window, 'confirm').mockReturnValue(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Riya' }));
+    await waitFor(() => expect(require('sonner').toast.error).toHaveBeenCalledWith(
+      expect.stringContaining('Diwali push')));
+    expect(screen.getByText('Riya')).toBeInTheDocument();
+    confirm.mockRestore();
+  });
+
+  it('Managers do not get a delete button', async () => {
+    await listAs('manager');
+    expect(screen.queryByRole('button', { name: 'Delete Riya' })).not.toBeInTheDocument();
   });
 });

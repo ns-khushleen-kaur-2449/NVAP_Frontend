@@ -177,30 +177,55 @@ export const CLASSIFICATION_LABELS = {
 export const PROVISIONAL_HELP =
   'Not enough reliable conversation information to rate this lead yet. The number is mainly based on fit.';
 
-// "Why this score?" in one sentence, from the recorded explanation only:
-// "Scored 72 (Warm): Fit 45 of 60, Engagement 27 of 40. Raised by Seniority (Director); held back by Department (unknown)."
+// "Why this score?" in a short plain line, from the recorded explanation only:
+// "Scored 36 (Cold) mainly because Seniority and Company size are unavailable (counted as 0).
+//  Points came from Call intent (Medium intent, +28) and Department (Engineering, +7.5)."
 const points = (n) => (n == null ? '?' : String(Math.round(Number(n) * 10) / 10));
-const factorPhrase = (f) => `${featureLabel(f.feature)} (${
-  f.indicator === 'unavailable' ? 'unknown' : (valueLabel(f.feature, f.value) || 'unknown')})`;
 const listPhrase = (items) => (items.length > 1 ? `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}` : items[0]);
+const plural = (items, one, many) => (items.length > 1 ? many : one);
+const labels = (fs) => listPhrase(fs.map((f) => featureLabel(f.feature)));
+const withValue = (f, extra) => {
+  const value = valueLabel(f.feature, f.value);
+  const inner = [value, extra].filter(Boolean).join(', ');
+  return inner ? `${featureLabel(f.feature)} (${inner})` : featureLabel(f.feature);
+};
 
 export const summarizeScore = (explanation) => {
   if (!explanation?.available) return null;
   const groups = explanation.groups || [];
   const factors = groups.length ? groups.flatMap((g) => g.factors || []) : (explanation.factors || []);
-  const share = (f) => (f.possible ? (f.earned || 0) / f.possible : 0);
+
   const raised = factors.filter((f) => ['strong', 'partial'].includes(f.indicator) && f.earned > 0)
-    .sort((a, b) => (b.earned || 0) - (a.earned || 0)).slice(0, 2);
-  const heldBack = factors.filter((f) => ['weak', 'unavailable', 'inconclusive'].includes(f.indicator) && f.possible)
-    .sort((a, b) => share(a) - share(b) || (b.possible - (b.earned || 0)) - (a.possible - (a.earned || 0))).slice(0, 2);
+    .sort((a, b) => (b.earned || 0) - (a.earned || 0)).slice(0, 3);
+  const missing = factors.filter((f) => f.indicator === 'unavailable');
+  const countedZero = missing.filter((f) => f.treatment !== 'left_out_rescaled');
+  const leftOut = missing.filter((f) => f.treatment === 'left_out_rescaled');
+  const weak = factors.filter((f) => f.indicator === 'weak' && f.possible);
+  const inconclusive = factors.filter((f) => f.indicator === 'inconclusive');
+
+  const causes = [];
+  if (countedZero.length) {
+    causes.push(`${labels(countedZero)} ${plural(countedZero, 'is', 'are')} unavailable (counted as 0)`);
+  }
+  if (weak.length) causes.push(`${listPhrase(weak.map((f) => withValue(f)))} scored low`);
+  if (inconclusive.length) causes.push(`${labels(inconclusive)} ${plural(inconclusive, 'was', 'were')} inconclusive`);
+
   const temperature = explanation.temperature_at_calculation;
   const head = `Scored ${points(explanation.rounded)}${temperature ? ` (${humanize(String(temperature).toLowerCase())})` : ''}`;
-  const totals = groups.map((g) => `${groupLabel(g.group)} ${points(g.earned)} of ${points(g.possible)}`).join(', ');
-  const parts = [];
-  if (raised.length) parts.push(`raised by ${listPhrase(raised.map(factorPhrase))}`);
-  if (heldBack.length) parts.push(`held back by ${listPhrase(heldBack.map(factorPhrase))}`);
-  const why = parts.length ? ` ${humanize(parts.join('; '))}.` : '';
-  return `${head}${totals ? `: ${totals}.` : '.'}${why}`;
+  const gains = listPhrase(raised.map((f) => withValue(f, `+${points(f.earned)}`)));
+
+  const sentences = [];
+  if (causes.length && String(temperature).toUpperCase() !== 'HOT') {
+    sentences.push(`${head} mainly because ${listPhrase(causes)}.`);
+    if (raised.length) sentences.push(`Points came from ${gains}.`);
+  } else {
+    sentences.push(raised.length ? `${head}, mainly from ${gains}.` : `${head}.`);
+    if (causes.length) sentences.push(`${humanize(listPhrase(causes))}.`);
+  }
+  if (leftOut.length) {
+    sentences.push(`${labels(leftOut)} ${plural(leftOut, 'is', 'are')} unavailable and left out; the other factors share ${plural(leftOut, 'its', 'their')} points.`);
+  }
+  return sentences.join(' ');
 };
 
 // Recalculation reasons and cap reasons as one readable sentence.

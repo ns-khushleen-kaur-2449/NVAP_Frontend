@@ -96,7 +96,40 @@ it('sums up a recorded calculation in one line', () => {
     ],
   }} />);
   expect(screen.getByTestId('score-summary')).toHaveTextContent(
-    'Scored 72 (Warm): Fit 45 of 60, Engagement 27 of 40. Raised by Seniority (Director) and Call intent (Medium intent); held back by Department (unknown).');
+    'Scored 72 (Warm) mainly because Department is unavailable (counted as 0). '
+    + 'Points came from Seniority (Director, +30) and Call intent (Medium intent, +27).');
+});
+
+it('sums up the screenshot case: missing Fit data keeps the score Cold', () => {
+  render(<WhyThisScore explanation={{
+    available: true, rounded: 36, temperature_at_calculation: 'COLD', configuration: {}, data_completeness: {},
+    groups: [
+      { group: 'fit', earned: 7.5, possible: 60, factors: [
+        { feature: 'seniority', value: null, indicator: 'unavailable', earned: 0, possible: 30, treatment: 'zero_below_coverage' },
+        { feature: 'company_employee_count', value: null, indicator: 'unavailable', earned: 0, possible: 15, treatment: 'zero_below_coverage' },
+        { feature: 'department', value: 'engineering', indicator: 'partial', earned: 7.5, possible: 15 },
+      ] },
+      { group: 'engagement', earned: 28, possible: 40, factors: [
+        { feature: 'intent_customer_status', value: 'medium_intent', indicator: 'partial', earned: 28, possible: 40 },
+      ] },
+    ],
+  }} />);
+  expect(screen.getByTestId('score-summary')).toHaveTextContent(
+    'Scored 36 (Cold) mainly because Seniority and Company size are unavailable (counted as 0). '
+    + 'Points came from Call intent (Medium intent, +28) and Department (Engineering, +7.5).');
+});
+
+it('mentions unavailable factors that were left out of a hot score', () => {
+  render(<WhyThisScore explanation={{
+    available: true, rounded: 80, temperature_at_calculation: 'HOT', configuration: {}, data_completeness: {},
+    groups: [{ group: 'fit', earned: 60, possible: 60, factors: [
+      { feature: 'seniority', value: 'vp', indicator: 'strong', earned: 40, possible: 40 },
+      { feature: 'department', value: null, indicator: 'unavailable', earned: null, possible: null, treatment: 'left_out_rescaled' },
+    ] }],
+  }} />);
+  expect(screen.getByTestId('score-summary')).toHaveTextContent(
+    'Scored 80 (Hot), mainly from Seniority (VP, +40). '
+    + 'Department is unavailable and left out; the other factors share its points.');
 });
 
 it('marks an inconclusive assessment and keeps its recorded points', () => {

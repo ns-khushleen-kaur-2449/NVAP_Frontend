@@ -16,6 +16,10 @@ const sameSet = (a, b) => a.length === b.length && a.every((x) => b.includes(x))
 const plural = (count, one, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
 // The most prospects one "Recalculate scores" pass handles (POST /api/lead-scores/rescore default).
 const RESCORE_PASS = 100;
+// After a save with automatic refresh, the overview is read again this often, at most this many times, so the
+// recalculated scores show up without "Recalculate scores" (demo scores are never recalculated: hence the cap).
+export const REFRESH_POLL_MS = 3000;
+export const REFRESH_POLLS = 10;
 
 // What a save does to existing scores, honestly: recalculated in the background only when
 // automatic refresh is on; otherwise they wait for "Recalculate scores".
@@ -51,15 +55,33 @@ function ScoringConfig({ scope, scopeKey, editable }) {
   const [overviewError, setOverviewError] = useState(null);
   const [rescoring, setRescoring] = useState(false);
   const [rescoreResult, setRescoreResult] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   const fetchOverview = useCallback(async () => {
     try {
-      setOverview((await getLeadScoringOverview(scope)).data);
+      const latest = (await getLeadScoringOverview(scope)).data;
+      setOverview(latest);
       setOverviewError(null);
+      return latest;
     } catch (err) {
       setOverviewError(errorMessage(err, 'The overview could not be loaded.'));
+      return null;
     }
   }, [scope]);
+
+  // The scores a save changed are recalculated in the background: follow them until none is due.
+  useEffect(() => {
+    if (!refreshing) return undefined;
+    let polls = 0;
+    let cancelled = false;
+    const timer = setInterval(async () => {
+      polls += 1;
+      const latest = await fetchOverview();
+      if (cancelled) return;
+      if (polls >= REFRESH_POLLS || latest?.score_freshness?.recalculation_due?.total === 0) setRefreshing(false);
+    }, REFRESH_POLL_MS);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [refreshing, fetchOverview]);
 
   const fetchAll = useCallback(async () => {
     try {
@@ -79,7 +101,10 @@ function ScoringConfig({ scope, scopeKey, editable }) {
     (reason) => updateLeadScoringConfig({ disabled, reason, expected_config_hash: data.config_hash }, scope),
     {
       success: (r) => (r.data.changed === false ? 'No changes to save' : saveMessage(overview?.automatic_refresh_enabled)),
-      onSuccess: fetchAll,
+      onSuccess: async (r) => {
+        await fetchAll();
+        if (r.data.changed !== false && overview?.automatic_refresh_enabled) setRefreshing(true);
+      },
       onConflict: fetchAll,
     },
   );
@@ -176,6 +201,11 @@ function ScoringConfig({ scope, scopeKey, editable }) {
           <div className="space-y-2 border-t border-border pt-3">
             {overviewError && <ErrorState message={overviewError} onRetry={fetchOverview} />}
             <LeadScoringOverview data={overview} />
+            {refreshing && (
+              <p role="status" data-testid="auto-refresh" className="text-xs text-muted-foreground">
+                Updating scores with the new settings…
+              </p>
+            )}
             {editable && (
               <div className="flex flex-wrap items-center gap-3">
                 <OpsButton variant="quiet" disabled={rescoring} onClick={recalculate}>

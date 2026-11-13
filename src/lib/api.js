@@ -507,6 +507,7 @@ export const listBuilderConfigs = () => api.get('/api/v1/assistant-builder/confi
 export const getBuilderConfig = (id) => api.get(`/api/v1/assistant-builder/configs/${id}`);
 export const createBuilderConfig = (data) => api.post('/api/v1/assistant-builder/configs', data);
 export const updateBuilderConfig = (id, data) => api.put(`/api/v1/assistant-builder/configs/${id}`, data);
+export const deleteBuilderConfig = (id) => api.delete(`/api/v1/assistant-builder/configs/${id}`);
 export const publishBuilderConfig = (id, version) =>
   api.post(`/api/v1/assistant-builder/configs/${id}/publish`, null, { params: version ? { version } : {} });
 export const rollbackBuilderConfig = (id, version) =>

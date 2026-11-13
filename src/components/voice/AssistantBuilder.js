@@ -18,11 +18,11 @@ import { CatalogWordsProblem, OpenerPreview, PromptText } from './builder/Previe
 import {
   User, Building2, MessageSquare, ShieldCheck, Book, StickyNote, Cpu,
   Loader2, Plus, ListRestart, Save, Rocket, RotateCcw, AlertTriangle,
-  CheckCircle2, FileEdit, History, Wrench, Sparkles, Pencil,
+  CheckCircle2, FileEdit, History, Wrench, Sparkles, Pencil, Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
-  listBuilderConfigs, getBuilderConfig, createBuilderConfig, updateBuilderConfig,
+  listBuilderConfigs, getBuilderConfig, createBuilderConfig, updateBuilderConfig, deleteBuilderConfig,
   previewBuilderConfig, publishBuilderConfig, rollbackBuilderConfig, retryBuilderConfig,
   getKnowledgeFiles, getCatalogItems, getLeadFieldRegistry, getCatalogTable, getCatalogSettings, getBuilderLanguages,
   getAssistants,
@@ -299,8 +299,10 @@ export default function AssistantBuilder() {
   // The backend enforces these (custom_prompt.validate); the UI only hides or locks.
   const canUseCustomMode = user?.role === ROLES.TENANT_ADMIN;
   const canEditRawPrompt = false;
+  const canDeleteAgents = user?.role === ROLES.TENANT_ADMIN;  // the backend enforces it too
   const [view, setView] = useState('list'); // 'list' | 'editor'
   const [configs, setConfigs] = useState([]);
+  const [deletingId, setDeletingId] = useState(null);
   const [assignedAgents, setAssignedAgents] = useState([]);
   const [loadingList, setLoadingList] = useState(false);
 
@@ -362,6 +364,22 @@ export default function AssistantBuilder() {
   useEffect(() => {
     if (view === 'list') fetchConfigs();
   }, [view, fetchConfigs]);
+
+  const handleDeleteAgent = async (e, config) => {
+    e.stopPropagation();  // the card itself opens the editor
+    if (!window.confirm(`Delete ${config.name}? It is removed from Vapi and can no longer place calls. `
+      + 'Its call history is kept.')) return;
+    setDeletingId(config.id);
+    try {
+      await deleteBuilderConfig(config.id);
+      setConfigs((current) => current.filter((c) => c.id !== config.id));
+      toast.success(`${config.name} deleted`);
+    } catch (err) {
+      toast.error(errorDetail(err, 'Failed to delete the agent'));
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   useEffect(() => {
     if (view !== 'editor') return;
@@ -600,7 +618,16 @@ export default function AssistantBuilder() {
                         <div className="w-12 h-12 rounded-xl bg-muted border border-border flex items-center justify-center">
                           <User className="w-6 h-6 text-muted-foreground" />
                         </div>
-                        <StatusBadge status={c.latest?.status} />
+                        <div className="flex items-center gap-2">
+                          <StatusBadge status={c.latest?.status} />
+                          {canDeleteAgents && (
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                              title={`Delete ${c.name}`} aria-label={`Delete ${c.name}`} data-testid={`delete-agent-${c.id}`}
+                              disabled={deletingId === c.id} onClick={(e) => handleDeleteAgent(e, c)}>
+                              {deletingId === c.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                            </Button>
+                          )}
+                        </div>
                       </div>
                       <h4 className="font-bold leading-none">{c.name}</h4>
                       <p className="text-xs text-muted-foreground mt-2 line-clamp-1">

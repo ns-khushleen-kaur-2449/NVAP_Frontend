@@ -312,6 +312,15 @@
     @apply bg-background text-foreground;
     font-family: 'Manrope', ui-sans-serif, system-ui, sans-serif;
   }
+  /* Native dropdown lists are painted by the browser (white by default) but inherit
+     the theme's text color, which made options unreadable in dark mode. */
+  :root { color-scheme: light; }
+  .dark { color-scheme: dark; }
+  select option,
+  select optgroup {
+    background-color: hsl(var(--popover));
+    color: hsl(var(--popover-foreground));
+  }
 }
 
 .font-display {

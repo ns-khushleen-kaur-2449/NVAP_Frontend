@@ -401,18 +401,17 @@ export const initiateSmartsdrCall = ({ phone_number, user_name, assistant_id, pr
 };
 export const scheduleVoiceCall = (data) => api.post('/api/voice/schedule', data);
 
+// The endpoint reads form fields only (title, content, file), so text-only notes go as form data too;
+// a JSON body would arrive empty ("Provide content text or a file").
 export const createKnowledgeBase = (payload, file) => {
-  if (file) {
-    const formData = new FormData();
-    Object.entries(payload || {}).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) formData.append(key, value);
-    });
-    formData.append('file', file);
-    return api.post('/api/knowledge-base', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
-  }
-  return api.post('/api/knowledge-base', payload);
+  const formData = new FormData();
+  Object.entries(payload || {}).forEach(([key, value]) => {
+    if (value !== undefined && value !== null) formData.append(key, value);
+  });
+  if (file) formData.append('file', file);
+  return api.post('/api/knowledge-base', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
 };
 
 export const getCallLogs = (params) => api.get('/api/call-logs', { params });
@@ -458,6 +457,9 @@ export const uploadKnowledgeFile = (assistantId, file) => {
   });
 };
 export const getKnowledgeFiles = () => api.get('/api/v1/assistants/knowledge-base/files');
+// Refused (409, naming the agents) while an agent still uses the file.
+export const deleteKnowledgeFile = (fileId) =>
+  api.delete(`/api/v1/assistants/knowledge-base/files/${encodeURIComponent(fileId)}`);
 
 // ── Assistant Builder (guided, versioned configs published to Vapi) ──
 export const getCatalogItems = () => api.get('/api/v1/catalog/items');

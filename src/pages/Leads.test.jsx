@@ -49,7 +49,7 @@ describe('Leads list scores', () => {
     ...overrides,
   });
 
-  it('asks for the summaries and shows the number with its temperature, assessment and freshness', async () => {
+  it('asks for the summaries and shows the number with its assessment, without temperature or freshness chips', async () => {
     api.getProspects.mockResolvedValue({ data: { total: 3, prospects: [
       scored('a', summary(), { engagement_label: 'assessed', latest_attempt: { state: 'accepted' },
         secondary_badge: { kind: 'latest_call', state: 'failed' } }),
@@ -63,18 +63,21 @@ describe('Leads list scores', () => {
     const a = await screen.findByTestId('score-cell-a');
     expect(api.getProspects).toHaveBeenCalledWith(expect.objectContaining({ include: 'score_summary,assessment_status' }));
     expect(a).toHaveTextContent('72');
-    expect(within(a).getByTestId('temperature-chip')).toHaveTextContent('HOT');
     expect(within(a).getByTestId('engagement-badge')).toHaveTextContent('Assessed');
     // A failure the list cannot show as confirmed is not called Failed.
     expect(within(a).getByTestId('secondary-badge')).toHaveTextContent('Latest call: No result recorded yet');
     const b = screen.getByTestId('score-cell-b');
-    expect(within(b).getByTestId('temperature-chip')).toHaveTextContent('PROVISIONAL');
-    expect(within(b).getByTestId('freshness-chip')).toHaveTextContent('RECALCULATION DUE');
+    expect(b).toHaveTextContent('51');
     expect(within(b).getByTestId('engagement-badge')).toHaveTextContent('Not contacted');
     const c = screen.getByTestId('score-cell-c');
     expect(c).toHaveTextContent('64');
-    expect(within(c).queryByTestId('temperature-chip')).not.toBeInTheDocument();
-    expect(within(c).getByTestId('freshness-chip')).toHaveTextContent('OUT OF DATE');
+    // The list shows no HOT/WARM/COLD/PROVISIONAL or RECALCULATION DUE/OUT OF DATE chips.
+    for (const cell of [a, b, c]) {
+      expect(within(cell).queryByTestId('temperature-chip')).not.toBeInTheDocument();
+      expect(within(cell).queryByTestId('freshness-chip')).not.toBeInTheDocument();
+    }
+    expect(a).not.toHaveTextContent('HOT');
+    expect(b).not.toHaveTextContent('RECALCULATION DUE');
   });
 
   it('never colours a score by a cut-off of its own', async () => {
@@ -85,7 +88,7 @@ describe('Leads list scores', () => {
     renderWithAuth(<LeadsPage />, { user: USERS.manager, path: '/leads' });
     const cell = await screen.findByTestId('score-cell-p');
     expect(cell.querySelector('[style*="173"]')).toBeNull();
-    expect(within(cell).getByTestId('temperature-chip')).toHaveTextContent('PROVISIONAL');
+    expect(cell).toHaveTextContent('85');
     expect(cell).not.toHaveTextContent('HOT');
   });
 });
@@ -210,9 +213,10 @@ describe('A lead whose score is being calculated', () => {
     api.getProspects.mockResolvedValueOnce(listOf(lead(DUE))).mockResolvedValue(listOf(lead(AFTER)));
     fireEvent.click(dialog.getByRole('button', { name: 'Save changes' }));
     await waitFor(() => expect(screen.getByTestId('score-status')).toHaveTextContent('Recalculation due'));
-    // On the list row and in the open panel alike.
+    // In the open panel only: the list row no longer shows freshness chips.
     expect(screen.getAllByTestId('freshness-chip').map((chip) => chip.textContent))
-      .toEqual(['RECALCULATION DUE', 'RECALCULATION DUE']);
+      .toEqual(['RECALCULATION DUE']);
+    expect(within(screen.getByTestId('score-cell-p9')).queryByTestId('freshness-chip')).not.toBeInTheDocument();
 
     await act(async () => { jest.advanceTimersByTime(10000); });
     await waitFor(() => expect(screen.getByTestId('score-status')).toHaveTextContent('Current'));

@@ -350,3 +350,31 @@ describe('custom prompt mode', () => {
     expect(screen.queryByTitle('Edit the whole prompt (Super Admin)')).not.toBeInTheDocument();
   });
 });
+
+describe('after Publish', () => {
+  const openRiya = async () => {
+    api.listBuilderConfigs.mockResolvedValue({ data: [config(LEGACY)] });
+    api.getBuilderConfig.mockResolvedValue({ data: config(LEGACY) });
+    render(<AssistantBuilder />);
+    fireEvent.click(await screen.findByText('Riya'));
+    await screen.findByRole('button', { name: /Save new version/ });
+  };
+
+  it('goes back to the agents list once it is published', async () => {
+    api.publishBuilderConfig.mockResolvedValue({ data: { version: 3, status: 'published' } });
+    await openRiya();
+    fireEvent.click(screen.getByRole('button', { name: /^Publish$/ }));
+    expect(await screen.findByRole('heading', { name: 'Agent Builder' })).toBeInTheDocument();
+    expect(api.publishBuilderConfig).toHaveBeenCalledWith('c1', 3);
+    expect(screen.queryByRole('button', { name: /Save new version/ })).not.toBeInTheDocument();
+  });
+
+  it('stays on the agent when publishing fails, to show why', async () => {
+    api.publishBuilderConfig.mockRejectedValue({ response: { status: 400, data: { detail: 'Vapi returned HTTP 400' } } });
+    await openRiya();
+    fireEvent.click(screen.getByRole('button', { name: /^Publish$/ }));
+    await waitFor(() => expect(require('sonner').toast.error).toHaveBeenCalled());
+    expect(screen.getByRole('button', { name: /Save new version/ })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Agent Builder' })).not.toBeInTheDocument();
+  });
+});

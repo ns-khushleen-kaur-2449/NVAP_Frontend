@@ -157,3 +157,20 @@ describe('sorting by date added', () => {
     expect(names).toEqual(['Picked New', 'Table Lead', 'Picked Old']);
   });
 });
+
+it('shows each lead\'s temperature from the backend: HOT/WARM/COLD, PROVISIONAL, or a dash', () => {
+  const temp = (label, provisional = false) => ({ lead_score_summary: { temperature_display: { label, provisional } } });
+  render(<LeadCampaignBuilder assistants={ASSISTANTS} leads={[
+    { id: 'hot', name: 'Hot Lead', ...temp('HOT') },
+    { id: 'warm', name: 'Warm Lead', ...temp('WARM') },
+    { id: 'cold', name: 'Cold Lead', ...temp('COLD') },
+    { id: 'prov', name: 'New Lead', ...temp('PROVISIONAL', true) },
+    { id: 'none', name: 'Unscored Lead' },
+  ]} />);
+  expect(screen.getByText('Temperature')).toBeInTheDocument();
+  expect(screen.getByTestId('temperature-hot')).toHaveTextContent('HOT');
+  expect(screen.getByTestId('temperature-warm')).toHaveTextContent('WARM');
+  expect(screen.getByTestId('temperature-cold')).toHaveTextContent('COLD');
+  expect(screen.getByTestId('temperature-prov')).toHaveTextContent('PROVISIONAL');
+  expect(screen.getByTestId('temperature-none')).toHaveTextContent('—');
+});

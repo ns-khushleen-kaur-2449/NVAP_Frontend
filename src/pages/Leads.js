@@ -22,9 +22,7 @@ import { DEPARTMENTS, LIST_INCLUDE, toLeadRow } from '@/lib/prospects';
 import { StageBadge, PriorityBadge, StatusBadge } from '@/components/shared/StatusBadges';
 import LeadScorePanel from '@/components/leads/LeadScorePanel';
 import QualificationCard from '@/components/leads/QualificationCard';
-import TemperatureChip from '@/components/leads/TemperatureChip';
 import EngagementBadge from '@/components/leads/EngagementBadge';
-import ScoreFreshnessChip from '@/components/leads/ScoreFreshnessChip';
 import { leadDetailEntries } from '@/lib/leadDetails';
 import { CLASSIFICATION_LABELS } from '@/lib/leadScoreLabels';
 import usePolling from '@/hooks/usePolling';
@@ -44,8 +42,9 @@ const scoreVersion = (lead) => {
   return `${summary.calculated_at || ''}:${summary.status || ''}:${summary.freshness_indicator || ''}`;
 };
 
-// The Score column: the number with its temperature, assessment and freshness, each from the
-// backend's summaries (no cut-offs here).  A stale score keeps its number, marked OUT OF DATE.
+// The Score column: the number and its assessment, from the backend's summaries (no cut-offs here).
+// The temperature (HOT/WARM/COLD) and freshness (RECALCULATION DUE / OUT OF DATE) chips are not shown
+// in this list; a stale score's number is greyed out.  The lead's score panel still explains both.
 function ScoreCell({ lead }) {
   const summary = lead.lead_score_summary;
   const assessment = lead.intent_assessment_status;
@@ -61,10 +60,6 @@ function ScoreCell({ lead }) {
           {CLASSIFICATION_LABELS.pending_calculation.label}
         </span>
       ) : <span className="text-xs text-muted-foreground">--</span>}
-      <div className="flex flex-wrap justify-end gap-1">
-        <TemperatureChip display={summary?.temperature_display} />
-        <ScoreFreshnessChip indicator={summary?.freshness_indicator} />
-      </div>
       {assessment && (
         <EngagementBadge compact label={assessment.engagement_label} latestAttempt={assessment.latest_attempt}
           secondaryBadge={assessment.secondary_badge} />

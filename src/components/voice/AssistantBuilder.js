@@ -516,9 +516,11 @@ export default function AssistantBuilder() {
   const runPublish = async (action, configId, version, successMessage) => {
     setPublishing(true);
     setPublishProblem(null);
+    let published = false;
     try {
       const res = await action(configId, version);
       toast.success(`${successMessage} (version ${res.data.version})`);
+      published = true;
     } catch (e) {
       const message = errorDetail(e, 'Publishing to Vapi failed. See the version status for details.');
       toast.error(message);
@@ -527,6 +529,8 @@ export default function AssistantBuilder() {
       await refreshConfig(configId);
       setPublishing(false);
     }
+    // Back to the agents list once it is live (the list reloads); a failure stays here to show why.
+    if (published) setView('list');
   };
 
   const publishLatest = async () => {

@@ -20,6 +20,7 @@ import CampaignLaunchDialog from './CampaignLaunchDialog';
 import AddLeadDialog from './AddLeadDialog';
 import ImportLeadsDialog from './ImportLeadsDialog';
 import AiFilterPickerDialog from './AiFilterPickerDialog';
+import TemperatureChip from '../leads/TemperatureChip';
 import { activeLabel, applyLeadFilters, buildLeadFilters, detailField, detailValue } from '../../lib/leadFilters';
 
 const CALL_ATTEMPT_OPTIONS = [
@@ -446,8 +447,9 @@ export default function LeadCampaignBuilder({
             />
             <div className="grid grid-cols-12 w-full text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
               <div className="col-span-4 pl-1">Lead Name</div>
-              <div className="col-span-3">Contact</div>
-              <div className="col-span-3">{detail ? detail.label : 'City'}</div>
+              <div className="col-span-2">Contact</div>
+              <div className="col-span-2">{detail ? detail.label : 'City'}</div>
+              <div className="col-span-2 text-center">Temperature</div>
               <div className="col-span-2 text-right">Status</div>
             </div>
           </div>
@@ -485,15 +487,22 @@ export default function LeadCampaignBuilder({
                           {lead.from_prospecting && <Badge variant="outline" className="h-4 px-1 text-[9px]">From Prospecting</Badge>}
                         </div>
                       </div>
-                      <div className="col-span-3 text-muted-foreground truncate">
+                      <div className="col-span-2 text-muted-foreground truncate">
                         <div className="text-xs font-medium">{lead.phone || '-'}</div>
                       </div>
-                      <div className="col-span-3">
+                      <div className="col-span-2">
                          {detailValue(lead, detail) ? (
                            <Badge variant="outline" className="font-medium bg-purple-50 text-purple-700 border-purple-100 text-[10px] px-2 py-0 max-w-full truncate">
                              {detailValue(lead, detail)}
                            </Badge>
                          ) : <span className="text-xs text-muted-foreground">—</span>}
+                      </div>
+                      {/* HOT / WARM / COLD from the backend once the lead has an accepted assessment;
+                          PROVISIONAL before that; nothing for an unscored or out-of-date score. */}
+                      <div className="col-span-2 text-center" data-testid={`temperature-${lead.id}`}>
+                        {lead.lead_score_summary?.temperature_display?.label
+                          ? <TemperatureChip display={lead.lead_score_summary.temperature_display} className="text-[10px]" />
+                          : <span className="text-xs text-muted-foreground">—</span>}
                       </div>
                       <div className="col-span-2 text-right">
                         <StageBadge stage={lead.stage} className="text-[10px] uppercase tracking-tighter" />

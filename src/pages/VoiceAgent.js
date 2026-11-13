@@ -7,7 +7,7 @@ import { Textarea } from '../components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { toast } from 'sonner';
-import { getProspects, getAssistants, previewCampaignCsv, getCsvCallResults, initiateSmartsdrCall, createKnowledgeBase, getKnowledgeFiles } from '../lib/api';
+import { getProspects, getAssistants, previewCampaignCsv, getCsvCallResults, initiateSmartsdrCall, createKnowledgeBase, getKnowledgeFiles, deleteKnowledgeFile } from '../lib/api';
 import { toLeadRow } from '../lib/prospects';
 import { dropPicks, loadPicks, mergePicks, savePicks } from '../lib/builderPicks';
 import CallLogsList from '../components/voice/CallLogsList';
@@ -20,7 +20,7 @@ import { FeatureOff } from '@/components/auth/FeatureRoute';
 import { canCreateCampaigns, canOperate, canUseAssistantRequests, voiceTabEnabled } from '@/lib/rbac';
 import ReasonDialog from '@/components/ops/ReasonDialog';
 import SingleCallBlock from '@/components/ops/SingleCallBlock';
-import { Loader2, PhoneCall, BookOpen, Mic, UploadCloud, Phone, RotateCw, Layers, Info, FileText, Database, Search, Copy, Check, ClipboardCheck } from 'lucide-react';
+import { Loader2, PhoneCall, BookOpen, Mic, UploadCloud, Phone, RotateCw, Layers, Info, FileText, Database, Search, Copy, Check, ClipboardCheck, Trash2 } from 'lucide-react';
 
 /* ─── Sidebar Tab Definitions (Voice Agent's own sub-views; nav itself now
    lives in the shared app Sidebar, components/layout/Sidebar.js) ─────────── */
@@ -124,6 +124,22 @@ export default function VoiceAgentPage() {
     setLoadingKbFiles(false);
   }, []);
 
+  const [deletingKbId, setDeletingKbId] = useState(null);
+  const handleDeleteKbFile = async (file) => {
+    if (!window.confirm(`Delete "${file.name}"? It is removed from Vapi permanently.`)) return;
+    setDeletingKbId(file.id);
+    try {
+      await deleteKnowledgeFile(file.id);
+      toast.success(`"${file.name}" deleted`);
+      await fetchKbFiles();
+    } catch (e) {
+      // 409 names the agents still using it.
+      toast.error(e.response?.data?.detail || 'Failed to delete the file');
+    } finally {
+      setDeletingKbId(null);
+    }
+  };
+
   useEffect(() => {
     if (activeTab === 'kb') {
       fetchKbFiles();
@@ -132,7 +148,7 @@ export default function VoiceAgentPage() {
 
   const refreshLeads = useCallback(async () => {
     try {
-      const res = await getProspects({ leads_only: true, limit: 1000 });
+      const res = await getProspects({ leads_only: true, limit: 1000, include: 'score_summary' });
       setLeads((res.data?.prospects || []).map(toLeadRow));
     } catch (err) {
       console.error('Failed to refresh leads:', err);
@@ -144,7 +160,7 @@ export default function VoiceAgentPage() {
       setLoadingCampaignData(true);
       try {
         const [leadsRes, assistantsRes] = await Promise.allSettled([
-          getProspects({ leads_only: true, limit: 1000 }),
+          getProspects({ leads_only: true, limit: 1000, include: 'score_summary' }),
           getAssistants().catch(() => ({ data: [] }))
         ]);
 
@@ -681,10 +697,26 @@ export default function VoiceAgentPage() {
                             <h4 className="text-xs font-medium truncate text-foreground pr-4" title={file.name}>
                               {file.name}
                             </h4>
-                            <span className="shrink-0 flex items-center gap-1 bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20 text-[9px] font-semibold px-2 py-0.5 rounded-full select-none">
-                              <Check className="w-2.5 h-2.5" />
-                              Vapi Parsed
-                            </span>
+                            <div className="shrink-0 flex items-center gap-1.5">
+                              <span className="flex items-center gap-1 bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20 text-[9px] font-semibold px-2 py-0.5 rounded-full select-none">
+                                <Check className="w-2.5 h-2.5" />
+                                Vapi Parsed
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteKbFile(file)}
+                                disabled={deletingKbId === file.id}
+                                className="p-1 rounded-md text-muted-foreground hover:text-red-500 hover:bg-red-500/10 focus:outline-none disabled:opacity-50 transition-colors"
+                                title="Delete file"
+                                aria-label={`Delete ${file.name}`}
+                              >
+                                {deletingKbId === file.id ? (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                            </div>
                           </div>
                           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1.5 text-[11px] text-muted-foreground">
                             <span>Size: {formatBytes(file.size)}</span>

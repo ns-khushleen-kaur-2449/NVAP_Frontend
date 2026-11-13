@@ -75,3 +75,27 @@ it('hands a search to Search leads for editing', async () => {
   await user.click(await screen.findByRole('button', { name: 'Edit the conditions of saved search Indian CTOs in Search leads' }));
   expect(onEdit).toHaveBeenCalledWith(SAVED);
 });
+
+it('brings the chosen search’s results into view, since a long list can push them below the fold', async () => {
+  const user = userEvent.setup();
+  const scroll = jest.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(() => {});
+  runSavedFilter.mockResolvedValue({ data: {
+    items: [{ prospect_id: 'p1', full_name: 'Asha Rao', score: 90 }], total: 30, page: 1, page_size: 25, total_pages: 2,
+    sort: 'score_desc', rules_applied: [],
+  } });
+  render(<SavedSearches refreshKey={0} canShare onEdit={jest.fn()} />);
+  await user.click(await screen.findByRole('button', { name: 'Show results for saved search Indian CTOs' }));
+  const heading = (await screen.findByText(/Results for/)).closest('h3');
+  await waitFor(() => expect(heading).toHaveFocus());
+  expect(scroll).toHaveBeenCalledTimes(1);
+  // The list scrolls on its own instead of growing the page.
+  expect(screen.getByRole('list', { name: 'Saved searches' }).className).toMatch(/overflow-y-auto/);
+
+  // Choosing another search scrolls again; re-running the same one (page, sort) does not.
+  await user.click(screen.getByRole('button', { name: 'Show results for saved search Indian CTOs' }));
+  await waitFor(() => expect(runSavedFilter).toHaveBeenCalledTimes(2));
+  expect(scroll).toHaveBeenCalledTimes(1);
+  await user.click(screen.getByRole('button', { name: 'Show results for saved search Team list' }));
+  await waitFor(() => expect(scroll).toHaveBeenCalledTimes(2));
+  scroll.mockRestore();
+});

@@ -19,10 +19,10 @@ const PAGE_SIZE_ID = 'apollo-preview-page-size';
 
 // GET /api/apollo/status reasons, in words. Anything unknown gets the last one.
 const STATUS_MESSAGES = {
-  integration_disabled: ['Apollo Preview is switched off', 'An administrator has not turned the Apollo integration on for this environment.'],
-  not_configured: ['Apollo Preview is not set up yet', 'The Apollo integration is on but has not been given its settings. Please contact your administrator.'],
+  not_configured: ['Apollo Preview is not set up yet', 'Your organisation has access, but the Apollo service has not been configured. Please contact your administrator.'],
   role_not_allowed: ['Apollo Preview is not available for your role', 'It is open to Tenant Admins, Managers and Sales Reps.'],
   tenant_not_allowed: ['Apollo Preview is not enabled for your organisation', 'Please contact your administrator if you need it.'],
+  access_check_failed: ['Apollo Preview is not available right now', 'Its access could not be checked. Please try again.'],
   unknown: ['Apollo Preview is not available right now', 'Please try again later.'],
 };
 
@@ -50,8 +50,9 @@ function ConditionNotes({ notes, request, fieldsByKey }) {
  * It has its own filter, separate from Search leads. Results come straight from
  * Apollo through our backend, are masked, and are never saved or imported. The
  * backend decides who may use it; this screen only reports what it answers.
+ * `onStatus(data)` receives every status answer, so the page can withdraw the tab after a revoke.
  */
-export default function ApolloPreview() {
+export default function ApolloPreview({ onStatus } = {}) {
   const builder = useFilterBuilder();
   const { conditions, incomplete, parsing, fieldsByKey } = builder;
 
@@ -78,10 +79,11 @@ export default function ApolloPreview() {
     try {
       const { data } = await getApolloStatus();
       if (mounted.current) setStatus({ enabled: data?.enabled === true, reason: data?.reason || null });
+      onStatus?.(data);
     } catch (error) {
       if (mounted.current) setStatus({ failed: describeApiError(error, 'Could not check whether Apollo Preview is available.') });
     }
-  }, []);
+  }, [onStatus]);
 
   useEffect(() => { loadStatus(); }, [loadStatus]);
 

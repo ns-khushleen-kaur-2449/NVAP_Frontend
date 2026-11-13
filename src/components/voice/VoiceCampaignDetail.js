@@ -25,8 +25,12 @@ import OpsButton from '@/components/ops/OpsButton';
 import { EmptyState, ErrorState, ScrollTable, Skeleton, SkeletonRows } from '@/components/ops/States';
 import { describeConfig, describeRetryDelays, describeWindow, isoToZoned, zonedToIso } from './CampaignSettingsFields';
 import CampaignEditDialog from './CampaignEditDialog';
+import CampaignPitchCard from './CampaignPitchCard';
+import { PreflightProblems } from './CampaignOfferFields';
+import { preflightProblems } from '@/lib/campaignOffer';
 import CallLogDetail from './CallLogDetail';
 import { IdChip } from './VoiceCampaigns';
+import ScoreChips from '@/components/leads/ScoreChips';
 
 const REFRESH_MS = 30000;
 const TABS = [{ id: 'overview', label: 'Overview' }, { id: 'contacts', label: 'Contacts' }, { id: 'activity', label: 'Activity' }];
@@ -72,7 +76,7 @@ function DateTimeFields({ date, time, setDate, setTime, zone }) {
   );
 }
 
-function CampaignActionDialog({ action, campaign, onClose, onDone }) {
+function CampaignActionDialog({ action, campaign, onClose, onDone, onRefused }) {
   const zone = campaign.timezone || 'Asia/Kolkata';
   const start = isoToZoned(campaign.scheduled_at, zone);
   const [date, setDate] = useState(start.date);
@@ -94,8 +98,10 @@ function CampaignActionDialog({ action, campaign, onClose, onDone }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [action, campaign, date, time, zone, toppedUp]);
-  const { run } = useApiAction(request, { success: 'Done', onSuccess: onDone, onConflict: onDone });
-  const confirm = async (reason) => Boolean(await run(reason));
+  // A pre-flight refusal (409) lists every problem on the page, not only in a toast.
+  const conflict = useCallback((error) => { onRefused?.(preflightProblems(error)); return onDone?.(); }, [onRefused, onDone]);
+  const { run } = useApiAction(request, { success: 'Done', onSuccess: onDone, onConflict: conflict });
+  const confirm = async (reason) => { onRefused?.(null); return Boolean(await run(reason)); };
   const close = (open) => { if (!open) onClose(); };
   const name = campaign.name;
 
@@ -283,7 +289,10 @@ function ContactsTab({ campaign, contacts, user, onChanged, onOpenCall }) {
                 </td>
                 <td className="ops-num px-3 py-2.5">{c.attempts ?? 0}{c.max_attempts ? ` / ${c.max_attempts}` : ''}</td>
                 <td className="ops-num px-3 py-2.5">{formatDuration(c.duration_seconds)}</td>
-                <td className="ops-num px-3 py-2.5">{c.lead_score ?? '—'}</td>
+                <td className="px-3 py-2.5">
+                  <span className="ops-num">{c.lead_score ?? '—'}</span>
+                  <ScoreChips chips={c} className="mt-1" />
+                </td>
                 <td className="px-3 py-2.5">
                   {c.last_outcome ? callStatusMeta(c.last_outcome).label : '—'}
                   {c.call_id && (
@@ -304,7 +313,7 @@ function ContactsTab({ campaign, contacts, user, onChanged, onOpenCall }) {
   );
 }
 
-function Overview({ campaign, contacts, onEditRules, canEditRules }) {
+function Overview({ campaign, contacts, onEditRules, canEditRules, user, onChanged }) {
   const stats = useMemo(() => [...contacts.reduce((m, c) => m.set(c.status_label, (m.get(c.status_label) || 0) + 1), new Map())],
     [contacts]);
   return (
@@ -340,6 +349,7 @@ function Overview({ campaign, contacts, onEditRules, canEditRules }) {
           </dl>
         )}
       </section>
+      <CampaignPitchCard campaign={campaign} user={user} onSaved={onChanged} />
     </div>
   );
 }
@@ -354,6 +364,7 @@ export default function VoiceCampaignDetail() {
   const [error, setError] = useState(null);
   const [tab, setTab] = useState('overview');
   const [action, setAction] = useState(null);
+  const [refused, setRefused] = useState(null); // the last pre-flight refusal, every problem listed
   const [editOpen, setEditOpen] = useState(false);
   const [callId, setCallId] = useState(null);
 
@@ -434,12 +445,15 @@ export default function VoiceCampaignDetail() {
             ))}
           </div>
 
+          <PreflightProblems problems={refused} />
           {tab === 'overview' && <Overview campaign={campaign} contacts={contacts} onEditRules={() => setEditOpen(true)}
+            user={user} onChanged={load}
             canEditRules={manager && !FINAL.includes(campaign.status) && ['processing', 'paused'].includes(campaign.status)} />}
           {tab === 'contacts' && <ContactsTab campaign={campaign} contacts={contacts} user={user} onChanged={load} onOpenCall={setCallId} />}
           {tab === 'activity' && <div className="ops-card p-4"><EventTimeline items={campaignEventItems(events)} /></div>}
 
-          {action && <CampaignActionDialog action={action} campaign={campaign} onClose={() => setAction(null)} onDone={load} />}
+          {action && <CampaignActionDialog action={action} campaign={campaign} onClose={() => setAction(null)} onDone={load}
+            onRefused={setRefused} />}
           <CampaignEditDialog campaign={campaign} open={editOpen} onOpenChange={setEditOpen} onSaved={() => load()} />
         </>
       )}

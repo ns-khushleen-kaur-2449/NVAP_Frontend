@@ -10,9 +10,11 @@ import {
   canLiftDoNotCall,
   canManageCampaigns,
   canManageUser,
+  canUseAdmin,
   canViewAssistants,
   creatableRoles,
   hasPermission,
+  homePath,
 } from './rbac';
 
 const ROLES = ['super_admin', 'tenant_admin', 'manager', 'rep'];
@@ -120,7 +122,7 @@ describe('permissions', () => {
 
 
 describe('canViewAssistants (backend AssistantAction.VIEW: Manager and up)', () => {
-  it.each([['super_admin', true], ['tenant_admin', true], ['manager', true], ['rep', false]])('%s -> %s', (role, expected) => {
+  it.each([['super_admin', false], ['tenant_admin', true], ['manager', true], ['rep', false]])('%s -> %s', (role, expected) => {
     expect(canViewAssistants({ role })).toBe(expected);
   });
   it('refuses no user', () => {
@@ -155,5 +157,24 @@ describe('canLiftDoNotCall', () => {
     expect(['super_admin', 'tenant_admin', 'manager', 'rep'].map((role) => canLiftDoNotCall({ role })))
       .toEqual([false, true, false, false]);
     expect(canLiftDoNotCall(null)).toBe(false);
+  });
+});
+
+describe('platform control area (backend SUPER_ADMIN_PERMISSIONS, require_super_admin)', () => {
+  const PLATFORM = [PERMISSIONS.ADMIN_ACCESS, PERMISSIONS.PLATFORM_OVERVIEW_VIEW, PERMISSIONS.PLATFORM_TOOLS_MANAGE];
+
+  test('only a super admin holds the platform permissions', () => {
+    PLATFORM.forEach((perm) => expect(ROLES.filter((r) => hasPermission(actorOf(r), perm))).toEqual(['super_admin']));
+    expect(ROLES.filter((r) => canUseAdmin(actorOf(r)))).toEqual(['super_admin']);
+  });
+
+  test('a super admin lands on /admin/overview, everyone else on /dashboard', () => {
+    expect(ROLES.map((r) => homePath(actorOf(r)))).toEqual(['/admin/overview', '/dashboard', '/dashboard', '/dashboard']);
+    expect(homePath(null)).toBe('/dashboard');
+  });
+
+  test('the server\'s permissions decide when present', () => {
+    expect(canUseAdmin({ role: 'super_admin', permissions: [] })).toBe(false);
+    expect(canUseAdmin({ role: 'rep', permissions: ['users.view'] })).toBe(false);
   });
 });

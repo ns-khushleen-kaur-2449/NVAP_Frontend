@@ -4,7 +4,7 @@
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="theme-color" content="#F87217" />
-        <meta name="description" content="SmartSDR — AI Voice Agent and Report Agent for real-estate teams, by Netsmartz" />
+        <meta name="description" content="SmartSDR — AI Voice Agent for real-estate teams, by Netsmartz" />
         <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23F87217'/%3E%3Ctext x='16' y='22' font-size='18' font-family='Arial, sans-serif' font-weight='700' fill='white' text-anchor='middle'%3ES%3C/text%3E%3C/svg%3E" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -100,14 +100,56 @@
                     }),
                     (e.__SV = 1));
             })(document, window.posthog || []);
+            // Product analytics only (Arpita, Nov 2026): no personal or customer data leaves the browser.
+            // - Recordings show no text and no typed values; cross-origin frames (payment, calendar) are not recorded.
+            // - Click tracking keeps no element text or attributes.
+            // - Page addresses are sent without their query string or #fragment (tokens, codes, emails).
+            // - Pages that cannot be masked safely (sign-in, settings, billing, inbox, call audio) are never recorded.
+            var NOT_RECORDED = /^\/(login|register|settings|billing|inbox|calls|audio-upload|call-quality)(\/|$)/;
+            function withoutQuery(url) {
+                return typeof url === "string" ? url.split(/[?#]/)[0] : url;
+            }
             posthog.init("phc_xAvL2Iq4tFmANRE7kzbKwaSqp1HJjN7x48s3vr0CMjs", {
                 api_host: "https://us.i.posthog.com",
                 person_profiles: "identified_only", // or 'always' to create profiles for anonymous users as well,
+                mask_all_text: true,
+                mask_all_element_attributes: true,
+                disable_session_recording: true, // started below, page by page
                 session_recording: {
-                    recordCrossOriginIframes: true,
+                    maskAllInputs: true,
+                    maskTextSelector: "*",
+                    recordCrossOriginIframes: false,
                     capturePerformance: false,
                 },
+                before_send: function (event) {
+                    var props = event && event.properties;
+                    if (props) {
+                        ["$current_url", "$referrer", "$initial_referrer", "$prev_pageview_pathname"].forEach(function (key) {
+                            if (props[key]) props[key] = withoutQuery(props[key]);
+                        });
+                    }
+                    return event;
+                },
             });
+            (function () {
+                function syncRecording() {
+                    if (NOT_RECORDED.test(window.location.pathname)) {
+                        posthog.stopSessionRecording();
+                    } else {
+                        posthog.startSessionRecording();
+                    }
+                }
+                ["pushState", "replaceState"].forEach(function (name) {
+                    var original = history[name];
+                    history[name] = function () {
+                        var result = original.apply(this, arguments);
+                        syncRecording();
+                        return result;
+                    };
+                });
+                window.addEventListener("popstate", syncRecording);
+                syncRecording();
+            })();
         </script>
     </body>
 </html>

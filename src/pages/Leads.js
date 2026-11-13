@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import ProspectTimeline from '@/components/ops/ProspectTimeline';
+import EditLeadDialog from '@/components/leads/EditLeadDialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,49 +10,97 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
-import { Plus, Search, Sparkles, X, ChevronRight, ChevronLeft, Users, Download, UserCog, ArrowRight, HelpCircle } from 'lucide-react';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Plus, Pencil, Search, Sparkles, X, ChevronRight, ChevronLeft, Users, Download, UserCog, ArrowRight, Archive, ArchiveRestore, Trash2 } from 'lucide-react';
 import {
   getProspect, getProspects, createProspect,
+  archiveProspect, restoreProspect, deleteProspect,
   bulkQualifyLeads, bulkAssignLeads, bulkUpdateStage,
   exportLeadsCSV, downloadBlob
 } from '@/lib/api';
+import { useAuth } from '@/lib/AuthContext';
 import { formatCurrency, STAGE_OPTIONS } from '@/lib/utils';
-import { toLeadRow } from '@/lib/prospects';
+import { DEPARTMENTS, LIST_INCLUDE, toLeadRow } from '@/lib/prospects';
 import { StageBadge, PriorityBadge, StatusBadge } from '@/components/shared/StatusBadges';
-import { ScoreGauge } from '@/components/shared/ScoreGauge';
+import LeadScorePanel from '@/components/leads/LeadScorePanel';
+import QualificationCard from '@/components/leads/QualificationCard';
+import EngagementBadge from '@/components/leads/EngagementBadge';
+import { leadDetailEntries } from '@/lib/leadDetails';
+import { CLASSIFICATION_LABELS } from '@/lib/leadScoreLabels';
+import usePolling from '@/hooks/usePolling';
 
-const ScoreFactorsPanel = ({ factors, whyScore }) => {
-  if (!factors || factors.length === 0) return null;
-  return (
-    <div className="p-3 rounded-lg border border-border bg-[hsl(var(--surface-2))]">
-      <p className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
-        <HelpCircle className="w-3 h-3" /> Why This Score
-      </p>
-      {whyScore && <p className="text-sm mb-3 text-foreground/90">{whyScore}</p>}
-      <div className="space-y-2">
-        {factors.map((f, i) => (
-          <div key={i}>
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-xs font-medium">{f.factor}</span>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] text-muted-foreground">w:{f.weight}%</span>
-                <span className="text-xs tabular-nums font-medium" style={{
-                  color: f.score >= 70 ? 'hsl(173,80%,36%)' : f.score >= 40 ? 'hsl(38,55%,62%)' : 'hsl(0,72%,52%)'
-                }}>{f.score}/100</span>
-              </div>
-            </div>
-            <Progress value={f.score} className="h-1.5" />
-            <p className="text-[10px] text-muted-foreground mt-0.5">{f.reason}</p>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+// While a listed lead's score is being calculated (Pending Calculation: queued for the lead-score worker),
+// or the lead just edited has a score due for recalculation, the list is read again every PENDING_RECHECK_MS,
+// visible tab only, at most PENDING_RECHECKS times; creating or editing a lead allows that many again.
+// Nothing is polled otherwise.  After the last check a lead still pending keeps saying so.
+const PENDING_RECHECK_MS = 10000;
+const PENDING_RECHECKS = 6;
+const isPending = (lead) => lead.lead_score_summary?.classification === 'pending_calculation';
+const isDue = (lead) => lead.lead_score_summary?.freshness_indicator === 'recalculation_due';
+// The open lead's score panel reloads when its score is calculated, stops being current or becomes due
+// for recalculation (an edit), so it never shows an outdated score as current.
+const scoreVersion = (lead) => {
+  const summary = lead.lead_score_summary || {};
+  return `${summary.calculated_at || ''}:${summary.status || ''}:${summary.freshness_indicator || ''}`;
 };
 
+// Archive, restore and delete (Arpita, Nov 2026).  The backend enforces who may do what; these only hide
+// buttons a person cannot use.  An archived lead is hidden from the list, not scored and never called.
+const LEAD_ACTIONS = {
+  archive: {
+    run: archiveProspect, done: 'Lead archived', button: 'Archive',
+    title: 'Archive this lead?',
+    text: 'It leaves the Leads list and is not scored, put in campaigns or called until it is restored. You can find it under Archived.',
+  },
+  restore: {
+    run: restoreProspect, done: 'Lead restored', button: 'Restore',
+    title: 'Restore this lead?', text: 'It comes back to the Leads list and can be scored and called again.',
+  },
+  delete: {
+    run: deleteProspect, done: 'Lead deleted', button: 'Delete',
+    title: 'Delete this lead?',
+    text: 'It disappears from every list. Its history is kept for the audit trail but it cannot be brought back here.',
+  },
+};
+
+// The Score column: the number and its assessment, from the backend's summaries (no cut-offs here).
+// The temperature (HOT/WARM/COLD) and freshness (RECALCULATION DUE / OUT OF DATE) chips are not shown
+// in this list; a stale score's number is greyed out.  The lead's score panel still explains both.
+function ScoreCell({ lead }) {
+  const summary = lead.lead_score_summary;
+  const assessment = lead.intent_assessment_status;
+  return (
+    <div className="flex flex-col items-end gap-1" data-testid={`score-cell-${lead.id}`}>
+      {lead.ai_score != null ? (
+        <span className={`text-sm font-medium tabular-nums ${summary?.status === 'stale' ? 'text-muted-foreground' : ''}`}>
+          {lead.ai_score}
+        </span>
+      ) : isPending(lead) ? (
+        // Still said after the page stops re-reading: the score has not been calculated yet.
+        <span className="text-xs text-muted-foreground" title={CLASSIFICATION_LABELS.pending_calculation.help}>
+          {CLASSIFICATION_LABELS.pending_calculation.label}
+        </span>
+      ) : <span className="text-xs text-muted-foreground">--</span>}
+      {assessment && (
+        <EngagementBadge compact label={assessment.engagement_label} latestAttempt={assessment.latest_attempt}
+          secondaryBadge={assessment.secondary_badge} />
+      )}
+    </div>
+  );
+}
+
 export default function LeadsPage() {
+  const { hasRole } = useAuth();
+  const canArchive = hasRole('tenant_admin', 'manager');
+  const canDelete = hasRole('tenant_admin');
+  // 'active': the Leads list; 'archived': archived leads only, to restore or delete.
+  const [view, setView] = useState('active');
+  const archivedView = view === 'archived';
+  const [confirm, setConfirm] = useState(null); // { action, lead }
   const [leads, setLeads] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -59,29 +108,66 @@ export default function LeadsPage() {
   const [stageFilter, setStageFilter] = useState('all');
   const [selectedLead, setSelectedLead] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [bulkAction, setBulkAction] = useState('');
   const [bulkAssignTo, setBulkAssignTo] = useState('');
   const [bulkStage, setBulkStage] = useState('');
   const [bulkRunning, setBulkRunning] = useState(false);
   const [showBulkDialog, setShowBulkDialog] = useState(false);
-  const [newLead, setNewLead] = useState({ name: '', email: '', phone: '', source: 'website', project: '', category: '', sub_category: '', budget_min: '', budget_max: '', location_preference: '', timeline: '', employment: '' });
+  const [newLead, setNewLead] = useState({ name: '', email: '', phone: '', job_title: '', department: '', source: 'website', project: '', category: '', sub_category: '', budget_min: '', budget_max: '', location_preference: '', timeline: '', employment: '' });
   const [countryCode, setCountryCode] = useState('+91');
 
   const fetchLeads = useCallback(async () => {
     try {
       // Leads are prospects with a lead mapping or at QUALIFIED/CONVERTED.
-      const params = { leads_only: true, limit: 500 };
+      const params = { leads_only: true, limit: 500, include: LIST_INCLUDE };
+      if (archivedView) params.archived = true;
       if (search) params.search = search;
       if (stageFilter && stageFilter !== 'all') params.stage = stageFilter;
       const r = await getProspects(params);
-      setLeads(r.data.prospects.map(toLeadRow));
+      const rows = r.data.prospects.map(toLeadRow);
+      setLeads(rows);
       setTotal(r.data.total);
+      setSelectedLead((open) => {
+        const row = open && rows.find((x) => x.id === open.id);
+        return row && scoreVersion(row) !== scoreVersion(open)
+          ? { ...open, ai_score: row.ai_score, lead_score_summary: row.lead_score_summary } : open;
+      });
     } catch (e) { console.error(e); }
     setLoading(false);
-  }, [search, stageFilter]);
+  }, [search, stageFilter, archivedView]);
+
+  const changeView = (next) => {
+    setView(next);
+    setSelectedLead(null);
+    setSelectedIds(new Set());
+  };
+
+  const runLeadAction = async () => {
+    if (!confirm) return;
+    const { action, lead } = confirm;
+    setConfirm(null);
+    try {
+      await LEAD_ACTIONS[action].run(lead.id);
+      toast.success(LEAD_ACTIONS[action].done);
+      setSelectedLead((open) => (open?.id === lead.id ? null : open));
+      setLeads((rows) => rows.filter((r) => r.id !== lead.id));
+      setTotal((n) => Math.max(0, n - 1));
+    } catch (e) {
+      toast.error(`${LEAD_ACTIONS[action].button} failed: ${e.response?.data?.detail || e.message}`);
+      fetchLeads();
+    }
+  };
 
   useEffect(() => { fetchLeads(); }, [fetchLeads]);
+
+  const [rechecks, setRechecks] = useState(0);
+  // The lead just edited: its queued recalculation is waited for too (other "due" scores have no job to wait for).
+  const [edited, setEdited] = useState(null);
+  const awaited = (lead) => isPending(lead) || (lead.id === edited && isDue(lead));
+  usePolling(() => { setRechecks((n) => n + 1); return fetchLeads(); }, PENDING_RECHECK_MS, [],
+    { enabled: leads.some(awaited) && rechecks < PENDING_RECHECKS });
 
   // /leads?prospect=<id> (links from the Operations tabs) opens that prospect.
   const [searchParams] = useSearchParams();
@@ -95,11 +181,20 @@ export default function LeadsPage() {
     getProspect(linkedProspect).then((r) => setSelectedLead(toLeadRow(r.data))).catch(() => toast.error('That lead is not available to you.'));
   }, [linkedProspect]);
 
-  const selectLead = (lead) => setSelectedLead(lead);
+  // An archived lead has no detail panel (its score and history are not served until it is restored).
+  const selectLead = (lead) => { if (!archivedView) setSelectedLead(lead); };
+  // After an edit: the panel and the list row show the saved prospect.
+  const leadSaved = (prospect) => {
+    const row = toLeadRow(prospect);
+    setRechecks(0);
+    setEdited(row.id);
+    setSelectedLead(row);
+    setLeads((rows) => rows.map((r) => (r.id === row.id ? { ...r, ...row } : r)));
+  };
 
   const handleCreate = async () => {
     try {
-      const { name, email, phone, source, budget_min, budget_max, ...rest } = newLead;
+      const { name, email, phone, job_title, department, source, budget_min, budget_max, ...rest } = newLead;
       const trimmed = (phone || '').trim();
       // Details with no prospect column are kept in custom_fields.
       const custom_fields = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== ''));
@@ -109,12 +204,16 @@ export default function LeadsPage() {
         full_name: name.trim(),
         email: email || null,
         phone: trimmed ? (trimmed.startsWith('+') ? trimmed : `${countryCode}${trimmed}`) : null,
+        // Columns the lead score reads (seniority comes from the job title), not custom_fields.
+        job_title: job_title.trim() || null,
+        department: department || null,
         source: source || 'manual',
         custom_fields,
       });
       toast.success('Lead created');
+      setRechecks(0);
       setShowCreate(false);
-      setNewLead({ name: '', email: '', phone: '', source: 'website', project: '', category: '', sub_category: '', budget_min: '', budget_max: '', location_preference: '', timeline: '', employment: '' });
+      setNewLead({ name: '', email: '', phone: '', job_title: '', department: '', source: 'website', project: '', category: '', sub_category: '', budget_min: '', budget_max: '', location_preference: '', timeline: '', employment: '' });
       fetchLeads();
     } catch (e) {
       toast.error('Failed to create lead');
@@ -196,8 +295,17 @@ export default function LeadsPage() {
               ))}
             </SelectContent>
           </Select>
+          <Select value={view} onValueChange={changeView}>
+            <SelectTrigger className="w-[140px] bg-[hsl(var(--surface-2))] border-border" aria-label="Which leads" data-testid="leads-view-select">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="active">Active leads</SelectItem>
+              <SelectItem value="archived">Archived</SelectItem>
+            </SelectContent>
+          </Select>
 
-          {selectedIds.size > 0 && (
+          {!archivedView && selectedIds.size > 0 && (
             <Button size="sm" variant="secondary" onClick={() => {
               setBulkAction('');
               setShowBulkDialog(true);
@@ -244,6 +352,11 @@ export default function LeadsPage() {
                     className="bg-[hsl(var(--surface-2))] border-border flex-1"
                   />
                 </div>
+                <Input placeholder="Job Title" value={newLead.job_title} onChange={e => setNewLead({...newLead, job_title: e.target.value})} className="bg-[hsl(var(--surface-2))] border-border" />
+                <select aria-label="Department" value={newLead.department} onChange={e => setNewLead({...newLead, department: e.target.value})} className="h-9 rounded-md border border-border bg-[hsl(var(--surface-2))] px-3 text-sm">
+                  <option value="">Department (from job title)</option>
+                  {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
                 <Input placeholder="Source" value={newLead.source} onChange={e => setNewLead({...newLead, source: e.target.value})} className="bg-[hsl(var(--surface-2))] border-border" />
                 <Input placeholder="Project" value={newLead.project} onChange={e => setNewLead({...newLead, project: e.target.value})} className="bg-[hsl(var(--surface-2))] border-border col-span-2" />
                 <Input placeholder="Category" value={newLead.category} onChange={e => setNewLead({...newLead, category: e.target.value})} className="bg-[hsl(var(--surface-2))] border-border" />
@@ -264,18 +377,21 @@ export default function LeadsPage() {
         {/* Lead Table with Checkboxes */}
         <Card className="card-base flex-1 overflow-hidden">
           <ScrollArea className="h-full">
-            <Table data-testid="leads-table">
+            <Table data-testid="leads-table" className="[&_th]:px-2 [&_td]:px-2">
               <TableHeader className="sticky top-0 z-10">
                 <TableRow className="bg-[hsl(var(--surface-3))] hover:bg-[hsl(var(--surface-3))]">
-                  <TableHead className="w-10">
-                    <Checkbox checked={selectedIds.size === leads.length && leads.length > 0} onCheckedChange={toggleSelectAll} data-testid="select-all-leads" />
-                  </TableHead>
+                  {!archivedView && (
+                    <TableHead className="w-10">
+                      <Checkbox checked={selectedIds.size === leads.length && leads.length > 0} onCheckedChange={toggleSelectAll} data-testid="select-all-leads" />
+                    </TableHead>
+                  )}
                   <TableHead className="text-xs font-semibold">Name</TableHead>
                   <TableHead className="text-xs font-semibold">Stage</TableHead>
                   <TableHead className="text-xs font-semibold">Status</TableHead>
                   <TableHead className="text-xs font-semibold text-right">Score</TableHead>
                   <TableHead className="text-xs font-semibold">Budget</TableHead>
                   <TableHead className="text-xs font-semibold">Assigned</TableHead>
+                  {archivedView && (canArchive || canDelete) && <TableHead className="text-xs font-semibold text-right">Actions</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -285,13 +401,15 @@ export default function LeadsPage() {
                     className={`table-row-hover ${selectedLead?.id === lead.id ? 'bg-[hsl(var(--surface-2))]' : ''}`}
                     data-testid={`lead-row-${lead.id}`}
                   >
-                    <TableCell onClick={(e) => e.stopPropagation()}>
-                      <Checkbox checked={selectedIds.has(lead.id)} onCheckedChange={() => toggleSelect(lead.id)} />
-                    </TableCell>
+                    {!archivedView && (
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        <Checkbox checked={selectedIds.has(lead.id)} onCheckedChange={() => toggleSelect(lead.id)} />
+                      </TableCell>
+                    )}
                     <TableCell onClick={() => selectLead(lead)}>
-                      <div>
-                        <p className="text-sm font-medium">{lead.name}</p>
-                        <p className="text-xs text-muted-foreground">{lead.email || lead.phone}</p>
+                      <div className="max-w-[12rem]">
+                        <p className="text-sm font-medium truncate">{lead.name}</p>
+                        <p className="text-xs text-muted-foreground truncate" title={lead.email || lead.phone}>{lead.email || lead.phone}</p>
                       </div>
                     </TableCell>
                     <TableCell onClick={() => selectLead(lead)}><StageBadge stage={lead.stage} /></TableCell>
@@ -305,17 +423,29 @@ export default function LeadsPage() {
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="text-right tabular-nums" onClick={() => selectLead(lead)}>
-                      {lead.ai_score !== null && lead.ai_score !== undefined ? (
-                        <span className="text-sm font-medium" style={{ color: lead.ai_score >= 70 ? 'hsl(173,80%,36%)' : lead.ai_score >= 40 ? 'hsl(38,55%,62%)' : 'hsl(0,72%,52%)' }}>
-                          {lead.ai_score}
-                        </span>
-                      ) : <span className="text-xs text-muted-foreground">--</span>}
+                    <TableCell className="text-right" onClick={() => selectLead(lead)}>
+                      <ScoreCell lead={lead} />
                     </TableCell>
                     <TableCell className="text-sm" onClick={() => selectLead(lead)}>
                       {lead.budget_max ? formatCurrency(lead.budget_max) : '--'}
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground" onClick={() => selectLead(lead)}>{lead.assigned_to || '--'}</TableCell>
+                    {archivedView && (canArchive || canDelete) && (
+                      <TableCell className="text-right whitespace-nowrap">
+                        {canArchive && (
+                          <Button variant="outline" size="sm" className="border-border mr-1"
+                            onClick={() => setConfirm({ action: 'restore', lead })} aria-label={`Restore ${lead.name}`}>
+                            <ArchiveRestore className="w-3.5 h-3.5 mr-1" /> Restore
+                          </Button>
+                        )}
+                        {canDelete && (
+                          <Button variant="outline" size="sm" className="border-border text-red-600"
+                            onClick={() => setConfirm({ action: 'delete', lead })} aria-label={`Delete ${lead.name}`}>
+                            <Trash2 className="w-3.5 h-3.5 mr-1" /> Delete
+                          </Button>
+                        )}
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
                 {leads.length === 0 && (
@@ -325,8 +455,8 @@ export default function LeadsPage() {
                         <div className="w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center mb-3">
                           <Users className="w-6 h-6 text-slate-400" />
                         </div>
-                        <p className="text-sm font-medium text-muted-foreground">{loading ? 'Loading leads...' : 'No leads found'}</p>
-                        <p className="text-xs text-muted-foreground mt-1">{loading ? 'Fetching your data' : 'Try adjusting your filters or add a new lead.'}</p>
+                        <p className="text-sm font-medium text-muted-foreground">{loading ? 'Loading leads...' : archivedView ? 'No archived leads' : 'No leads found'}</p>
+                        <p className="text-xs text-muted-foreground mt-1">{loading ? 'Fetching your data' : archivedView ? 'Archived leads appear here until they are restored.' : 'Try adjusting your filters or add a new lead.'}</p>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -335,7 +465,7 @@ export default function LeadsPage() {
             </Table>
           </ScrollArea>
         </Card>
-        <p className="text-xs text-muted-foreground mt-2">{total} leads total</p>
+        <p className="text-xs text-muted-foreground mt-2">{total} {archivedView ? 'archived leads' : 'leads total'}</p>
       </div>
 
       {/* Right: Lead Detail */}
@@ -359,31 +489,61 @@ export default function LeadsPage() {
                       {selectedLead.ai_priority && <PriorityBadge priority={selectedLead.ai_priority} />}
                     </div>
                   </div>
-                  <Button variant="ghost" size="icon" aria-label="Close the lead" onClick={() => setSelectedLead(null)}>
-                    <X className="w-4 h-4" />
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button variant="outline" size="sm" onClick={() => setEditing(true)} className="border-border">
+                      <Pencil className="w-3.5 h-3.5 mr-1" /> Edit
+                    </Button>
+                    {canArchive && (
+                      <Button variant="outline" size="sm" onClick={() => setConfirm({ action: 'archive', lead: selectedLead })} className="border-border">
+                        <Archive className="w-3.5 h-3.5 mr-1" /> Archive
+                      </Button>
+                    )}
+                    {canDelete && (
+                      <Button variant="outline" size="sm" onClick={() => setConfirm({ action: 'delete', lead: selectedLead })} className="border-border text-red-600">
+                        <Trash2 className="w-3.5 h-3.5 mr-1" /> Delete
+                      </Button>
+                    )}
+                    <Button variant="ghost" size="icon" aria-label="Close the lead" onClick={() => setSelectedLead(null)}>
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
                 </div>
 
-                {/* Score + Quick Info */}
-                <div className="flex items-center gap-6 mb-5 p-4 rounded-xl border border-border bg-[hsl(var(--surface-2))]">
-                  <ScoreGauge score={selectedLead.ai_score} size={100} />
-                  <div className="flex-1 space-y-1">
+                <LeadScorePanel
+                  key={`${selectedLead.id}:${scoreVersion(selectedLead)}`}
+                  prospectId={selectedLead.id}
+                  onScored={(s) => setLeads((rows) => rows.map((r) => (r.id === selectedLead.id ? {
+                    ...r,
+                    ai_score: Math.round(s.lead_score),
+                    lead_score_summary: {
+                      ...(r.lead_score_summary || {}), lead_score: s.lead_score, status: s.status,
+                      temperature_display: s.temperature_display, freshness_indicator: s.freshness_indicator,
+                    },
+                  } : r)))}
+                >
+                    {/* Only the details this lead has: an empty one is left out rather than shown as N/A. */}
                     <div className="grid grid-cols-2 gap-2 text-sm">
-                      <div><span className="text-muted-foreground">Budget:</span> <span>{formatCurrency(selectedLead.budget_min)} - {formatCurrency(selectedLead.budget_max)}</span></div>
-                      <div><span className="text-muted-foreground">Timeline:</span> <span>{selectedLead.timeline || 'N/A'}</span></div>
-                      <div><span className="text-muted-foreground">Project:</span> <span>{selectedLead.project || 'N/A'}</span></div>
-                      <div><span className="text-muted-foreground">Category:</span> <span>{selectedLead.category || 'N/A'} ({selectedLead.sub_category || 'N/A'})</span></div>
-                      <div><span className="text-muted-foreground">Source:</span> <span>{selectedLead.source}</span></div>
+                      {(selectedLead.budget_min || selectedLead.budget_max) && (
+                        <div><span className="text-muted-foreground">Budget:</span> <span>{[selectedLead.budget_min, selectedLead.budget_max].filter(Boolean).map(formatCurrency).join(' - ')}</span></div>
+                      )}
+                      {selectedLead.timeline && <div><span className="text-muted-foreground">Timeline:</span> <span>{selectedLead.timeline}</span></div>}
+                      {selectedLead.project && <div><span className="text-muted-foreground">Project:</span> <span>{selectedLead.project}</span></div>}
+                      {(selectedLead.category || selectedLead.sub_category) && (
+                        <div><span className="text-muted-foreground">Category:</span> <span>{[selectedLead.category, selectedLead.sub_category].filter(Boolean).join(' / ')}</span></div>
+                      )}
+                      {selectedLead.source && <div><span className="text-muted-foreground">Source:</span> <span>{selectedLead.source}</span></div>}
+                      {[selectedLead.city, selectedLead.state, selectedLead.country].some(Boolean) && (
+                        <div><span className="text-muted-foreground">Location:</span> <span>{[selectedLead.city, selectedLead.state, selectedLead.country].filter(Boolean).join(', ')}</span></div>
+                      )}
+                      {selectedLead.job_title && <div><span className="text-muted-foreground">Job title:</span> <span>{selectedLead.job_title}</span></div>}
+                      {selectedLead.seniority && <div><span className="text-muted-foreground">Seniority:</span> <span>{selectedLead.seniority}</span></div>}
+                      {selectedLead.department && <div><span className="text-muted-foreground">Department:</span> <span>{selectedLead.department}</span></div>}
+                      {/* Every other detail the lead has (imported columns, CRM extras), by its own name. */}
+                      {leadDetailEntries(selectedLead, { except: ['budget_min', 'budget_max', 'timeline', 'project', 'category', 'sub_category'] }).map((d) => (
+                        <div key={d.key} className="min-w-0 break-words"><span className="text-muted-foreground">{d.label}:</span> <span dir="auto">{d.value}</span></div>
+                      ))}
                     </div>
-                  </div>
-                </div>
-
-                {/* AI Explainability - Score Factors */}
-                {selectedLead.ai_score_factors?.length > 0 && (
-                  <div className="mb-4">
-                    <ScoreFactorsPanel factors={selectedLead.ai_score_factors} whyScore={selectedLead.ai_why_score} />
-                  </div>
-                )}
+                </LeadScorePanel>
 
                 {/* AI Summary */}
                 {selectedLead.ai_summary && (
@@ -413,10 +573,8 @@ export default function LeadsPage() {
                   </div>
                 )}
 
-                {/* AI qualification and site visits used endpoints the backend no longer has. */}
-                <p className="mb-5 rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground">
-                  AI qualification is not available yet.
-                </p>
+                {/* The latest qualification result from conversion handling. */}
+                <QualificationCard prospectId={selectedLead.id} />
 
                 {/* Calls, stage changes, appointment and do-not-call events in one list. */}
                 <section aria-labelledby="prospect-timeline">
@@ -435,6 +593,26 @@ export default function LeadsPage() {
           </Card>
         )}
       </div>
+
+      {selectedLead && <EditLeadDialog open={editing} onOpenChange={setEditing} lead={selectedLead} onSaved={leadSaved} />}
+
+      <AlertDialog open={!!confirm} onOpenChange={(open) => !open && setConfirm(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{confirm && LEAD_ACTIONS[confirm.action].title}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirm && <><strong>{confirm.lead.name}</strong>: {LEAD_ACTIONS[confirm.action].text}</>}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={runLeadAction}
+              className={confirm?.action === 'delete' ? 'bg-red-600 text-white hover:bg-red-700' : undefined}>
+              {confirm && LEAD_ACTIONS[confirm.action].button}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Bulk Action Dialog */}
       <Dialog open={showBulkDialog} onOpenChange={setShowBulkDialog}>

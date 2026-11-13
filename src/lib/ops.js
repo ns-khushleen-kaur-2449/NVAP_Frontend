@@ -68,11 +68,12 @@ export function notificationLink(notification) {
   switch (notification?.entity_type) {
     case 'campaign': return `/voice-campaigns/${id}`;
     case 'scheduled_call': return `/operations/callbacks?open=${id}`;
+    case 'callback_task': return `/operations/callbacks?tab=handoffs&open=${id}`;
     case 'appointment': return `/operations/appointments?open=${id}`;
     case 'appointments': return '/operations/appointments?tab=needs_outcome';
     case 'do_not_call': return '/operations/do-not-call';
     case 'calendar_connection': return '/settings/calendar';
-    case 'call_log': return '/voice_agent?tab=logs';
+    case 'call_log': return id ? `/voice_agent?tab=logs&call=${encodeURIComponent(id)}` : '/voice_agent?tab=logs';
     case 'assistant_change_request': return `/voice_agent?tab=requests&open=${id}`;
     case 'conversion': return `/conversion?prospect=${encodeURIComponent(id)}`;
     case 'interview_booking': return `/hiring_agent/bookings/${id}`;

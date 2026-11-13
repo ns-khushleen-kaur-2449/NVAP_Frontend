@@ -1,70 +1,90 @@
-# Getting Started with Create React App
+# SmartSDR Frontend
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+The web app for SmartSDR: leads, AI calling, campaigns, conversion, meetings, reports and
+administration. It is a React 19 single-page app that talks to one backend, the SmartSDR API
+(`smartsdr-platform`, FastAPI).
 
-## Available Scripts
+## Quick start
 
-In the project directory, you can run:
+You need Node.js 22 (the version Netlify builds with) and the backend running on
+`http://localhost:8000`. See the backend README for that.
 
-### `npm start`
+```bash
+npm install
+cp .env.example .env      # Windows: copy .env.example .env
+npm start                 # http://localhost:3000
+```
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+Sign in with a user from the backend's seed data.
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+## Configuration
 
-### `npm test`
+Settings are read at build time from `.env`. Only `REACT_APP_*` variables reach the browser, so never
+put secrets in them.
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+| Variable | Purpose |
+|---|---|
+| `REACT_APP_BACKEND_URL` | The API origin. Leave empty locally (falls back to `http://localhost:8000`); set per deployment in Netlify. Never commit an ngrok URL. |
+| `REACT_APP_USD_INR_RATE` | Optional display rate for prices shown in INR (default 88). Stripe always charges in USD. |
+| `BACKEND_URL` | Optional target of the dev-server proxy in `src/setupProxy.js` (default `http://localhost:8000`). |
+| `ENABLE_HEALTH_CHECK` | Optional `true` adds the dev-server health endpoints in `plugins/health-check/`. |
 
-### `npm run build`
+`REACT_APP_VOICE_AGENT_URL` and `REACT_APP_REPORT_AGENT_URL` are deprecated: everything is served by the
+one backend, and `src/lib/api.js` uses `REACT_APP_BACKEND_URL` first.
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+## Scripts
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+| Command | What it does |
+|---|---|
+| `npm start` | Dev server on port 3000 with hot reload. |
+| `npm test` | Jest in watch mode. |
+| `npm test -- --watchAll=false` | Runs every test once (about 785 tests, under a minute). |
+| `npm run build` | Production build in `build/`. |
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+The scripts run through CRACO (`craco.config.js`), which adds the `@` → `src/` import alias and the
+React hooks lint rules. `NODE_OPTIONS` (OpenSSL legacy provider, 4 GB heap) is already set in
+`package.json`.
 
-### `npm run eject`
+## Project structure
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+```
+src/
+├── App.js          routes and role guards
+├── pages/          one file per screen (tests sit next to them as *.test.jsx)
+├── components/     feature components (leads, conversion, voice, billing, admin, ...) and ui/ primitives
+├── lib/            API client (api.js), auth context, role rules (rbac.js), shared helpers
+├── hooks/          shared hooks (polling, call logs, API actions, toasts)
+└── test/           test helpers and fixtures (renderWithAuth, lead score fixtures)
+```
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+UI building blocks are shadcn/ui components (Radix UI + Tailwind CSS) in `components/ui/`, configured in
+`components.json`. Charts use Recharts.
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+## Main screens
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+| Area | Routes |
+|---|---|
+| Leads and prospecting | `/leads` (incl. Archived view), `/prospecting`, `/research`, `/sheets-sync` |
+| Calling | `/voice_agent`, `/voice-campaigns`, `/calls`, `/audio-upload`, `/call-quality`, `/agent-performance`, `/agent-runs` |
+| Campaigns and inbox | `/campaigns/*`, `/inbox` |
+| Conversion | `/conversion` |
+| Meetings | `/meetings`, `/settings/calendar` (Nylas calendar connection) |
+| Dashboards and reports | `/dashboard`, `/manager-dashboard`, `/reports` |
+| Catalog and marketplace | `/catalog`, `/marketplace`, `/projects`, `/properties` |
+| Administration | `/settings`, `/settings/users`, `/settings/teams`, `/settings/tenants`, `/billing`, `/weight-config`, `/knowledge-base` |
 
-## Learn More
+What each role can see is defined in `src/lib/rbac.js` (it mirrors the backend's
+`app/core/permissions.py`). The frontend only hides things; the backend enforces every rule. Lead
+visibility, archive/restore and delete follow the backend's lead rules (see its README).
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+## Analytics
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+PostHog is loaded in `public/index.html`. Session recordings mask all text and element attributes, and
+pages that cannot be masked safely (sign-in, registration, settings, billing, inbox, calls, audio upload,
+call quality) are never recorded. Keep that list in step when adding a page that shows personal data.
 
-### Code Splitting
+## Deployment
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+Netlify builds the site with `netlify.toml` (Node 22, `craco build`, `build/` published, all routes
+served by `index.html`). Set `REACT_APP_BACKEND_URL` in Netlify's environment variables for each
+deploy context.

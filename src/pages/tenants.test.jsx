@@ -4,15 +4,8 @@ import TenantsPage from '@/pages/admin/Tenants';
 import * as api from '@/lib/api';
 import { USERS, renderWithAuth } from '@/test/renderWithAuth';
 
-jest.mock('@/lib/api', () => ({
-  listTenants: jest.fn(),
-  createTenantWithAdmin: jest.fn(),
-  suspendTenant: jest.fn(),
-  activateTenant: jest.fn(),
-  listTenantPhoneNumbers: jest.fn(),
-  addTenantPhoneNumber: jest.fn(),
-  removeTenantPhoneNumber: jest.fn(),
-}));
+// Every api function is a mock (the sdr-merge Tenants page and its dialogs call more of them).
+jest.mock('@/lib/api');
 
 const TENANT = {
   tenant_id: 't-1', name: 'Apex Motors', status: 'active', default_timezone: 'Asia/Kolkata',
@@ -25,14 +18,14 @@ const NUMBER = {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  api.listTenants.mockResolvedValue({ data: { tenants: [TENANT] } });
+  api.listAdminTenants.mockResolvedValue({ data: { tenants: [TENANT], total: 1 } });
   api.listTenantPhoneNumbers.mockResolvedValue({ data: [NUMBER] });
   api.addTenantPhoneNumber.mockResolvedValue({ data: {} });
   api.removeTenantPhoneNumber.mockResolvedValue({ data: null });
 });
 
 async function openNumbers(user) {
-  renderWithAuth(<TenantsPage />, { user: USERS.super_admin });
+  renderWithAuth(<TenantsPage />, { user: USERS.super_admin, path: '/admin/tenants' });
   const row = await screen.findByTestId('tenant-row-t-1');
   await user.click(within(row).getByRole('button', { name: 'Phone numbers' }));
   return screen.findByTestId('tenant-phone-numbers-dialog');

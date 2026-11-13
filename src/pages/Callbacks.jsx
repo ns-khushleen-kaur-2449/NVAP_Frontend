@@ -4,7 +4,7 @@ import { AlertTriangle, MoreHorizontal } from 'lucide-react';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { getAssistants, getScheduledCalls, scheduledCallAction } from '@/lib/api';
+import { getAssistants, getCallbackHandoffCount, getScheduledCalls, scheduledCallAction } from '@/lib/api';
 import { useAuth } from '@/lib/AuthContext';
 import { canOperate } from '@/lib/rbac';
 import { plural } from '@/lib/ops';
@@ -17,11 +17,13 @@ import ReasonDialog from '@/components/ops/ReasonDialog';
 import RelativeTime from '@/components/ops/RelativeTime';
 import OpsButton from '@/components/ops/OpsButton';
 import { EmptyState, ErrorState, ScrollTable, SkeletonRows } from '@/components/ops/States';
+import HandoffsPanel from '@/components/ops/HandoffsPanel';
 
 const REFRESH_MS = 30000;
 // Tabs group the backend's statuses.
 export const CALLBACK_TABS = [
   { id: 'pending', label: 'Pending', statuses: ['PENDING', 'CALLING'] },
+  { id: 'handoffs', label: 'Needs a person', statuses: [], handoffs: true },
   { id: 'missed', label: 'Missed', statuses: ['MISSED'] },
   { id: 'done', label: 'Done', statuses: ['COMPLETED', 'FAILED', 'SKIPPED', 'CANCELLED'] },
 ];
@@ -101,9 +103,15 @@ export default function CallbacksPage() {
   const [error, setError] = useState(null);
   const [assistants, setAssistants] = useState([]);
   const [acting, setActing] = useState(null);
+  const [handoffCount, setHandoffCount] = useState(null);
 
   useEffect(() => { getAssistants().then((r) => setAssistants(r.data)).catch(() => setAssistants([])); }, []);
+  const loadHandoffCount = useCallback(() => {
+    Promise.resolve().then(() => getCallbackHandoffCount())
+      .then((r) => setHandoffCount(r?.data?.open ?? null)).catch(() => setHandoffCount(null));
+  }, []);
   const load = useCallback(async () => {
+    loadHandoffCount();
     try {
       const res = await getScheduledCalls();
       setCalls(res.data.scheduled_calls);
@@ -111,7 +119,7 @@ export default function CallbacksPage() {
     } catch (err) {
       setError(err?.response?.status === 403 ? "You don't have permission" : errorMessage(err, 'Check your connection and try again.'));
     }
-  }, []);
+  }, [loadHandoffCount]);
   usePolling(load, REFRESH_MS);
 
   const assistantName = useMemo(() => {
@@ -130,6 +138,14 @@ export default function CallbacksPage() {
         <p className="text-sm text-muted-foreground">Calls promised to leads and single scheduled calls. Times in {zone}.</p>
       </header>
 
+      {tab.id === 'pending' && handoffCount > 0 && (
+        <div role="alert" className="ops-tone ops-tone-warn flex flex-wrap items-center gap-3 rounded-[14px] px-4 py-3 text-sm">
+          <AlertTriangle className="h-4 w-4" aria-hidden="true" />
+          <span className="flex-1 font-semibold">{plural(handoffCount, 'lead')} waiting for a call from a person</span>
+          <OpsButton size="sm" variant="outline" onClick={() => setTab('handoffs')}>Show them</OpsButton>
+        </div>
+      )}
+
       {tab.id === 'pending' && missed > 0 && (
         <div role="alert" className="ops-tone ops-tone-bad flex flex-wrap items-center gap-3 rounded-[14px] px-4 py-3 text-sm">
           <AlertTriangle className="h-4 w-4" aria-hidden="true" />
@@ -142,15 +158,18 @@ export default function CallbacksPage() {
         {CALLBACK_TABS.map((t) => (
           <button key={t.id} type="button" role="tab" aria-selected={tab.id === t.id} onClick={() => setTab(t.id)}
             className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${tab.id === t.id ? 'border-[var(--ops-accent)] text-[color:var(--ops-accent-ink)]' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
-            {t.label} {calls && <span className="ops-num rounded-full bg-[hsl(var(--surface-2))] px-1.5 text-xs">{byTab[t.id].length}</span>}
+            {t.label} {t.handoffs
+              ? (handoffCount !== null && <span className="ops-num rounded-full bg-[hsl(var(--surface-2))] px-1.5 text-xs">{handoffCount}</span>)
+              : (calls && <span className="ops-num rounded-full bg-[hsl(var(--surface-2))] px-1.5 text-xs">{byTab[t.id].length}</span>)}
           </button>
         ))}
       </div>
 
-      {error && <ErrorState message={error} onRetry={load} />}
-      {!error && calls === null && <SkeletonRows rows={5} label="Loading callbacks" />}
-      {!error && calls && rows.length === 0 && <EmptyState title={`No ${tab.label.toLowerCase()} callbacks.`} />}
-      {!error && rows.length > 0 && (
+      {tab.handoffs && <HandoffsPanel assistants={assistants} zone={zone} onChanged={loadHandoffCount} />}
+      {!tab.handoffs && error && <ErrorState message={error} onRetry={load} />}
+      {!tab.handoffs && !error && calls === null && <SkeletonRows rows={5} label="Loading callbacks" />}
+      {!tab.handoffs && !error && calls && rows.length === 0 && <EmptyState title={`No ${tab.label.toLowerCase()} callbacks.`} />}
+      {!tab.handoffs && !error && rows.length > 0 && (
         <ScrollTable label={`${tab.label} callbacks`}>
           <thead className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
             <tr>

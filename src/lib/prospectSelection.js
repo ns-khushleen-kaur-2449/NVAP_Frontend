@@ -20,10 +20,15 @@ export function unselectableReason(prospect) {
   return hasCallablePhone(prospect) ? null : 'No phone number to call';
 }
 
+// Enough to show the prospect as a row elsewhere (the Lead-to-Campaign Builder table).
 const summary = (prospect) => ({
   id: prospect.prospect_id,
   name: prospect.full_name || [prospect.first_name, prospect.last_name].filter(Boolean).join(' ') || 'Unnamed prospect',
   phone: prospect.phone,
+  email: prospect.email || null,
+  city: prospect.city || null,
+  stage: prospect.status || null,
+  created_at: prospect.created_at || null,
 });
 
 /**

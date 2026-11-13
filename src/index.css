@@ -4,6 +4,10 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Fields with their own show/hide button: hide the browser's built-in one (Edge) so there is only one. */
+.no-native-reveal::-ms-reveal,
+.no-native-reveal::-ms-clear { display: none; }
+
 /* ============================================================
    SmartSDR — marketing design layer  (scope: .mk)
    Netsmartz identity: signal orange + warm neutrals.
@@ -45,6 +49,26 @@
   --deep:    #060504;  /* hero/footer band        */
   --deep-fg: #F7F3EE;
 }
+
+/* Light mode: the "deep" bands (hero, voice agent, how-it-works, featured
+   plan, footer) turn into warm light panels instead of staying near-black.
+   Markup keeps its text-white / border-white utilities; they are remapped here
+   so dark mode is untouched. Orange gradient buttons and pine badges keep
+   their white text. */
+:root:not(.dark) .mk-band {
+  --band-bg: linear-gradient(180deg, #FFF6EC 0%, #FDEBDA 100%);
+  background: var(--band-bg) !important;
+  color: var(--ink);
+}
+:root:not(.dark) .mk-band [class*="text-white/"]:not([class*="bg-gradient"]):not([class*="bg-[var(--pine)]"]):not(.mk-dark-card):not(.mk-dark-card *) { color: var(--mist); }
+:root:not(.dark) .mk-band [class*="text-white"]:not([class*="text-white/"]):not([class*="bg-gradient"]):not([class*="bg-[var(--pine)]"]):not([class*="bg-white"]):not([class*="text-transparent"]):not([class*="bg-[var(--pine)]"] *):not(.mk-dark-card):not(.mk-dark-card *) { color: var(--ink); }
+:root:not(.dark) .mk-band [class*="text-[var(--brass-2)]"]:not(.mk-dark-card):not(.mk-dark-card *) { color: var(--pine-2); }
+:root:not(.dark) .mk-band [class*="border-white"]:not(.mk-dark-card):not(.mk-dark-card *) { border-color: var(--line); }
+:root:not(.dark) .mk-band [class*="hover:bg-white/10"]:hover { background: rgba(248, 114, 23, 0.08); }
+:root:not(.dark) .mk-band [class*="bg-white/["]:not(.mk-dark-card):not(.mk-dark-card *) { background: #fff; box-shadow: 0 1px 2px rgba(23, 19, 15, 0.06); }
+:root:not(.dark) .mk-band [class*="bg-white/10"]:not(.mk-dark-card):not(.mk-dark-card *) { background: var(--line); }
+:root:not(.dark) .mk-band [class*="ring-[var(--deep)]"]:not(.mk-dark-card):not(.mk-dark-card *) { --tw-ring-color: #FFF6EC; }
+:root:not(.dark) .mk-band [class*="ring-white"]:not(.mk-dark-card):not(.mk-dark-card *) { --tw-ring-color: var(--line); }
 
 .mk-display { font-family: 'Outfit', ui-sans-serif, system-ui, sans-serif; letter-spacing: -0.02em; }
 .mk-eyebrow {
@@ -288,6 +312,15 @@
     @apply bg-background text-foreground;
     font-family: 'Manrope', ui-sans-serif, system-ui, sans-serif;
   }
+  /* Native dropdown lists are painted by the browser (white by default) but inherit
+     the theme's text color, which made options unreadable in dark mode. */
+  :root { color-scheme: light; }
+  .dark { color-scheme: dark; }
+  select option,
+  select optgroup {
+    background-color: hsl(var(--popover));
+    color: hsl(var(--popover-foreground));
+  }
 }
 
 .font-display {
@@ -416,6 +449,17 @@
   --ops-bad: #ff8577;
   --ops-warn: #f5c26b;
   --ops-info: #8ab8f0;
+}
+/* Chart series for Reporting & Analytics, in this fixed order (never cycled). Validated as a set for
+   colour-blind separation on the card surface in each theme; the dark column is its own steps, not a flip.
+   Status colours (--ops-good/warn/bad) stay reserved for states and are never a series. */
+.ops {
+  --viz-1: #2a78d6; --viz-2: #eb6834; --viz-3: #1baf7a; --viz-4: #eda100; --viz-5: #e87ba4;
+  --viz-muted: #b8aea4;
+}
+.dark .ops {
+  --viz-1: #3987e5; --viz-2: #d95926; --viz-3: #199e70; --viz-4: #c98500; --viz-5: #d55181;
+  --viz-muted: #6b6259;
 }
 .ops-card {
   border: 1px solid hsl(var(--border));

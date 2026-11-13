@@ -1,8 +1,9 @@
 import { useCallback, useState } from 'react';
 import { Link, Navigate, Route, useLocation, useParams } from 'react-router-dom';
-import { getAppointments, getDoNotCallEntries, getIntentReviewQueue } from '@/lib/api';
+import { getAppointments, getCallbackHandoffCount, getDoNotCallEntries, getIntentReviewQueue } from '@/lib/api';
 import { useAuth } from '@/lib/AuthContext';
-import { isSuperAdmin } from '@/lib/rbac';
+import { featureEnabled } from '@/lib/rbac';
+import { FeatureOff } from '@/components/auth/FeatureRoute';
 import usePolling from '@/hooks/usePolling';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import AppointmentsPage from './Appointments';
@@ -11,43 +12,46 @@ import DoNotCallPage from './DoNotCall';
 import IntentReviewPage from './IntentReview';
 
 // Tenant Admins, Managers and (view only) Super Admins (lib/rbac.js canViewOperations; the backend enforces it).
-export const OPERATIONS_VIEWERS = ['super_admin', 'tenant_admin', 'manager'];
+export const OPERATIONS_VIEWERS = ['tenant_admin', 'manager'];
 
 // One page, one tab per screen; the tab is the path (/operations/<id>), each screen keeps its own ?tab=.
 // `roles` limits a tab (others get 403); Appointments is for everyone (a Sales Rep sees their own meetings).
 export const OPERATIONS_TABS = [
-  { id: 'appointments', label: 'Appointments', roles: null },
+  { id: 'appointments', label: 'Appointments', roles: null, feature: 'appointment_booking' },
   { id: 'callbacks', label: 'Callbacks', roles: OPERATIONS_VIEWERS },
   { id: 'do-not-call', label: 'Do-not-call', roles: OPERATIONS_VIEWERS },
   { id: 'intent-review', label: 'Intent review', roles: OPERATIONS_VIEWERS },
 ];
 
-export const tabsFor = (user) => OPERATIONS_TABS.filter((t) => !t.roles || (user && t.roles.includes(user.role)));
+const roleAllows = (tab, user) => !tab.roles || (user && tab.roles.includes(user.role));
+export const tabsFor = (user) => OPERATIONS_TABS.filter((t) => roleAllows(t, user) && (!t.feature || featureEnabled(user, t.feature)));
 
 const REFRESH_MS = 30000;
 
 /**
  * Counts of what waits for a person, where one request answers it: appointments that need an
  * outcome, do-not-call opt-outs to review and pending intent reviews (each only on a tab the
- * user has). A Super Admin has no tenant until a screen picks one, so gets no counts. Callbacks
+ * user has), and callbacks waiting for a person (open hand-offs).  Scheduled callbacks themselves
  * have no count endpoint (it would mean loading every scheduled call).
  */
 function useWaitingCounts(user) {
   const [counts, setCounts] = useState({});
-  const enabled = Boolean(user) && !isSuperAdmin(user);
+  const enabled = Boolean(user);
   const operations = Boolean(user) && OPERATIONS_VIEWERS.includes(user.role);
   const load = useCallback(async () => {
     const skip = Promise.resolve(null);
-    const [appointments, dnc, intent] = await Promise.allSettled([
+    const [appointments, dnc, intent, handoffs] = await Promise.allSettled([
       getAppointments({ tab: 'needs_outcome', page_size: 1 }),
       operations ? getDoNotCallEntries({ source: 'call', reviewed: false }) : skip,
       operations ? getIntentReviewQueue({ status: 'pending', page_size: 1 }) : skip,
+      operations ? getCallbackHandoffCount() : skip,
     ]);
     const value = (result, pick) => (result.status === 'fulfilled' && result.value ? pick(result.value.data) ?? null : null);
     setCounts({
       appointments: value(appointments, (d) => d?.counts?.needs_outcome),
       'do-not-call': value(dnc, (d) => d?.entries?.length),
       'intent-review': value(intent, (d) => d?.total),
+      callbacks: value(handoffs, (d) => d?.open),
     });
   }, [operations]);
   const refresh = usePolling(load, REFRESH_MS, [], { enabled });
@@ -60,8 +64,10 @@ export default function OperationsPage() {
   const [counts, refreshCounts] = useWaitingCounts(user);
   const tabs = tabsFor(user);
   const tab = OPERATIONS_TABS.find((t) => t.id === tabId);
+  if (!tabs.length) return <FeatureOff name="Appointments" />;
   if (!tab) return <Navigate to={`/operations/${tabs[0].id}`} replace />;
-  if (!tabs.includes(tab)) return <Navigate to="/403" replace />;
+  // A tab only its feature switch hides moves on to the next one; a tab the role can't have is a 403.
+  if (!tabs.includes(tab)) return <Navigate to={roleAllows(tab, user) ? `/operations/${tabs[0].id}` : '/403'} replace />;
 
   return (
     <div className="ops">

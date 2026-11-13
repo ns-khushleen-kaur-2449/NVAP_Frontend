@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -7,24 +7,24 @@ import { Textarea } from '../components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { toast } from 'sonner';
-import { getProspects, getAssistants, previewCampaignCsv, getCsvCallResults, initiateSmartsdrCall, createKnowledgeBase, getKnowledgeFiles } from '../lib/api';
+import { getProspects, getAssistants, previewCampaignCsv, getCsvCallResults, initiateSmartsdrCall, createKnowledgeBase, getKnowledgeFiles, deleteKnowledgeFile } from '../lib/api';
 import { toLeadRow } from '../lib/prospects';
+import { dropPicks, loadPicks, mergePicks, savePicks } from '../lib/builderPicks';
 import CallLogsList from '../components/voice/CallLogsList';
 import LeadCampaignBuilder from '../components/voice/LeadCampaignBuilder';
 import CampaignLaunchDialog from '../components/voice/CampaignLaunchDialog';
 import AssistantBuilder from '../components/voice/AssistantBuilder';
-import VoiceDashboard from '../components/voice/VoiceDashboard';
 import AssistantChangeRequests from '../components/voice/AssistantChangeRequests';
 import { useAuth } from '@/lib/AuthContext';
-import { canCreateCampaigns, canOperate, canUseAssistantRequests, canViewAssistants, isSuperAdmin } from '@/lib/rbac';
+import { FeatureOff } from '@/components/auth/FeatureRoute';
+import { canCreateCampaigns, canOperate, canUseAssistantRequests, voiceTabEnabled } from '@/lib/rbac';
 import ReasonDialog from '@/components/ops/ReasonDialog';
 import SingleCallBlock from '@/components/ops/SingleCallBlock';
-import { Loader2, PhoneCall, BookOpen, Mic, UploadCloud, Phone, RotateCw, Layers, Info, FileText, Database, Search, Copy, Check, LayoutDashboard, ClipboardCheck } from 'lucide-react';
+import { Loader2, PhoneCall, BookOpen, Mic, UploadCloud, Phone, RotateCw, Layers, Info, FileText, Database, Search, Copy, Check, ClipboardCheck, Trash2 } from 'lucide-react';
 
 /* ─── Sidebar Tab Definitions (Voice Agent's own sub-views; nav itself now
    lives in the shared app Sidebar, components/layout/Sidebar.js) ─────────── */
 const TABS = [
-  { id: 'dashboard',  label: 'Dashboard',              icon: LayoutDashboard },
   { id: 'builder',    label: 'Lead-to-Campaign Builder', icon: Layers },
   { id: 'logs',       label: 'Call Logs',              icon: Phone },
   { id: 'create',     label: 'Create Agent',           icon: Mic },
@@ -69,29 +69,48 @@ export default function VoiceAgentPage() {
   // Active sidebar tab
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
-  // The dashboard follows /api/v1/assistants: roles that cannot view assistants
-  // (Sales Reps) land on the campaign builder instead.
+  const location = useLocation();
   const { user } = useAuth();
-  const canSeeDashboard = canViewAssistants(user);
+  // Prospects sent from Prospecting ([{ id, name, phone, ... }]). They stay (lib/builderPicks) until
+  // launched or removed; each new hand-off adds to them. The history state is cleared once read, so
+  // a reload or Back does not add the same ones again.
+  const userId = user?.id ?? null;
+  const [fromProspecting, setFromProspecting] = useState(
+    () => mergePicks(loadPicks(userId), location.state?.fromProspecting),
+  );
+  useEffect(() => {
+    setFromProspecting((current) => mergePicks(loadPicks(userId), current));
+  }, [userId]);
+  useEffect(() => {
+    const picked = location.state?.fromProspecting;
+    if (!picked) return;
+    setFromProspecting((current) => mergePicks(current, picked));
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  }, [location, navigate]);
+  useEffect(() => { savePicks(userId, fromProspecting); }, [userId, fromProspecting]);
   // Hides launch controls only; POST /api/campaigns enforces the same rule.
   const canLaunchCampaigns = canCreateCampaigns(user);
-  const homeTab = canSeeDashboard ? 'dashboard' : 'builder';
+  // The voice dashboard now lives on the main /dashboard page.
+  const homeTab = 'builder';
   const [activeTab, setActiveTab] = useState(() => {
     const view = searchParams.get('view');
     const tab = searchParams.get('tab');
     if (view === 'logs' || tab === 'logs') return 'logs';
-    if (tab && TABS.some(t => t.id === tab) && (tab !== 'dashboard' || canSeeDashboard)) return tab;
+    if (tab && TABS.some(t => t.id === tab)) return tab;
     return homeTab;
   });
   useEffect(() => {
     const view = searchParams.get('view');
     const tab = searchParams.get('tab');
-    if (view === 'logs' || tab === 'logs') {
+    if (tab === 'dashboard') {
+      // Old bookmarks of the retired Voice Agent dashboard tab.
+      navigate('/dashboard', { replace: true });
+    } else if (view === 'logs' || tab === 'logs') {
       setActiveTab('logs');
     } else if (tab && TABS.some(t => t.id === tab)) {
       setActiveTab(tab);
     }
-  }, [searchParams]);
+  }, [searchParams, navigate]);
 
   const fetchKbFiles = useCallback(async () => {
     setLoadingKbFiles(true);
@@ -105,6 +124,22 @@ export default function VoiceAgentPage() {
     setLoadingKbFiles(false);
   }, []);
 
+  const [deletingKbId, setDeletingKbId] = useState(null);
+  const handleDeleteKbFile = async (file) => {
+    if (!window.confirm(`Delete "${file.name}"? It is removed from Vapi permanently.`)) return;
+    setDeletingKbId(file.id);
+    try {
+      await deleteKnowledgeFile(file.id);
+      toast.success(`"${file.name}" deleted`);
+      await fetchKbFiles();
+    } catch (e) {
+      // 409 names the agents still using it.
+      toast.error(e.response?.data?.detail || 'Failed to delete the file');
+    } finally {
+      setDeletingKbId(null);
+    }
+  };
+
   useEffect(() => {
     if (activeTab === 'kb') {
       fetchKbFiles();
@@ -113,7 +148,7 @@ export default function VoiceAgentPage() {
 
   const refreshLeads = useCallback(async () => {
     try {
-      const res = await getProspects({ leads_only: true, limit: 1000 });
+      const res = await getProspects({ leads_only: true, limit: 1000, include: 'score_summary' });
       setLeads((res.data?.prospects || []).map(toLeadRow));
     } catch (err) {
       console.error('Failed to refresh leads:', err);
@@ -125,7 +160,7 @@ export default function VoiceAgentPage() {
       setLoadingCampaignData(true);
       try {
         const [leadsRes, assistantsRes] = await Promise.allSettled([
-          getProspects({ leads_only: true, limit: 1000 }),
+          getProspects({ leads_only: true, limit: 1000, include: 'score_summary' }),
           getAssistants().catch(() => ({ data: [] }))
         ]);
 
@@ -492,6 +527,8 @@ export default function VoiceAgentPage() {
           assistants={assistants}
           loading={loadingCampaignData}
           canCreateCampaigns={canLaunchCampaigns}
+          fromProspecting={fromProspecting}
+          onFromProspectingDone={(ids) => setFromProspecting((current) => (ids ? dropPicks(current, ids) : []))}
         />
       </div>
     </div>
@@ -660,10 +697,26 @@ export default function VoiceAgentPage() {
                             <h4 className="text-xs font-medium truncate text-foreground pr-4" title={file.name}>
                               {file.name}
                             </h4>
-                            <span className="shrink-0 flex items-center gap-1 bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20 text-[9px] font-semibold px-2 py-0.5 rounded-full select-none">
-                              <Check className="w-2.5 h-2.5" />
-                              Vapi Parsed
-                            </span>
+                            <div className="shrink-0 flex items-center gap-1.5">
+                              <span className="flex items-center gap-1 bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20 text-[9px] font-semibold px-2 py-0.5 rounded-full select-none">
+                                <Check className="w-2.5 h-2.5" />
+                                Vapi Parsed
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteKbFile(file)}
+                                disabled={deletingKbId === file.id}
+                                className="p-1 rounded-md text-muted-foreground hover:text-red-500 hover:bg-red-500/10 focus:outline-none disabled:opacity-50 transition-colors"
+                                title="Delete file"
+                                aria-label={`Delete ${file.name}`}
+                              >
+                                {deletingKbId === file.id ? (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                            </div>
                           </div>
                           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1.5 text-[11px] text-muted-foreground">
                             <span>Size: {formatBytes(file.size)}</span>
@@ -699,8 +752,8 @@ export default function VoiceAgentPage() {
   };
 
   const renderContent = () => {
+    if (!voiceTabEnabled(user, activeTab)) return <FeatureOff name={TABS.find((t) => t.id === activeTab)?.label || 'This feature'} />;
     switch (activeTab) {
-      case 'dashboard':  return canSeeDashboard ? <VoiceDashboard onNavigate={setActiveTab} superAdmin={isSuperAdmin(user)} /> : renderBuilder();
       case 'single':     return <>{renderSingleCall()}{renderOverride()}</>;
       case 'csv':        return renderCsvCampaign();
       case 'builder':    return renderBuilder();

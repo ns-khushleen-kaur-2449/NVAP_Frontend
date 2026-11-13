@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -9,30 +9,48 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { ScrollArea } from '../ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import AgentToolsPanel from './AgentToolsPanel';
+import { Field, FieldMessages, OptionSelect, Section, TagInput, withCurrent } from './builder/BuilderFields';
+import LanguageField from './builder/LanguageField';
+import LeadFieldsSection from './builder/LeadFieldsSection';
+import OpenerSection from './builder/OpenerSection';
+import PromptModeSection from './builder/PromptModeSection';
+import { CatalogWordsProblem, OpenerPreview, PromptText } from './builder/PreviewParts';
 import {
   User, Building2, MessageSquare, ShieldCheck, Book, StickyNote, Cpu,
-  Loader2, Plus, X, ListRestart, Save, Rocket, RotateCcw, AlertTriangle,
-  CheckCircle2, FileEdit, History, Wrench, Sparkles, Pencil,
+  Loader2, Plus, ListRestart, Save, Rocket, RotateCcw, AlertTriangle,
+  CheckCircle2, FileEdit, History, Wrench, Sparkles, Pencil, Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
-  listBuilderConfigs, getBuilderConfig, createBuilderConfig, updateBuilderConfig,
+  listBuilderConfigs, getBuilderConfig, createBuilderConfig, updateBuilderConfig, deleteBuilderConfig,
   previewBuilderConfig, publishBuilderConfig, rollbackBuilderConfig, retryBuilderConfig,
-  getKnowledgeFiles, getCatalogItems,
+  getKnowledgeFiles, getCatalogItems, getLeadFieldRegistry, getCatalogTable, getCatalogSettings, getBuilderLanguages,
+  getAssistants,
 } from '../../lib/api';
+import { AuthContext } from '../../lib/AuthContext';
+import { ROLES } from '../../lib/rbac';
+import { DEFAULT_LEAD_FIELDS, allProblems, problemsFrom } from '../../lib/builderPersonalization';
+import { directionOf, languageOf, needsGender } from '../../lib/builderLanguages';
 import { formatCurrency } from '../../lib/utils';
 
 // Option values mirror the backend contract in
 // app/schemas/requests/assistant_builder.py and the vocabularies in
-// app/features/assistant_builder/prompt_builder.py.
-const LANGUAGES = [
-  { value: 'en', label: 'English' },
-  { value: 'hi', label: 'Hindi' },
+// app/features/assistant_builder/ (sections/, i18n/).
+// Radix Select has no empty value: "unset" stands for no persona gender (neutral phrasing).
+const PERSONA_GENDERS = [
+  { value: 'unset', label: 'Not set (neutral)' },
+  { value: 'female', label: 'Female' },
+  { value: 'male', label: 'Male' },
+];
+const SALUTATIONS = [
+  { value: 'first_name', label: 'By first name' },
+  { value: 'formal', label: 'Formal (title and last name)' },
+  { value: 'none', label: 'No name' },
 ];
 const PITCH_MODES = [
   { value: 'none', label: 'Nothing specific', hint: 'Just understand what they need' },
-  { value: 'selected', label: 'Pick from catalog', hint: 'Choose the cars to feature' },
-  { value: 'latest', label: 'Newest arrivals', hint: 'The latest cars in your catalog' },
+  { value: 'selected', label: 'Pick from catalog', hint: 'Choose the products to feature' },
+  { value: 'latest', label: 'Newest arrivals', hint: 'The latest products in your catalog' },
   { value: 'custom', label: 'Write my own', hint: 'Offers or points to talk about' },
 ];
 const PITCH_MAX_ITEMS = 10;
@@ -59,14 +77,43 @@ const LENGTHS = [
   { value: 'balanced', label: 'Balanced' },
   { value: 'detailed', label: 'Detailed' },
 ];
-const VERTICALS = [
-  { value: 'automobile', label: 'Automobile dealership' },
-  { value: 'real_estate', label: 'Real estate' },
-];
-const QUALIFICATION_SUGGESTIONS = {
-  automobile: ['budget', 'type of car', 'fuel type', 'transmission', 'purchase timeline', 'trade-in'],
-  real_estate: ['budget', 'preferred location', 'property type', 'size', 'possession timeline'],
+// The industry is a label: what the agent says and asks comes from the tenant's Catalog (its fields and words,
+// or a preset applied there), never from this value.  Any industry may be typed; these are suggestions.
+export const INDUSTRY_SUGGESTIONS = ['Automobile dealership', 'Real estate', 'Textile', 'Insurance', 'Education',
+  'Healthcare', 'Retail', 'Travel', 'Financial services', 'Software'];
+// LEGACY_INDUSTRY_KEYS: the two industries stored as keys before free-text industries (older versions and the
+// presets use them).  The only place frontend code names them (app/tests/test_no_vertical_branches.py allows it).
+const LEGACY_INDUSTRY_KEYS = { automobile: 'Automobile dealership', real_estate: 'Real estate' };
+export const industryName = (value) => LEGACY_INDUSTRY_KEYS[value] || value || '';
+// What a typed industry is stored as: a case-insensitive match on a legacy key or its name is that key (as
+// picking the suggestion would be); anything else as typed.  Trimmed on save and when the field is left.
+export const industryValue = (text) => {
+  const clean = (text || '').replace(/\s+/g, ' ').trimStart().slice(0, 50);
+  const typed = clean.trim().toLowerCase();
+  const known = Object.entries(LEGACY_INDUSTRY_KEYS).find(([key, name]) => [key, name.toLowerCase()].includes(typed));
+  return known ? known[0] : clean;
 };
+// Always offered after the catalog's own questions.
+export const GENERIC_QUALIFICATION = ['budget', 'timeline', 'decision maker'];
+
+/**
+ * "What to qualify" suggestions: the labels of the tenant's catalog fields the agent asks about (ask_lead, in
+ * ask_order, in the assistant's language else English), then the generic ones, without repeats.
+ */
+export function qualificationSuggestions(columns, language) {
+  const asked = (columns || []).filter((c) => c.ask_lead)
+    .sort((a, b) => (a.ask_order ?? Infinity) - (b.ask_order ?? Infinity) || (a.position ?? 0) - (b.position ?? 0))
+    .map((c) => ((c.labels && c.labels[language]) || c.label || '').trim().toLowerCase())
+    .filter(Boolean);
+  const seen = new Set();
+  return [...asked, ...GENERIC_QUALIFICATION].filter((s) => !seen.has(s) && seen.add(s));
+}
+
+/** The note shown when the typed industry is not the preset the tenant's catalog was set up with. */
+export function presetMismatch(preset, vertical) {
+  if (!preset || !(vertical || '').trim() || industryValue(vertical) === preset) return null;
+  return `Your catalog uses the ${industryName(preset)} setup; the agent's questions and words come from there.`;
+}
 const RULES = [
   { key: 'one_question_at_a_time', label: 'One question at a time', hint: 'Ask a single question per turn and wait.' },
   { key: 'no_unlisted_pricing', label: 'No unlisted pricing', hint: 'Never guess a price or range that no tool returned.' },
@@ -97,8 +144,11 @@ const defaultForm = () => ({
     sales_approach: 'consultative',
     conversation_length: 'balanced',
     first_message: '',
+    persona_gender: '',
+    salutation_style: 'first_name',
+    default_call_reason: '',
   },
-  business: { company: '', vertical: 'automobile', locations: [], description: '' },
+  business: { company: '', vertical: '', locations: [], description: '' },
   target_customer: '',
   qualification: [],
   rules: {
@@ -113,18 +163,36 @@ const defaultForm = () => ({
   tools: [],
   voice_stack: { stt: 'deepgram-nova-3', llm: 'groq', tts: '11labs' },
   custom_instructions: '',
-  // Hand-edited system prompt; empty means use the generated one.
+  // Hand-edited system prompt; empty means use the generated one. Setting or changing it is Super Admin only.
   prompt_override: '',
+  prompt_override_reason: '',
+  // guided | custom (Tenant Admin only): in custom mode the client's instructions and opener replace the
+  // generated conversation layers; the platform's safety layers and tools stay.
+  prompt_mode: 'guided',
+  custom_system_prompt: '',
+  custom_first_message: '',
+  // Customer details on calls (lead_fields). New agents start on; agents saved before this
+  // existed load with it off and keep their opener and call details until someone turns it on.
+  personalized: true,
+  lead_fields: DEFAULT_LEAD_FIELDS,
+  policy: { opener_mentions_reason: false },
 });
 
 // Merge a stored payload over the defaults so older versions missing a field still load.
-const formFromPayload = (payload) => {
+export const formFromPayload = (payload) => {
   const base = defaultForm();
   if (!payload) return base;
   return {
     ...base,
     ...payload,
-    assistant: { ...base.assistant, ...(payload.assistant || {}), first_message: payload.assistant?.first_message || '' },
+    assistant: {
+      ...base.assistant,
+      ...(payload.assistant || {}),
+      first_message: payload.assistant?.first_message || '',
+      persona_gender: payload.assistant?.persona_gender || '',
+      salutation_style: payload.assistant?.salutation_style || 'first_name',
+      default_call_reason: payload.assistant?.default_call_reason || '',
+    },
     business: { ...base.business, ...(payload.business || {}), description: payload.business?.description || '' },
     rules: { ...base.rules, ...(payload.rules || {}) },
     voice_stack: { ...base.voice_stack, ...(payload.voice_stack || {}) },
@@ -137,13 +205,27 @@ const formFromPayload = (payload) => {
     tools: payload.tools || [],
     custom_instructions: payload.custom_instructions || '',
     prompt_override: payload.prompt_override || '',
+    prompt_override_reason: payload.prompt_override_reason || '',
+    prompt_mode: payload.prompt_mode || 'guided',
+    custom_system_prompt: payload.custom_system_prompt || '',
+    custom_first_message: payload.custom_first_message || '',
+    personalized: Array.isArray(payload.lead_fields),
+    lead_fields: (payload.lead_fields || []).map((f) => ({ key: f.key, usage: f.usage, mask: f.mask || 'none', label: f.label || '' })),
+    policy: { ...base.policy, ...(payload.policy || {}) },
   };
 };
 
 // The exact AssistantBuilderConfig shape (the backend forbids unknown top-level fields).
-const toPayload = (form) => ({
-  assistant: { ...form.assistant, name: form.assistant.name.trim(), first_message: form.assistant.first_message.trim() || null },
-  business: { ...form.business, company: form.business.company.trim(), description: form.business.description.trim() || null },
+export const toPayload = (form) => ({
+  assistant: {
+    ...form.assistant,
+    name: form.assistant.name.trim(),
+    first_message: form.assistant.first_message.trim() || null,
+    persona_gender: form.assistant.persona_gender || null,
+    default_call_reason: form.assistant.default_call_reason.trim() || null,
+  },
+  business: { ...form.business, company: form.business.company.trim(), vertical: form.business.vertical.trim(),
+    description: form.business.description.trim() || null },
   target_customer: form.target_customer.trim(),
   qualification: form.qualification,
   rules: form.rules,
@@ -160,6 +242,16 @@ const toPayload = (form) => ({
   voice_stack: form.voice_stack,
   custom_instructions: form.custom_instructions.trim() || null,
   prompt_override: form.prompt_override.trim() || null,
+  prompt_override_reason: form.prompt_override_reason.trim() || null,
+  prompt_mode: form.prompt_mode,
+  // Kept in guided mode too, so switching back and forth doesn't lose the text (guided ignores it).
+  custom_system_prompt: form.custom_system_prompt.trim() || null,
+  custom_first_message: form.custom_first_message.trim() || null,
+  // null keeps the agent's pre-selection behaviour (see LeadFieldsSection).
+  lead_fields: form.personalized
+    ? form.lead_fields.map((f) => ({ key: f.key, usage: f.usage, mask: f.mask, label: f.label.trim() || null }))
+    : null,
+  policy: form.personalized ? form.policy : null,
 });
 
 // The generated text unchanged (or blank) is not an edit; the prompt stays auto-generated.
@@ -172,12 +264,24 @@ const missingFields = (form) => [
   !form.assistant.name.trim() && 'Agent name',
   !form.business.company.trim() && 'Company',
   !form.target_customer.trim() && 'Target customer',
-  form.pitch.mode === 'selected' && !form.pitch.item_ids.length && 'Cars to feature',
+  !form.business.vertical.trim() && 'Industry',
+  form.pitch.mode === 'selected' && !form.pitch.item_ids.length && 'Products to feature',
+  form.prompt_mode === 'custom' && !form.custom_system_prompt.trim() && 'Your instructions',
 ].filter(Boolean);
+
+// Text that stops being used when the prompt mode changes (the warning before switching).
+export const unusedAfterSwitch = (form, next) => (next === 'custom'
+  ? [form.assistant.first_message.trim() && 'the opening line', form.custom_instructions.trim() && 'business notes',
+    form.pitch.mode !== 'none' && 'what to pitch', form.qualification.length > 0 && 'what to qualify',
+    form.prompt_override.trim() && 'the hand-edited prompt (it still takes precedence)']
+  : [form.custom_system_prompt.trim() && 'your instructions', form.custom_first_message.trim() && 'your opening line']
+).filter(Boolean);
 
 const errorDetail = (e, fallback) => {
   const detail = e?.response?.data?.detail;
   if (typeof detail === 'string') return detail;
+  // The builder lists every problem with a selection or the first message as plain strings.
+  if (Array.isArray(detail) && detail.length && detail.every((d) => typeof d === 'string')) return detail.join('; ');
   if (Array.isArray(detail) && detail[0]?.msg) {
     const field = (detail[0].loc || []).filter((p) => p !== 'body').join('.');
     return field ? `${field}: ${detail[0].msg}` : detail[0].msg;
@@ -185,115 +289,21 @@ const errorDetail = (e, fallback) => {
   return fallback;
 };
 
-// Keep a value the backend accepted visible even if this UI doesn't list it.
-const withCurrent = (options, value) =>
-  !value || options.some((o) => o.value === value) ? options : [...options, { value, label: value }];
-
 function StatusBadge({ status }) {
   const style = STATUS_STYLES[status] || STATUS_STYLES.draft;
   return <Badge variant="outline" className={style.className}>{style.label}</Badge>;
 }
 
-function Section({ icon: Icon, title, description, children }) {
-  return (
-    <section className="space-y-5">
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center border border-primary/20">
-          <Icon className="w-5 h-5 text-primary" />
-        </div>
-        <div>
-          <h3 className="text-lg font-semibold">{title}</h3>
-          {description && <p className="text-sm text-muted-foreground">{description}</p>}
-        </div>
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function Field({ label, required, hint, children }) {
-  return (
-    <div className="space-y-2">
-      <label className="text-xs font-medium text-muted-foreground uppercase">
-        {label}{required && <span className="text-red-500 ml-0.5">*</span>}
-      </label>
-      {children}
-      {hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}
-    </div>
-  );
-}
-
-function OptionSelect({ value, onChange, options }) {
-  return (
-    <Select value={value} onValueChange={onChange}>
-      <SelectTrigger className="bg-muted border-border"><SelectValue /></SelectTrigger>
-      <SelectContent>
-        {withCurrent(options, value).map((o) => (
-          <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  );
-}
-
-function TagInput({ values, onChange, placeholder, suggestions = [] }) {
-  const [draft, setDraft] = useState('');
-  const add = (raw) => {
-    const value = raw.trim();
-    if (!value || values.some((v) => v.toLowerCase() === value.toLowerCase())) return;
-    onChange([...values, value]);
-  };
-  const onKeyDown = (e) => {
-    if (e.key === 'Enter' || e.key === ',') {
-      e.preventDefault();
-      add(draft);
-      setDraft('');
-    } else if (e.key === 'Backspace' && !draft && values.length) {
-      onChange(values.slice(0, -1));
-    }
-  };
-  const unused = suggestions.filter((s) => !values.some((v) => v.toLowerCase() === s.toLowerCase()));
-  return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-border bg-muted px-2 py-1.5 min-h-[40px]">
-        {values.map((v) => (
-          <Badge key={v} variant="secondary" className="gap-1 pr-1">
-            {v}
-            <button type="button" aria-label={`Remove ${v}`} onClick={() => onChange(values.filter((x) => x !== v))}>
-              <X className="w-3 h-3" />
-            </button>
-          </Badge>
-        ))}
-        <input
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={onKeyDown}
-          onBlur={() => { add(draft); setDraft(''); }}
-          placeholder={values.length ? '' : placeholder}
-          className="flex-1 min-w-[120px] bg-transparent text-sm outline-none py-1"
-        />
-      </div>
-      {unused.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {unused.map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => add(s)}
-              className="text-[11px] px-2 py-0.5 rounded-full border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-primary/50"
-            >
-              + {s}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 export default function AssistantBuilder() {
+  const user = useContext(AuthContext)?.user;
+  // The backend enforces these (custom_prompt.validate); the UI only hides or locks.
+  const canUseCustomMode = user?.role === ROLES.TENANT_ADMIN;
+  const canEditRawPrompt = false;
+  const canDeleteAgents = user?.role === ROLES.TENANT_ADMIN;  // the backend enforces it too
   const [view, setView] = useState('list'); // 'list' | 'editor'
   const [configs, setConfigs] = useState([]);
+  const [deletingId, setDeletingId] = useState(null);
+  const [assignedAgents, setAssignedAgents] = useState([]);
   const [loadingList, setLoadingList] = useState(false);
 
   const [config, setConfig] = useState(null); // BuilderConfigResponse of the config being edited
@@ -312,6 +322,18 @@ export default function AssistantBuilder() {
 
   const [knowledgeFiles, setKnowledgeFiles] = useState([]);
   const [catalogItems, setCatalogItems] = useState([]);
+  const [catalogColumns, setCatalogColumns] = useState([]);  // the tenant's catalog fields (What to qualify)
+  const [catalogPreset, setCatalogPreset] = useState(null);
+  const [registry, setRegistry] = useState(null);
+  const [registryLoading, setRegistryLoading] = useState(false);
+  // Problems from the last preview or save (422), shown against their fields.
+  const [problems, setProblems] = useState(() => problemsFrom(null));
+  // GET /assistant-builder/languages: what the agent may speak (drafts only for test tenants), with voice readiness.
+  const [languages, setLanguages] = useState([]);
+  const [languagesLoading, setLanguagesLoading] = useState(false);
+  // A publish the server refused (400: a voice missing for the language, a draft pack, a changed tool): kept on
+  // screen until the next publish, not only in a toast.
+  const [publishProblem, setPublishProblem] = useState(null);
 
   const payload = useMemo(() => toPayload(form), [form]);
   const payloadKey = useMemo(() => JSON.stringify(payload), [payload]);
@@ -321,23 +343,43 @@ export default function AssistantBuilder() {
     return { ...payload, prompt_override: promptOverrideFrom(promptDraft, preview?.generated_prompt) };
   }, [payload, editingPrompt, promptDraft, preview]);
   const isDirty = savedSnapshot !== JSON.stringify(savePayload);
-  const missing = missingFields(form);
+  const custom = form.prompt_mode === 'custom';
+  const language = form.assistant.language;
+  const direction = directionOf(languages, language);
+  const genderRequired = needsGender(languages, language);
+  const missing = [...missingFields(form),
+    ...(genderRequired && !form.assistant.persona_gender ? ["agent's gender"] : [])];
 
   const fetchConfigs = useCallback(async () => {
     setLoadingList(true);
-    try {
-      const res = await listBuilderConfigs();
-      setConfigs(res.data || []);
-    } catch (e) {
-      toast.error(errorDetail(e, 'Failed to load agents'));
-    } finally {
-      setLoadingList(false);
-    }
+    const [configsResult, agentsResult] = await Promise.allSettled([listBuilderConfigs(), getAssistants()]);
+    if (configsResult.status === 'fulfilled') setConfigs(configsResult.value.data || []);
+    else toast.error(errorDetail(configsResult.reason, 'Failed to load agents'));
+    if (agentsResult.status === 'fulfilled') {
+      setAssignedAgents((agentsResult.value.data || []).filter((agent) => agent.status === 'imported'));
+    } else setAssignedAgents([]);
+    setLoadingList(false);
   }, []);
 
   useEffect(() => {
     if (view === 'list') fetchConfigs();
   }, [view, fetchConfigs]);
+
+  const handleDeleteAgent = async (e, config) => {
+    e.stopPropagation();  // the card itself opens the editor
+    if (!window.confirm(`Delete ${config.name}? It is removed from Vapi and can no longer place calls. `
+      + 'Its call history is kept.')) return;
+    setDeletingId(config.id);
+    try {
+      await deleteBuilderConfig(config.id);
+      setConfigs((current) => current.filter((c) => c.id !== config.id));
+      toast.success(`${config.name} deleted`);
+    } catch (err) {
+      toast.error(errorDetail(err, 'Failed to delete the agent'));
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   useEffect(() => {
     if (view !== 'editor') return;
@@ -347,6 +389,22 @@ export default function AssistantBuilder() {
     getCatalogItems()
       .then((res) => setCatalogItems(res.data?.items || []))
       .catch(() => setCatalogItems([]));
+    getCatalogTable({ rows: false })  // the fields only, no products
+      .then((res) => setCatalogColumns(res.data?.columns || []))
+      .catch(() => setCatalogColumns([]));
+    getCatalogSettings()
+      .then((res) => setCatalogPreset(res.data?.preset || null))
+      .catch(() => setCatalogPreset(null));  // Sales Reps may not read settings: no note
+    setLanguagesLoading(true);
+    getBuilderLanguages()
+      .then((res) => setLanguages(res.data || []))
+      .catch(() => setLanguages([]))
+      .finally(() => setLanguagesLoading(false));
+    setRegistryLoading(true);
+    getLeadFieldRegistry()
+      .then((res) => setRegistry(res.data))
+      .catch(() => setRegistry(null))
+      .finally(() => setRegistryLoading(false));
   }, [view]);
 
   // Live prompt preview, debounced. Stale responses are dropped by sequence number.
@@ -365,9 +423,13 @@ export default function AssistantBuilder() {
         if (seq === previewSeq.current) {
           setPreview(res.data);
           setPreviewError(null);
+          setProblems(problemsFrom(null));
         }
       } catch (e) {
-        if (seq === previewSeq.current) setPreviewError(errorDetail(e, 'Preview failed'));
+        if (seq === previewSeq.current) {
+          setPreviewError(errorDetail(e, 'Preview failed'));
+          setProblems(problemsFrom(e));
+        }
       } finally {
         if (seq === previewSeq.current) setPreviewLoading(false);
       }
@@ -430,6 +492,14 @@ export default function AssistantBuilder() {
     setEditingPrompt(false);
   };
 
+  const switchMode = (next) => {
+    const unused = unusedAfterSwitch(form, next);
+    if (unused.length && !window.confirm(
+      `Switch to ${next === 'custom' ? 'custom' : 'guided'} prompt mode? This won't be used any more: ${unused.join(', ')}. `
+      + 'It is kept, so you can switch back.')) return;
+    update('prompt_mode', next);
+  };
+
   const update = (path, value) => {
     setForm((prev) => {
       const [section, key] = path.split('.');
@@ -454,6 +524,7 @@ export default function AssistantBuilder() {
       return res.data;
     } catch (e) {
       toast.error(errorDetail(e, 'Failed to save agent'));
+      setProblems(problemsFrom(e));
       return null;
     } finally {
       setSaving(false);
@@ -462,15 +533,22 @@ export default function AssistantBuilder() {
 
   const runPublish = async (action, configId, version, successMessage) => {
     setPublishing(true);
+    setPublishProblem(null);
+    let published = false;
     try {
       const res = await action(configId, version);
       toast.success(`${successMessage} (version ${res.data.version})`);
+      published = true;
     } catch (e) {
-      toast.error(errorDetail(e, 'Publishing to Vapi failed. See the version status for details.'));
+      const message = errorDetail(e, 'Publishing to Vapi failed. See the version status for details.');
+      toast.error(message);
+      if (e?.response?.status === 400) setPublishProblem(message);
     } finally {
       await refreshConfig(configId);
       setPublishing(false);
     }
+    // Back to the agents list once it is live (the list reloads); a failure stays here to show why.
+    if (published) setView('list');
   };
 
   const publishLatest = async () => {
@@ -514,7 +592,7 @@ export default function AssistantBuilder() {
             <div className="flex items-center justify-center py-20">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
             </div>
-          ) : configs.length === 0 ? (
+          ) : configs.length === 0 && assignedAgents.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-center border-2 border-dashed border-border rounded-xl">
               <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
                 <User className="w-8 h-8 text-muted-foreground" />
@@ -526,7 +604,10 @@ export default function AssistantBuilder() {
               <Button onClick={openNew} variant="outline" className="mt-6">Build your first agent</Button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="space-y-8">
+              {configs.length > 0 && <section aria-labelledby="your-agents-heading" className="space-y-3">
+                {assignedAgents.length > 0 && <h3 id="your-agents-heading" className="text-base font-semibold">Agents you can edit</h3>}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {configs.map((c) => {
                 const p = c.latest?.payload || {};
                 const goal = GOALS.find((g) => g.value === p.assistant?.goal)?.label;
@@ -537,7 +618,16 @@ export default function AssistantBuilder() {
                         <div className="w-12 h-12 rounded-xl bg-muted border border-border flex items-center justify-center">
                           <User className="w-6 h-6 text-muted-foreground" />
                         </div>
-                        <StatusBadge status={c.latest?.status} />
+                        <div className="flex items-center gap-2">
+                          <StatusBadge status={c.latest?.status} />
+                          {canDeleteAgents && (
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                              title={`Delete ${c.name}`} aria-label={`Delete ${c.name}`} data-testid={`delete-agent-${c.id}`}
+                              disabled={deletingId === c.id} onClick={(e) => handleDeleteAgent(e, c)}>
+                              {deletingId === c.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                            </Button>
+                          )}
+                        </div>
                       </div>
                       <h4 className="font-bold leading-none">{c.name}</h4>
                       <p className="text-xs text-muted-foreground mt-2 line-clamp-1">
@@ -557,6 +647,29 @@ export default function AssistantBuilder() {
                   </Card>
                 );
               })}
+                </div>
+              </section>}
+              {assignedAgents.length > 0 && <section aria-labelledby="assigned-agents-heading" className="space-y-3">
+                <h3 id="assigned-agents-heading" className="text-base font-semibold">Assigned agents</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {assignedAgents.map((agent) => <Card key={agent.id} role="button" tabIndex={0}
+                    aria-label={`${agent.name} assigned by admin; contact admin for changes`}
+                    className="border-blue-500/30 cursor-pointer" onClick={() => toast.info('Assigned to you by the admin', {
+                      description: 'Contact your admin for changes to this agent.',
+                    })} onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        toast.info('Assigned to you by the admin', { description: 'Contact your admin for changes to this agent.' });
+                      }
+                    }}>
+                    <CardContent className="p-5 space-y-3">
+                      <div className="flex items-start justify-between gap-2"><h4 className="font-bold">{agent.name}</h4><Badge variant="outline" className="text-blue-500 border-blue-500/30">Assigned by admin</Badge></div>
+                      <p className="text-xs text-muted-foreground break-all">{agent.vapi_assistant_id}</p>
+                      <p className="text-sm">Assigned to you by the admin. Contact your admin for changes.</p>
+                    </CardContent>
+                  </Card>)}
+                </div>
+              </section>}
             </div>
           )}
         </ScrollArea>
@@ -601,6 +714,13 @@ export default function AssistantBuilder() {
         </div>
       </div>
 
+      {publishProblem && (
+        <div role="alert" className="flex items-start gap-2 px-6 py-2.5 text-sm bg-amber-500/10 border-b border-amber-500/20 text-amber-800 dark:text-amber-300">
+          <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+          <span>Not published: {publishProblem}</span>
+        </div>
+      )}
+
       {latestStatus === 'sync_failed' && config?.latest?.sync_error && (
         <div className="flex items-start gap-2 px-6 py-2.5 text-sm bg-red-500/10 border-b border-red-500/20 text-red-700 dark:text-red-400">
           <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
@@ -614,10 +734,42 @@ export default function AssistantBuilder() {
             <Section icon={User} title="Agent identity" description="Who the agent is and what it should achieve">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Field label="Agent name" required>
-                  <Input value={form.assistant.name} maxLength={255} onChange={(e) => update('assistant.name', e.target.value)} placeholder="e.g. Riya" className="bg-muted border-border" />
+                  <Input dir="auto" value={form.assistant.name} maxLength={255} onChange={(e) => update('assistant.name', e.target.value)} placeholder="e.g. Riya" className="bg-muted border-border" />
                 </Field>
                 <Field label="Language">
-                  <OptionSelect value={form.assistant.language} onChange={(v) => update('assistant.language', v)} options={LANGUAGES} />
+                  <LanguageField languages={languages} loading={languagesLoading} value={language}
+                    gender={form.assistant.persona_gender} errors={problems.language}
+                    onChange={(v) => update('assistant.language', v)} />
+                </Field>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Field
+                  label="Agent's gender"
+                  required={genderRequired}
+                  hint={genderRequired
+                    ? `Required for ${languageOf(languages, language)?.name || 'this language'}: the agent's own words change with it, and so does the voice.`
+                    : 'Match the voice. In languages where the agent\'s own words change with it, they follow this.'}
+                >
+                  <OptionSelect
+                    ariaLabel="Agent's gender"
+                    value={form.assistant.persona_gender || 'unset'}
+                    onChange={(v) => update('assistant.persona_gender', v === 'unset' ? '' : v)}
+                    options={genderRequired ? PERSONA_GENDERS.filter((g) => g.value !== 'unset') : PERSONA_GENDERS}
+                  />
+                  <FieldMessages errors={problems.persona_gender} />
+                </Field>
+                <Field
+                  label="Greeting style"
+                  hint={form.personalized ? 'Formal needs last name (Greet) and a title or gender custom field; otherwise it uses the first name.'
+                    : 'Turn on customer details to greet leads by name.'}
+                >
+                  <OptionSelect
+                    ariaLabel="Greeting style"
+                    value={form.assistant.salutation_style}
+                    onChange={(v) => update('assistant.salutation_style', v)}
+                    options={SALUTATIONS}
+                    disabled={!form.personalized}
+                  />
                 </Field>
               </div>
               <Field label="Call goal">
@@ -635,41 +787,83 @@ export default function AssistantBuilder() {
                   ))}
                 </div>
               </Field>
-              <Field label="Opening line" hint="What the agent says the moment the call connects. Leave empty for a warm greeting built from your business details.">
-                <Textarea
-                  value={form.assistant.first_message}
-                  maxLength={500}
-                  onChange={(e) => update('assistant.first_message', e.target.value)}
-                  placeholder={preview?.first_message || "e.g. Hi there! This is Riya from Apex Motors. Is this a good time to chat?"}
-                  className="bg-muted border-border min-h-[70px] resize-none"
-                />
-                {!form.assistant.first_message.trim() && preview?.first_message && (
-                  <p className="text-[11px] text-muted-foreground mt-1">Will say: “{preview.first_message}”</p>
-                )}
-              </Field>
             </Section>
+
+            <PromptModeSection
+              mode={form.prompt_mode}
+              onMode={switchMode}
+              prompt={form.custom_system_prompt}
+              onPrompt={(v) => update('custom_system_prompt', v)}
+              canEdit={canUseCustomMode}
+              errors={problems.custom_prompt}
+            />
+
+            <OpenerSection
+              personalized={form.personalized}
+              firstMessage={custom ? form.custom_first_message : form.assistant.first_message}
+              onFirstMessage={(v) => (custom
+                ? canUseCustomMode && update('custom_first_message', v)
+                : update('assistant.first_message', v))}
+              leadFields={form.lead_fields}
+              mentionsReason={form.policy.opener_mentions_reason}
+              onMentionsReason={(v) => update('policy.opener_mentions_reason', v)}
+              defaultReason={form.assistant.default_call_reason}
+              onDefaultReason={(v) => update('assistant.default_call_reason', v)}
+              generated={preview?.first_message}
+              dir={direction}
+              errors={custom ? { ...problems, first_message: problems.custom_first_message } : problems}
+              warnings={preview?.first_message_warnings || []}
+            />
+
+            {problems.catalog_words.map((m) => <CatalogWordsProblem key={m} message={m} />)}
+
+            <LeadFieldsSection
+              enabled={form.personalized}
+              onToggle={(v) => update('personalized', v)}
+              leadFields={form.lead_fields}
+              onChange={(v) => update('lead_fields', v)}
+              registry={registry}
+              loading={registryLoading}
+              errors={problems.lead_fields}
+            />
 
             <Section icon={Building2} title="Business" description="Facts the agent can say about your business">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Field label="Company" required>
-                  <Input value={form.business.company} maxLength={255} onChange={(e) => update('business.company', e.target.value)} placeholder="e.g. Apex Motors" className="bg-muted border-border" />
+                  <Input dir="auto" value={form.business.company} maxLength={255} onChange={(e) => update('business.company', e.target.value)} placeholder="e.g. Apex Motors" className="bg-muted border-border" />
                 </Field>
-                <Field label="Industry">
-                  <OptionSelect value={form.business.vertical} onChange={(v) => update('business.vertical', v)} options={VERTICALS} />
+                <Field label="Industry" required hint="Any industry. What the agent asks and says comes from your Catalog.">
+                  <Input dir="auto" list="industry-suggestions" value={industryName(form.business.vertical)} maxLength={50}
+                    onChange={(e) => update('business.vertical', industryValue(e.target.value))}
+                    onBlur={(e) => update('business.vertical', industryValue(e.target.value.trim()))}
+                    placeholder="e.g. Textile, Insurance, Real estate" aria-label="Industry" className="bg-muted border-border" />
+                  <datalist id="industry-suggestions">
+                    {INDUSTRY_SUGGESTIONS.map((name) => <option key={name} value={name} />)}
+                  </datalist>
+                  {presetMismatch(catalogPreset, form.business.vertical) && (
+                    <p className="text-xs text-muted-foreground" role="note">{presetMismatch(catalogPreset, form.business.vertical)}</p>
+                  )}
                 </Field>
               </div>
               <Field label="Locations" hint="Press Enter after each branch. The agent offers these when booking a visit.">
                 <TagInput values={form.business.locations} onChange={(v) => update('business.locations', v.slice(0, 50))} placeholder="e.g. Solan" />
               </Field>
               <Field label="About the company" hint="One line the agent says about you when it introduces itself.">
-                <Input value={form.business.description} maxLength={300} onChange={(e) => update('business.description', e.target.value)} placeholder="e.g. We've helped over ten thousand families in Himachal find their perfect car" className="bg-muted border-border" />
+                <Input dir="auto" value={form.business.description} maxLength={300} onChange={(e) => update('business.description', e.target.value)} placeholder="e.g. We've helped over ten thousand families in Himachal find their perfect car" className="bg-muted border-border" />
               </Field>
               <Field label="Target customer" required hint="Who you sell to, in a sentence.">
-                <Textarea value={form.target_customer} maxLength={2000} onChange={(e) => update('target_customer', e.target.value)} placeholder="e.g. Families and first-time car buyers in Himachal" className="bg-muted border-border min-h-[80px] resize-none" />
+                <Textarea dir="auto" value={form.target_customer} maxLength={2000} onChange={(e) => update('target_customer', e.target.value)} placeholder="e.g. Families and first-time buyers in Himachal" className="bg-muted border-border min-h-[80px] resize-none" />
               </Field>
             </Section>
 
-            <Section icon={MessageSquare} title="Conversation" description="How the agent talks and what it needs to find out">
+            {custom && (
+              <p className="text-sm text-muted-foreground rounded-lg border border-dashed border-border px-4 py-3" role="note">
+                Custom prompt mode: conversation style, what to qualify, what to pitch and business notes aren't used.
+                Put them in your instructions. They're kept if you switch back to guided.
+              </p>
+            )}
+
+            {!custom && <Section icon={MessageSquare} title="Conversation" description="How the agent talks and what it needs to find out">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Field label="Tone">
                   <OptionSelect value={form.assistant.tone} onChange={(v) => update('assistant.tone', v)} options={TONES} />
@@ -697,12 +891,12 @@ export default function AssistantBuilder() {
                   values={form.qualification}
                   onChange={(v) => update('qualification', v.slice(0, 50))}
                   placeholder="e.g. budget"
-                  suggestions={QUALIFICATION_SUGGESTIONS[form.business.vertical] || []}
+                  suggestions={qualificationSuggestions(catalogColumns, form.assistant.language)}
                 />
               </Field>
-            </Section>
+            </Section>}
 
-            <Section icon={Sparkles} title="What to pitch" description="What the agent should bring up with the customer. Only names are shared; prices and stock still come from the catalog.">
+            {!custom && <Section icon={Sparkles} title="What to pitch" description="What the agent should bring up with the customer. Only names are shared; prices and stock still come from the catalog.">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {PITCH_MODES.map((m) => (
                   <button
@@ -717,10 +911,10 @@ export default function AssistantBuilder() {
                 ))}
               </div>
               {(form.pitch.mode === 'selected' || form.pitch.mode === 'latest') && catalogItems.length === 0 && (
-                <p className="text-sm text-muted-foreground">Your catalog is empty. Import a catalog first to pitch specific cars.</p>
+                <p className="text-sm text-muted-foreground">Your catalog is empty. Import a catalog first to pitch specific products.</p>
               )}
               {form.pitch.mode === 'selected' && catalogItems.length > 0 && (
-                <Field label={`Cars to feature (${form.pitch.item_ids.length}/${PITCH_MAX_ITEMS})`} hint="The agent brings up whichever one fits what the customer needs.">
+                <Field label={`Products to feature (${form.pitch.item_ids.length}/${PITCH_MAX_ITEMS})`} hint="The agent brings up whichever one fits what the customer needs.">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-72 overflow-y-auto pr-1">
                     {catalogItems.map((item) => {
                       const selected = form.pitch.item_ids.includes(item.id);
@@ -747,7 +941,7 @@ export default function AssistantBuilder() {
                 </Field>
               )}
               {form.pitch.mode === 'latest' && catalogItems.length > 0 && (
-                <Field label="How many" hint="Newest first, as of when you save. Save again after adding cars to refresh the list.">
+                <Field label="How many" hint="Newest first, as of when you save. Save again after adding products to refresh the list.">
                   <div className="flex items-center gap-3 flex-wrap">
                     <div className="inline-flex rounded-lg border border-border p-0.5 bg-muted">
                       {[1, 2, 3, 4, 5].map((n) => (
@@ -775,15 +969,16 @@ export default function AssistantBuilder() {
                   hint="Offers, launches, USPs. Brought up naturally where they fit. The agent still won't quote prices."
                 >
                   <Textarea
+                    dir="auto"
                     value={form.pitch.talking_points}
                     maxLength={TALKING_POINTS_MAX}
                     onChange={(e) => update('pitch.talking_points', e.target.value)}
-                    placeholder="e.g. Free first service this month. Zero processing fee on car loans. New EV charging point at the Mohali showroom."
+                    placeholder="e.g. Free first service this month. Zero processing fee this week. New branch open in Mohali."
                     className="bg-muted border-border min-h-[90px]"
                   />
                 </Field>
               )}
-            </Section>
+            </Section>}
 
             <Section icon={ShieldCheck} title="Guardrails" description="Protected rules layered on top of the core safety rules">
               <div className="space-y-2">
@@ -822,8 +1017,9 @@ export default function AssistantBuilder() {
               )}
             </Section>
 
-            <Section icon={StickyNote} title="Business notes" description="Offers, policies and preferences. Lower priority than the guardrails.">
+            {!custom && <Section icon={StickyNote} title="Business notes" description="Offers, policies and preferences. Lower priority than the guardrails.">
               <Textarea
+                dir="auto"
                 value={form.custom_instructions}
                 maxLength={CUSTOM_INSTRUCTIONS_MAX}
                 onChange={(e) => update('custom_instructions', e.target.value)}
@@ -833,7 +1029,7 @@ export default function AssistantBuilder() {
               <p className="text-[11px] text-muted-foreground text-right">
                 {form.custom_instructions.length}/{CUSTOM_INSTRUCTIONS_MAX}
               </p>
-            </Section>
+            </Section>}
 
             <Section icon={Cpu} title="Voice stack" description="Managed by the platform; the voice and model are set on the server.">
               <div className="grid grid-cols-3 gap-2 text-sm">
@@ -851,7 +1047,7 @@ export default function AssistantBuilder() {
         <div className="w-[420px] shrink-0 hidden lg:flex flex-col bg-card">
           <Tabs defaultValue="prompt" className="flex flex-col h-full">
             <TabsList className="m-3 mb-0 grid grid-cols-3">
-              <TabsTrigger value="prompt">Generated prompt</TabsTrigger>
+              <TabsTrigger value="prompt">{custom ? 'Final prompt' : 'Generated prompt'}</TabsTrigger>
               <TabsTrigger value="versions" disabled={!config}>Versions</TabsTrigger>
               <TabsTrigger value="tools">Tools{form.tools.length ? ` (${form.tools.length})` : ''}</TabsTrigger>
             </TabsList>
@@ -860,21 +1056,24 @@ export default function AssistantBuilder() {
               <ScrollArea className="h-full">
                 <div className="p-4 space-y-4">
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>Live preview of what the agent will be told</span>
+                    <span>{custom
+                      ? 'Live preview: platform rules, tools and your instructions, as the agent gets them'
+                      : 'Live preview of what the agent will be told'}</span>
                     {previewLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                   </div>
                   {missing.length > 0 ? (
                     <p className="text-sm text-muted-foreground">Fill in {missing.join(', ')} to see the prompt.</p>
                   ) : previewError ? (
-                    <p className="text-sm text-red-600">{previewError}</p>
+                    <div className="space-y-1">
+                      <p className="text-sm text-red-600">Fix these to see the prompt:</p>
+                      {problems.catalog_words.map((m) => <CatalogWordsProblem key={m} message={m} />)}
+                      <FieldMessages errors={allProblems(problems).length
+                        ? allProblems(problems).filter((m) => !problems.catalog_words.includes(m))
+                        : [previewError]} />
+                    </div>
                   ) : preview ? (
                     <>
-                      {preview.first_message && (
-                        <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
-                          <p className="text-[11px] font-medium text-muted-foreground uppercase mb-1">Opening line</p>
-                          <p className="text-sm">“{preview.first_message}”</p>
-                        </div>
-                      )}
+                      <OpenerPreview preview={preview} dir={direction} />
                       <div>
                         <div className="flex items-center justify-between mb-1.5">
                           <p className="text-[11px] font-medium text-muted-foreground uppercase flex items-center gap-1.5">
@@ -891,15 +1090,19 @@ export default function AssistantBuilder() {
                                   <RotateCcw className="w-3.5 h-3.5 mr-1" /> Reset
                                 </Button>
                               )}
-                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={startPromptEdit} title="Edit prompt">
-                                <Pencil className="w-3.5 h-3.5" />
-                              </Button>
+                              {canEditRawPrompt && (
+                                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={startPromptEdit}
+                                  title="Edit the whole prompt (Super Admin)">
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </Button>
+                              )}
                             </div>
                           )}
                         </div>
                         {editingPrompt ? (
                           <div className="space-y-2">
                             <Textarea
+                              dir="auto"
                               value={promptDraft}
                               onChange={(e) => setPromptDraft(e.target.value)}
                               maxLength={PROMPT_OVERRIDE_MAX}
@@ -912,13 +1115,19 @@ export default function AssistantBuilder() {
                                 <Button size="sm" onClick={applyPromptEdit} disabled={!promptDraft.trim()}>Apply</Button>
                               </div>
                             </div>
+                            <Field label="Reason for the change" required hint="Recorded in the admin audit log.">
+                              <Input value={form.prompt_override_reason} maxLength={500}
+                                onChange={(e) => update('prompt_override_reason', e.target.value)}
+                                placeholder="e.g. Client-approved script for the March campaign" aria-label="Reason for the prompt edit"
+                                className="bg-muted border-border" />
+                            </Field>
                             <p className="text-[11px] text-muted-foreground">
-                              Save or Publish keeps your edits (no need to Apply first), and they are published as written. They don't update when you change the form; use Reset to regenerate.
+                              Save or Publish keeps your edits (no need to Apply first), and they are published as written, replacing the platform's rules except the tools section. They don't update when you change the form; use Reset to regenerate.
                             </p>
                           </div>
                         ) : (
                           <>
-                            <pre className="whitespace-pre-wrap text-xs leading-relaxed font-mono bg-muted rounded-lg p-3 border border-border">{preview.prompt}</pre>
+                            <PromptText prompt={preview.prompt} />
                             {preview.prompt_edited && (
                               <p className="text-[11px] text-amber-700 mt-1.5 flex items-start gap-1">
                                 <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" />

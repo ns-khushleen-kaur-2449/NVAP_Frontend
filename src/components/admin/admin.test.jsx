@@ -13,6 +13,8 @@ import * as api from '@/lib/api';
 import { USERS, authValue, renderWithAuth } from '@/test/renderWithAuth';
 
 jest.mock('@/lib/api', () => ({
+  getUserSeats: jest.fn(() => Promise.resolve({ data: null })),
+  getBillingSubscription: jest.fn(() => Promise.resolve({ data: {} })),
   authRegister: jest.fn(),
   listTenants: jest.fn(),
   listTeams: jest.fn(),
@@ -42,6 +44,32 @@ async function fillBasics(user) {
 }
 
 describe('Add User dialog', () => {
+  test('a taken email is shown beside the email field, with the generic message only', async () => {
+    api.authRegister.mockRejectedValueOnce({ response: { status: 409, data: { detail: 'This email is already in use' } } });
+    const user = userEvent.setup();
+    renderWithAuth(<AddUserDialog open onOpenChange={() => {}} />, { user: USERS.tenant_admin });
+    await user.click(screen.getByTestId('role-select'));
+    await user.click(await screen.findByRole('option', { name: 'Manager' }));
+    await fillBasics(user);
+    await user.click(screen.getByRole('button', { name: /create user/i }));
+    const message = await screen.findByText(/This email is already in use/);
+    expect(message).toHaveAttribute('id', 'add-user-email-error');
+    expect(screen.getByLabelText('Email')).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+  });
+
+  test('another 409, such as a full seat limit, is shown as it is', async () => {
+    api.authRegister.mockRejectedValueOnce({ response: { status: 409, data: { detail: 'No Manager seats left' } } });
+    const user = userEvent.setup();
+    renderWithAuth(<AddUserDialog open onOpenChange={() => {}} />, { user: USERS.tenant_admin });
+    await user.click(screen.getByTestId('role-select'));
+    await user.click(await screen.findByRole('option', { name: 'Manager' }));
+    await fillBasics(user);
+    await user.click(screen.getByRole('button', { name: /create user/i }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('No Manager seats left');
+    expect(screen.getByLabelText('Email')).toHaveAttribute('aria-invalid', 'false');
+  });
+
   test('super admin: only Tenant Admin, and a tenant picker is required', async () => {
     const user = userEvent.setup();
     renderWithAuth(<AddUserDialog open onOpenChange={() => {}} />, { user: USERS.super_admin });
@@ -181,30 +209,24 @@ describe('Route guard and <Can>', () => {
   });
 });
 
-describe('Sidebar shows only permitted admin items', () => {
-  test.each([
-    ['super_admin', ['tenants', 'users']],
-    ['tenant_admin', ['users', 'teams']],
-    ['manager', ['users']],
-    ['rep', []],
-  ])('%s sees %j', (role, expected) => {
+describe('Admin items live in Settings, not the sidebar', () => {
+  test.each(['super_admin', 'tenant_admin', 'manager', 'rep'])('%s has no Users/Teams/Tenants entry', (role) => {
     renderWithAuth(<Sidebar />, { user: USERS[role], path: '/dashboard' });
-    const shown = ['tenants', 'users', 'teams'].filter((item) => screen.queryByTestId(`nav-${item}`));
-    expect(shown).toEqual(expected);
+    expect(['tenants', 'users', 'teams'].filter((item) => screen.queryByTestId(`nav-${item}`))).toEqual([]);
+    expect(screen.getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '/settings');
   });
 });
 
-describe('Voice Agent dashboard nav follows /api/v1/assistants', () => {
-  test.each([
-    ['super_admin', true], ['tenant_admin', true], ['manager', true], ['rep', false],
-  ])('%s sees the Dashboard entry: %s', (role, shown) => {
+describe('Dashboard is a single entry at the top of the nav', () => {
+  test.each(['super_admin', 'tenant_admin', 'manager', 'rep'])('%s has no second Dashboard under Voice Agent', (role) => {
     const { container } = renderWithAuth(<Sidebar />, { user: USERS[role], path: '/voice_agent' });
-    expect(Boolean(container.querySelector('a[href="/voice_agent?tab=dashboard"]'))).toBe(shown);
+    expect(container.querySelector('a[href="/voice_agent?tab=dashboard"]')).toBeNull();
+    expect(container.querySelectorAll('a[href="/dashboard"]')).toHaveLength(1);
   });
 });
 
 describe('Voice Agent nav hides what a Sales Rep is refused', () => {
-  const VOICE_TABS = ['dashboard', 'builder', 'logs', 'create', 'kb', 'csv', 'single', 'requests'];
+  const VOICE_TABS = ['builder', 'logs', 'create', 'kb', 'csv', 'single', 'requests'];
   const visibleTabs = (role) => {
     const { container } = renderWithAuth(<Sidebar />, { user: USERS[role], path: '/voice_agent' });
     return VOICE_TABS.filter((tab) => container.querySelector(`a[href="/voice_agent?tab=${tab}"]`));
@@ -217,10 +239,14 @@ describe('Voice Agent nav hides what a Sales Rep is refused', () => {
   });
 
   test('a Sales Rep keeps everything else, CSV Call Campaign included (the backend lets Reps create campaigns)', () => {
-    expect(visibleTabs('rep')).toEqual(['builder', 'logs', 'csv', 'single', 'requests']);
+    expect(visibleTabs('rep')).toEqual(['builder', 'logs', 'csv', 'single']);
   });
 
-  test.each(['super_admin', 'tenant_admin', 'manager'])('%s keeps Create Agent, Knowledge Base and CSV', (role) => {
+  test.each(['super_admin', 'tenant_admin', 'manager', 'rep'])('%s does not see Assistant Requests (hidden from the nav for now)', (role) => {
+    expect(visibleTabs(role)).not.toContain('requests');
+  });
+
+  test.each(['tenant_admin', 'manager'])('%s keeps Create Agent, Knowledge Base and CSV', (role) => {
     expect(visibleTabs(role)).toEqual(expect.arrayContaining(['create', 'kb', 'csv', 'builder', 'logs', 'single']));
   });
 
@@ -268,3 +294,15 @@ describe('Dashboard widget registry', () => {
     expect(allowedWidgets(can, WIDGETS, {})).toEqual([]);
   });
 });
+
+describe('seats before adding a user', () => {
+  test('shows the count and limit for the chosen role', async () => {
+    api.getUserSeats.mockResolvedValue({ data: { rep: { used: 3, limit: 3, full: true }, manager: { used: 1, limit: null, full: false } } });
+    renderWithAuth(<AddUserDialog open onOpenChange={() => {}} />, { user: USERS.manager });
+    const seat = await screen.findByTestId('seat-count');
+    expect(seat).toHaveTextContent('3 used of 3');
+    expect(seat).toHaveTextContent('No free seats');
+    expect(screen.getByRole('button', { name: /Create user/ })).toBeDisabled();
+  });
+});
+

@@ -8,6 +8,7 @@ import {
 import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import ThemeToggle from '@/components/shared/ThemeToggle';
+import BrandLockup from '@/components/shared/BrandLockup';
 import NotificationBell from '@/components/ops/NotificationBell';
 
 // ── Nav definitions (same as old sidebars) ──────────────────────
@@ -30,7 +31,8 @@ const VOICE_NAV = [
   { path: '/voice_agent', label: 'Voice Agent', icon: PhoneCall,     roles: ['agent', 'manager', 'admin'] },
   { path: '/voice_agent?view=logs', label: 'Calls', icon: Phone, roles: ['agent', 'manager', 'admin'] },
   { path: '/prospecting',  label: 'Prospecting',  icon: Users,           roles: ['agent', 'manager', 'admin'] },
-  { path: '/strategist',   label: 'AI Strategist', icon: Sparkles,       roles: ['agent', 'manager', 'admin'] },
+  // Hidden from the menu for now; the /strategist page and route still work.
+  // { path: '/strategist',   label: 'AI Strategist', icon: Sparkles,       roles: ['agent', 'manager', 'admin'] },
   { path: '/inbox',        label: 'Inbox',        icon: InboxIcon,       roles: ['agent', 'manager', 'admin'] },
   { path: '/meetings',     label: 'Meetings',     icon: CalendarClock,   roles: ['agent', 'manager', 'admin'] },
 ];
@@ -93,10 +95,8 @@ export const TopBar = () => {
             )}
 
             {/* Logo / Brand */}
-            <Link to="/dashboard" className="flex items-center group leading-none">
-              <span className="mk-display text-xl font-semibold text-[var(--ink)]">
-                Smart<span className="text-[var(--pine)]">SDR</span>
-              </span>
+            <Link to="/dashboard" aria-label="SmartSDR by Netsmartz — home" className="flex items-center text-[var(--ink)]">
+              <BrandLockup size="sm" />
             </Link>
           </div>
 
@@ -187,9 +187,7 @@ export const TopBar = () => {
         style={{ transform: mobileOpen ? 'translateX(0)' : 'translateX(100%)' }}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--line)]">
-          <span className="mk-display text-lg font-semibold text-[var(--ink)]">
-            Smart<span className="text-[var(--pine)]">SDR</span>
-          </span>
+          <BrandLockup size="sm" className="text-[var(--ink)]" />
           <button onClick={() => setMobileOpen(false)} className="p-1.5 rounded-lg text-[var(--pine)]/60 hover:bg-[var(--stone)]">
             <X className="w-5 h-5" />
           </button>

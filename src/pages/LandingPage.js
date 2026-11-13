@@ -2,15 +2,16 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence, useScroll, useTransform } from 'framer-motion';
 import {
-  ArrowRight, ArrowUpRight, Sparkles, PhoneCall, TrendingUp, BarChart2, Mic, Table2,
-  Sliders, Layers, Calendar, BookOpen, CheckCircle2, Gauge, PhoneOutgoing, ClipboardList,
-  Plus, PlayCircle, Zap, ShieldCheck, Target, FileSearch, Brain, GitBranch, Quote,
+  ArrowRight, Plus, PlayCircle, Zap, ShieldCheck, Target, FileSearch, Quote,
+  Check, Layers, BookOpen, FileSpreadsheet, PhoneCall, Calendar, BellRing, BarChart3, PhoneOff, Gauge,
+  AudioLines, UserCog, Users, Mail, CalendarSync, Headset, Infinity as InfinityIcon,
 } from 'lucide-react';
 import MarketingNav from '@/components/marketing/MarketingNav';
 import MarketingFooter from '@/components/marketing/MarketingFooter';
 import HeroWave3D from '@/components/marketing/HeroWave3D';
-import { VoiceCard } from '@/components/marketing/ProductVisuals';
-import HelperCharacter from '@/components/shared/HelperCharacter';
+import GlassCalendar from '@/components/marketing/GlassCalendar';
+import WorkflowVisual from '@/components/marketing/WorkflowVisual';
+import { NetsmartzLogo, SmartSDRWordmark } from '@/components/shared/BrandLockup';
 import { cn } from '@/lib/utils';
 
 import hubspot from '@/assets/hubspot.png';
@@ -22,172 +23,131 @@ import zoho from '@/assets/zoho.png';
 
 const LOGOS = [hubspot, salesforce, azure, dynamics, twilio, zoho];
 
-const MEETINGS = [
-  { a: 'AR', b: 'PK', days: 2 }, { a: 'SM', b: 'DV', days: 8 }, { a: 'RJ', b: 'NK', days: 3 },
-  { a: 'VT', b: 'AS', days: 8 }, { a: 'MK', b: 'RP', days: 4 }, { a: 'KG', b: 'HT', days: 3 },
-  { a: 'DN', b: 'SB', days: 4 }, { a: 'PA', b: 'JM', days: 1 },
-];
-
 const STATS = [
   { v: '3.4×', k: 'more qualified conversations' },
-  { v: '87%', k: 'average call-quality score' },
+  { v: '100%', k: 'of your lead list called' },
   { v: '24/7', k: 'autonomous lead calling' },
-  { v: '<2min', k: 'from call to scored report' },
-];
-
-const OFFERINGS = [
-  {
-    id: 'voice-agent',
-    name: 'Voice Agent',
-    tag: 'Autonomous lead calling',
-    icon: PhoneCall,
-    blurb:
-      'An intelligent AI voice system that qualifies leads — build a campaign, let the agent call, and every conversation lands back in your logs.',
-    features: [
-      { icon: Layers, label: 'Lead-to-campaign builder' },
-      { icon: PhoneOutgoing, label: 'Autonomous calls' },
-      { icon: BookOpen, label: 'Grounded knowledge base' },
-      { icon: Calendar, label: 'Auto scheduling' },
-      { icon: ClipboardList, label: 'Full call logs' },
-    ],
-  },
-  {
-    id: 'executive-report',
-    name: 'Executive Analytics',
-    tag: 'Call intelligence for managers',
-    icon: TrendingUp,
-    blurb:
-      'AI-powered executive reporting with call-quality analysis. Every recorded call is scored, summarised, and rolled up so managers see exactly what is working.',
-    features: [
-      { icon: BarChart2, label: 'Call-quality scoring' },
-      { icon: Gauge, label: 'Team overview' },
-      { icon: Mic, label: 'Audio upload' },
-      { icon: Sliders, label: 'Tunable rubric' },
-      { icon: Table2, label: 'Sheets sync' },
-    ],
-  },
+  { v: 'HOT · WARM · COLD', k: 'or Provisional until there\u2019s enough evidence' },
 ];
 
 const STEPS = [
-  { n: '01', t: 'Connect your calls and leads', d: 'Upload call recordings, import a lead list, or sync from your sheet. No new process to learn.' },
-  { n: '02', t: 'Let the agents do the work', d: 'The Voice Agent calls and qualifies leads while Executive Analytics scores and summarises every conversation.' },
-  { n: '03', t: 'Act on what matters', d: 'Managers open a clear executive report; agents follow the leads that are ready to move.' },
+  { n: '01', t: 'Connect your calls and leads', d: 'Import a lead list or sync from your sheet. No new process to learn.' },
+  { n: '02', t: 'Let the Voice Agent do the work', d: 'The Voice Agent calls and qualifies every lead, then scores each one so you know who is ready to move.' },
+  { n: '03', t: 'Act on what matters', d: 'Reps follow the hottest leads first, and managers see which leads are moving.' },
 ];
 
+// Each plan is laid out as the same seven rows (header, price, usage, seats,
+// features, add-on seats, CTA) so the cards line up for comparison.
 const PLANS = [
   {
-    name: 'Solo', tagline: 'A sales team of one', highlight: false,
-    priceQ: '$199', priceA: '$2,199', periodQ: '/mo', periodA: '/yr',
-    billingQ: 'billed quarterly, cancel anytime', billingA: 'billed annually, cancel anytime',
-    desc: 'For solo agents and small teams who want more qualified conversations without more headcount.',
-    specs: ['200 AI-qualified calls/month', '1 user', '1 Voice Agent seat · 1 phone line'],
-    // features: [
-    //   'Rocket AI, your expert real-estate GTM agent',
-    //   'AI-qualified calls & follow-ups on autopilot',
-    //   'Unlimited AI call scripts & personas',
-    //   'Turnkey phone-line setup',
-    //   'Native 2-way HubSpot CRM sync',
-    //   'Self-serve onboarding, set up in minutes',
-    //   'Email & in-app chat support',
-    // ],
-    footnote: 'Start now without a sales call',
-    cta: 'Explore',
+    name: 'Plus', highlight: false,
+    price: '$249', period: '/mo',
+    billing: 'billed monthly',
+    desc: 'For solo agents and small sales teams.',
+    usage: [
+      { icon: PhoneCall, value: '150', label: 'AI-qualified calls/month' },
+      { icon: AudioLines, value: '450', label: 'voice minutes' },
+    ],
+    seats: [
+      { icon: UserCog, value: '1', label: 'Manager seat' },
+      { icon: Users, value: '3', label: 'Sales Rep seats' },
+    ],
+    features: [
+      { icon: Mail, label: 'Email support' },
+    ],
+    addons: [
+      { label: 'Extra Manager seat', price: '$39', period: '/month' },
+      { label: 'Extra Sales Rep seat', price: '$19', period: '/month' },
+    ],
+    cta: 'Choose Plus',
   },
   {
-    name: 'Explore', tagline: 'Most popular', highlight: true,
-    priceQ: '$799', priceA: '$8,399', periodQ: '/mo', periodA: '/yr',
-    billingQ: 'billed quarterly, payment in advance', billingA: 'billed annually, payment in advance',
-    desc: 'For proving voice outreach can fill your pipeline.',
-    specs: ['800 AI-qualified calls/month', 'Unlimited users', '2 Voice Agent seats · 6 phone lines'],
-    // features: [
-    //   'Everything in Solo, plus:',
-    //   'AI research & monitoring of your HubSpot data',
-    //   'Lead signals: property views, portal activity & keyword tracking',
-    //   'Works with your existing lead lists',
-    //   'Dedicated onboarding specialist',
-    //   '24/7 Slack support',
-    //   'Per-campaign managed service available for +$149/campaign',
-    //   'Monthly check-in & webinar',
-    // ],
-    cta: 'Choose Explore',
+    name: 'Pro', highlight: true,
+    price: '$1,499', period: '/mo',
+    billing: 'billed monthly',
+    desc: 'For growing teams scaling voice outreach.',
+    usage: [
+      { icon: PhoneCall, value: '1,000', label: 'AI-qualified calls/month' },
+      { icon: AudioLines, value: '3,000', label: 'voice minutes' },
+    ],
+    seats: [
+      { icon: UserCog, value: '3', label: 'Manager seats' },
+      { icon: Users, value: '15', label: 'Sales Rep seats' },
+    ],
+    features: [
+      { icon: Mail, label: 'Priority email support' },
+      { icon: CalendarSync, label: 'CRM & calendar integration' },
+    ],
+    addons: [
+      { label: 'Extra Manager seat', price: '$29', period: '/month' },
+      { label: 'Extra Sales Rep seat', price: '$15', period: '/month' },
+    ],
+    cta: 'Choose Pro',
   },
   {
-    name: 'Scale', tagline: 'Get results faster', highlight: false,
-    priceQ: '$1,999', priceA: '$23,999', periodQ: '/mo', periodA: '/yr',
-    billingQ: 'billed quarterly, payment in advance', billingA: 'billed annually, payment in advance',
-    desc: 'For making voice outreach a channel you can count on.',
-    specs: ['2,500 AI-qualified calls/month', 'Unlimited users', '6 Voice Agent seats · 18 phone lines'],
-    // features: [
-    //   'Everything in Explore, plus:',
-    //   'Native two-way Salesforce CRM sync',
-    //   'AI research & monitoring of HubSpot & Salesforce data',
-    //   'AI voicemail drops & personalized call scripts',
-    //   'Website visitor tracking, enrichment & outreach',
-    //   'Dedicated onboarding specialist',
-    //   'Fully managed service available for +$2,500/mo',
-    //   'Priority support with bi-weekly performance review calls',
-    // ],
-    cta: 'Choose Scale',
+    name: 'Pro+', highlight: false,
+    price: '$3,999', period: '/mo',
+    billing: 'billed monthly',
+    desc: 'For large teams with high-volume outreach.',
+    usage: [
+      { icon: PhoneCall, value: '3,500', label: 'AI-qualified calls/month' },
+      { icon: AudioLines, value: '10,500', label: 'voice minutes' },
+    ],
+    seats: [
+      { icon: UserCog, value: 'Unlimited', label: 'Manager seats' },
+      { icon: Users, value: 'Unlimited', label: 'Sales Rep seats' },
+    ],
+    features: [
+      { icon: Mail, label: 'Priority email support' },
+      { icon: CalendarSync, label: 'CRM & calendar integration' },
+      { icon: Headset, label: 'Dedicated customer success manager' },
+    ],
+    addons: [],
+    addonsNote: 'Unlimited Manager and Sales Rep seats are included.',
+    cta: 'Choose Pro+',
   },
 ];
-
-// The annual toggle used to advertise a hard-coded "save 20%". Derive it from
-// PLANS instead so the badge cannot quietly contradict the prices above — the
-// numbers are parsed back out of the display strings rather than duplicated,
-// so there is one place to edit a price.
-const _priceNum = (s) => Number(String(s).replace(/[^0-9.]/g, ''));
-
-const MAX_ANNUAL_SAVING_PCT = Math.max(
-  0,
-  ...PLANS.map((p) => {
-    const yearAtQuarterlyRate = _priceNum(p.priceQ) * 12;
-    if (!yearAtQuarterlyRate) return 0;
-    return Math.round(((yearAtQuarterlyRate - _priceNum(p.priceA)) / yearAtQuarterlyRate) * 100);
-  })
-);
 
 const WHAT = [
   { n: '01', icon: Target, t: 'Call every lead, not just the easy ones', d: 'The Voice Agent works your entire list autonomously — no lead goes cold because a rep ran out of hours.' },
-  { n: '02', icon: FileSearch, t: 'Score every call on real criteria', d: 'Rapport, discovery, objection handling and more — each conversation is graded against a rubric you control.' },
-  { n: '03', icon: Brain, t: 'Two agents, one connected brain', d: 'Voice Agent qualifies; Executive Analytics explains. Managers see exactly what is working across the whole team.' },
-  { n: '04', icon: GitBranch, t: 'Fits how your brokerage sells', d: 'Bring your leads, recordings and sheets. Tune the scoring rubric to your market — no rip-and-replace.' },
-  { n: '05', icon: Zap, t: 'Answers in minutes, not weeks', d: 'From a finished call to a scored, summarised report in under two minutes. Act while the lead is still warm.' },
+  { n: '02', icon: FileSearch, t: 'Know which leads are ready', d: 'Leads are scored from fit and engagement and labelled HOT, WARM or COLD, or PROVISIONAL when there isn\u2019t enough conversation evidence yet, with the reasons behind it.' },
+  { n: '03', icon: Zap, t: 'Follow up while the lead is warm', d: 'Scores update as soon as a lead engages, so your team acts on the right lead at the right time.' },
 ];
 
-const BUILT_FOR = [
-  'Real-estate teams that need more qualified conversations',
-  'Sales leaders tired of guessing which calls worked',
-  'Brokerages with more leads than reps can call',
-  'Managers who want a clear, scored view of every agent',
-  'Teams that value human judgment, amplified by AI',
+const FEATURES = [
+  { icon: Layers, t: 'Campaign builder', d: 'Pick a lead list, an agent and a schedule, then launch a calling campaign in a few clicks.' },
+  { icon: Gauge, t: 'Lead scoring', d: 'Leads are scored from fit and engagement and labelled HOT, WARM or COLD, or PROVISIONAL until a conversation has been assessed, with the reasons shown.' },
+  { icon: BookOpen, t: 'Knowledge base', d: 'Give the agent your projects, pricing and FAQs so it answers the way your team would.' },
+  { icon: FileSpreadsheet, t: 'Lead imports & sync', d: 'Upload a list or sync from Google Sheets. No new process to learn.' },
+  { icon: BarChart3, t: 'Live dashboard', d: 'Dialed, connected, interested and hot leads, per agent, refreshed as calls happen.' },
+  { icon: PhoneOff, t: 'Do-not-call safety', d: 'Numbers on your do-not-call list are never dialed, so campaigns stay compliant.' },
 ];
 
-const CALLED_LEADS = [
-  { name: 'Priya S.', days: 2, transcript: '"Hi Priya, this is SmartSDR calling about the 3BHK listing in Mansarovar you enquired about. I can see it fits your budget and timeline — would a site visit this weekend work for you?"' },
-  { name: 'Rohan M.', days: 8, transcript: '"Hi Rohan, following up on the 2BHK near Vaishali Nagar. You mentioned looking to move in by next quarter — I have three units matching your criteria, want me to line up a walkthrough?"' },
-  { name: 'Ananya K.', days: 3, transcript: '"Hi Ananya, thanks for your interest in the Jagatpura villa project. Based on your budget, I\'ve shortlisted two plots — shall I get an agent to call you with pricing details?"' },
-  { name: 'Vikram T.', days: 8, transcript: '"Hi Vikram, checking in on the commercial space enquiry in Malviya Nagar. The unit you liked is still available — should I hold a slot for a site visit this week?"' },
-  { name: 'Sneha R.', days: 4, transcript: '"Hi Sneha, your saved search for 4BHK in Civil Lines just matched a new listing. It\'s priced within your range — would you like me to schedule a viewing?"' },
+const VOICE_POINTS = [
+  'Calls your whole lead list autonomously, around the clock',
+  'Asks your qualifying questions and understands the answers',
+  'Marks each lead Interested, Callback or Not interested',
+  'Hands hot leads to your reps while they are still warm',
 ];
 
-const LIVE_STATS = [
-  { icon: PhoneOutgoing, label: 'Site visits booked', value: '312', trend: '+22%' },
-  { icon: PhoneCall, label: 'Leads engaged', value: '1,886', trend: '+18%' },
-  { icon: TrendingUp, label: 'Qualification rate', value: '0.42', trend: '+0.1%' },
+const SCHEDULING_POINTS = [
+  { icon: Calendar, t: 'Site visits booked on the call', d: 'When a lead says yes, the agent proposes a time and books it against your calendar.' },
+  { icon: BellRing, t: 'Callbacks that do not slip', d: 'Leads who ask for a later call, or a person, become tasks with a due time for your reps.' },
+  { icon: PhoneCall, t: 'Smart retries', d: 'No answer or busy? The agent retries later in the day, when the lead is likelier to pick up.' },
 ];
 
 const TESTIMONIALS = [
-  { q: 'Every call finally gets scored the same way. Coaching my team went from guesswork to a 10-minute review.', n: 'Sales Manager', r: 'Residential brokerage' },
+  { q: 'Every lead finally gets scored the same way. Deciding who to call first went from guesswork to a glance.', n: 'Sales Manager', r: 'Residential brokerage' },
   { q: 'The Voice Agent worked a stale lead list overnight and booked site visits we would have written off.', n: 'Team Lead', r: ' developer' },
-  { q: 'Managers used to argue about which calls were good. Now the report just tells us — with the transcript to back it up.', n: 'Operations Head', r: 'Property advisory' },
+  { q: 'Managers used to argue about which leads were worth chasing. Now the score just tells us, with the reasons behind it.', n: 'Operations Head', r: 'Property advisory' },
 ];
 
 const FAQS = [
-  { q: 'What exactly are the two agents?', a: 'Voice Agent autonomously calls and qualifies your leads. Executive Analytics scores and summarises every call so managers get a clear executive view. Both come in every plan.' },
+  { q: 'What exactly is the Voice Agent?', a: 'The Voice Agent autonomously calls and qualifies your leads, books appointments, and scores each lead so your team knows who to follow up with first.' },
   { q: 'Do I need to change my current tools?', a: 'No. Import a lead list, drop in recordings, or sync from Google Sheets. SmartSDR fits around the way your brokerage already works.' },
-  { q: 'How fast is a call scored?', a: 'Under two minutes from the end of a call to a fully scored, summarised report — rapport, discovery, objection handling and more.' },
+  { q: 'How is a lead scored?', a: 'Each lead gets a score out of 100 from how well they fit your ideal customer and how engaged they are, labelled HOT, WARM or COLD. When we don\u2019t yet have reliable conversation information (for example, the lead hasn\u2019t been reached or a call couldn\u2019t be assessed), the lead is marked PROVISIONAL instead of being guessed. You can see the reasons behind every score.' },
   { q: 'Is my data secure?', a: 'Enterprise plans include SSO and role-based access. Your call data stays yours and is never used to train shared models.' },
-  { q: 'Can I tune how calls are scored?', a: 'Yes. The scoring rubric is fully configurable so it reflects how your brokerage actually sells.' },
+  { q: 'Can I tune how the agent talks to leads?', a: 'Yes. You set the script, the questions it asks and the knowledge it draws on, so it reflects how your brokerage actually sells.' },
 ];
 
 /* ── Reveal: rises in on scroll down, settles back on scroll up ── */
@@ -210,7 +170,7 @@ const HEADLINE = ['The', 'Future', 'of', 'Sales', 'starts', 'with', 'Smart', 'Co
 /* ── Reusable gradient CTA card (used near the top) ── */
 function CtaCard({ navigate }) {
   return (
-    <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-[var(--pine)] via-[var(--pine-2)] to-[var(--deep)] px-8 py-14 text-center text-white md:px-16 md:py-20">
+    <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-[var(--pine)] via-[var(--pine-2)] to-[var(--pine-2)] dark:to-[var(--deep)] px-8 py-14 text-center text-white md:px-16 md:py-20">
       <div className="pointer-events-none absolute -left-20 -top-20 h-72 w-72 rounded-full opacity-40 mk-aurora"
         style={{ background: 'radial-gradient(circle, rgba(255,255,255,0.4), transparent 60%)' }} />
       <div className="pointer-events-none absolute -right-16 -bottom-10 h-64 w-64 rounded-full opacity-30 mk-aurora"
@@ -219,7 +179,7 @@ function CtaCard({ navigate }) {
         See it run on your own calls
       </h2>
       <p className="relative mx-auto mt-5 max-w-xl text-[1.05rem] text-white/85">
-        Sign in to launch a Voice Agent campaign or drop in a recording and get a scored report back.
+        Sign in to launch a Voice Agent campaign and see your leads scored.
       </p>
       <div className="relative mt-9 flex flex-wrap justify-center gap-4">
         <button onClick={() => navigate('/login')}
@@ -242,7 +202,7 @@ function HowItWorks() {
   const fill = useTransform(scrollYProgress, [0, 1], ['0%', '100%']);
 
   return (
-    <section id="how" className="scroll-mt-24 relative overflow-hidden bg-[var(--deep)] px-6 py-28 text-white md:px-10 md:py-36">
+    <section id="how" className="mk-band scroll-mt-24 relative overflow-hidden bg-[var(--deep)] px-6 py-28 text-white md:px-10 md:py-36">
       <div className="pointer-events-none absolute -right-40 top-10 h-[30rem] w-[30rem] rounded-full opacity-40 mk-aurora"
         style={{ background: 'radial-gradient(circle, rgba(248,114,23,0.5), transparent 60%)' }} />
       <div className="relative mx-auto max-w-[1200px]">
@@ -272,6 +232,138 @@ function HowItWorks() {
   );
 }
 
+/* ── Pricing card: seven rows that line up across cards via CSS subgrid (lg+) ── */
+const PLAN_ROW = 'mx-5 sm:mx-6 lg:mx-5 xl:mx-6';
+const PLAN_SECTION = cn(PLAN_ROW, 'border-t border-[var(--line)] py-4');
+const ICON_CHIP = 'flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[rgba(248,114,23,0.1)] text-[var(--pine)]';
+
+function PlanLabel({ children }) {
+  return <p className="mb-2.5 text-[0.68rem] font-bold uppercase tracking-[0.14em] text-[var(--mist)]">{children}</p>;
+}
+
+// Hover lift is driven by `group-hover/plan` from the Reveal wrapper, which does not
+// move: if the card itself were the hover target, lifting it would pull its
+// bottom edge out from under the cursor and the card would flicker.
+// The whole card selects the plan; focusing its button selects it too, so
+// keyboard users get the same selection as mouse users.
+function PlanCard({ plan, selected, onSelect, onChoose }) {
+  const p = plan;
+  return (
+    <div onClick={onSelect} onFocus={onSelect} className={cn(
+      'relative flex h-full cursor-pointer select-none flex-col rounded-[1.5rem] bg-white ring-1 ring-[var(--line)] dark:bg-[var(--stone)]',
+      'transition-[transform,box-shadow] duration-300 ease-out motion-reduce:transition-none',
+      'lg:row-span-7 lg:grid lg:grid-rows-subgrid lg:gap-y-0',
+      p.highlight && 'bg-[radial-gradient(120%_45%_at_50%_0%,rgba(248,114,23,0.16),transparent_70%)]',
+      selected
+        ? 'ring-2 ring-[var(--pine)] shadow-[0_32px_64px_-32px_rgba(248,114,23,0.6)] group-hover/plan:shadow-[0_40px_72px_-30px_rgba(248,114,23,0.7)] lg:-translate-y-3 lg:group-hover/plan:-translate-y-4'
+        : 'group-hover/plan:-translate-y-1 group-hover/plan:ring-[rgba(248,114,23,0.45)] group-hover/plan:shadow-[0_28px_56px_-32px_rgba(0,0,0,0.5)]',
+    )}>
+      {selected && <span className="sr-only">Selected plan</span>}
+      {p.highlight && (
+        <span className="absolute -top-3 left-1/2 inline-flex -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-full bg-[var(--pine)] px-3 py-1 text-[0.65rem] font-bold uppercase tracking-wider text-white shadow-[0_6px_16px_-6px_rgba(248,114,23,0.8)]">
+          <Zap className="h-3 w-3" /> Most popular
+        </span>
+      )}
+
+      {/* 1 · Plan name and description */}
+      <div className={cn(PLAN_ROW, 'pt-7')}>
+        <h3 className="mk-display text-[1.6rem] font-semibold leading-tight text-[var(--ink)]">{p.name}</h3>
+        <p className="mt-1.5 text-sm leading-relaxed text-[var(--mist)]">{p.desc}</p>
+      </div>
+
+      {/* 2 · Price */}
+      <div className={cn(PLAN_ROW, 'pb-5 pt-4')}>
+        <p className="flex items-baseline gap-1">
+          <span className="mk-display text-[2.5rem] font-semibold leading-none tracking-tight tabular-nums text-[var(--ink)]">{p.price}</span>
+          <span className="text-base text-[var(--mist)]">{p.period}</span>
+        </p>
+        <p className="mt-2 text-xs text-[var(--mist)]">{p.billing}</p>
+      </div>
+
+      {/* 3 · Usage allowance */}
+      <div className={PLAN_SECTION}>
+        <PlanLabel>Usage allowance</PlanLabel>
+        <ul className="space-y-2">
+          {p.usage.map((u) => (
+            <li key={u.label} className="flex items-center gap-3 text-sm text-[var(--ink)]/80">
+              <span className={ICON_CHIP}><u.icon className="h-3.5 w-3.5" /></span>
+              <span><span className="font-semibold tabular-nums text-[var(--ink)]">{u.value}</span> {u.label}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {/* 4 · Included seats — the check marks them as part of the price */}
+      <div className={PLAN_SECTION}>
+        <PlanLabel>Included seats</PlanLabel>
+        <ul className="space-y-2">
+          {p.seats.map((s) => (
+            <li key={s.label} className="flex items-center gap-3 text-sm text-[var(--ink)]/80">
+              <span className={ICON_CHIP}><s.icon className="h-3.5 w-3.5" /></span>
+              <span className="flex-1"><span className="font-semibold tabular-nums text-[var(--ink)]">{s.value}</span> {s.label}</span>
+              <Check className="h-4 w-4 shrink-0 text-[var(--pine)]" aria-label="Included" />
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {/* 5 · Features and support */}
+      <div className={PLAN_SECTION}>
+        <PlanLabel>Features &amp; support</PlanLabel>
+        <ul className="space-y-2">
+          {p.features.map((f) => (
+            <li key={f.label} className="flex items-center gap-3 text-sm text-[var(--ink)]/80">
+              <span className={ICON_CHIP}><f.icon className="h-3.5 w-3.5" /></span>
+              {f.label}
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {/* 6 · Additional seats — priced per month, unlike the included ones */}
+      <div className={PLAN_SECTION}>
+        <PlanLabel>{p.addons.length ? 'Additional seats (optional)' : 'Additional seats'}</PlanLabel>
+        {p.addons.length ? (
+          <ul className="space-y-2">
+            {p.addons.map((a) => (
+              <li key={a.label} className="flex items-center gap-3 text-sm text-[var(--ink)]/80">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-dashed border-[var(--line)] text-[var(--mist)]">
+                  <Plus className="h-3.5 w-3.5" />
+                </span>
+                <span className="flex-1">{a.label}</span>
+                <span className="whitespace-nowrap">
+                  <span className="font-semibold tabular-nums text-[var(--pine)]">{a.price}</span>
+                  <span className="text-xs text-[var(--mist)]">{a.period}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="flex items-center gap-3 text-sm text-[var(--ink)]/80">
+            <span className={ICON_CHIP}><InfinityIcon className="h-3.5 w-3.5" /></span>
+            {p.addonsNote}
+          </p>
+        )}
+      </div>
+
+      {/* 7 · CTA, pinned to the bottom so all three buttons align */}
+      <div className={cn(PLAN_ROW, 'mt-auto pb-6 pt-2 lg:mt-0 lg:self-end')}>
+        <button onClick={onChoose}
+          className={cn(
+            'group/cta inline-flex h-11 w-full items-center justify-center gap-2 rounded-full text-sm font-semibold transition-colors duration-200',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pine)] focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-[var(--stone)]',
+            selected
+              ? 'bg-[var(--pine)] text-white shadow-[0_10px_24px_-10px_rgba(248,114,23,0.8)] hover:bg-[var(--pine-2)]'
+              : 'border-[1.5px] border-[var(--line)] text-[var(--ink)] hover:border-[var(--pine)] hover:text-[var(--pine)]',
+          )}>
+          {p.cta}
+          <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover/cta:translate-x-0.5 motion-reduce:transition-none" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function FaqItem({ item, open, onToggle }) {
   return (
     <div className="border-b border-[var(--line)]">
@@ -298,8 +390,8 @@ export default function LandingPage() {
   const navigate = useNavigate();
   const { hash } = useLocation();
   const [openFaq, setOpenFaq] = useState(0);
-  const [billing, setBilling] = useState('annually');
-  const [activeLead, setActiveLead] = useState(0);
+  // The highlighted plan card; Pro (most popular) until the visitor picks another.
+  const [selectedPlan, setSelectedPlan] = useState('Pro');
   const firstRender = useRef(true);
 
   // On reload the URL may still carry a hash — clear it and stay at the top.
@@ -327,13 +419,23 @@ export default function LandingPage() {
   const heroFade = useTransform(scrollY, [0, 460], [1, 0]);
   const blobY = useTransform(scrollY, [0, 800], [0, 180]);
   const visualY = useTransform(scrollY, [0, 600], [0, 70]);
+  // The hero fades and drifts as you scroll only from lg up. Below lg the workflow
+  // visual sits under the copy, and the fade would hide it before it is reached.
+  const [heroScrollFx, setHeroScrollFx] = useState(() => Boolean(window.matchMedia?.('(min-width: 1024px)').matches));
+  useEffect(() => {
+    const mq = window.matchMedia?.('(min-width: 1024px)');
+    if (!mq) return undefined;
+    const onChange = (e) => setHeroScrollFx(e.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
 
   return (
     <div className="mk overflow-x-hidden bg-[var(--paper)]">
-      <MarketingNav overHero />
+      <MarketingNav overHero showBrand={false} />
 
       {/* ── Hero ─────────────────────────────────────────────── */}
-      <section className="relative overflow-hidden bg-[var(--deep)] pt-36 pb-20 md:pt-44 md:pb-24">
+      <section className="mk-band relative overflow-hidden bg-[var(--deep)] pt-36 pb-20 md:pt-44 md:pb-24">
         <HeroWave3D className="pointer-events-none absolute inset-x-0 bottom-0 top-1/3 z-0 opacity-60" />
 
         <motion.div className="pointer-events-none absolute inset-0" style={{ y: blobY }}>
@@ -345,15 +447,15 @@ export default function LandingPage() {
             style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,.5) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.5) 1px, transparent 1px)', backgroundSize: '56px 56px', maskImage: 'radial-gradient(ellipse at 50% 15%, black, transparent 72%)' }} />
         </motion.div>
 
-        <motion.div style={{ y: heroY, opacity: heroFade }} className="relative z-10 mx-auto grid max-w-[1300px] items-center gap-16 px-6 md:grid-cols-[1.15fr_0.85fr] md:px-10">
+        <motion.div style={heroScrollFx ? { y: heroY, opacity: heroFade } : undefined} className="relative z-10 mx-auto grid max-w-[1300px] items-center gap-16 px-6 md:px-10 lg:grid-cols-[1.15fr_0.85fr]">
           <div>
-            <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}
-              className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.06] px-4 py-1.5 text-xs font-semibold text-[var(--brass-2)] backdrop-blur">
-              <Sparkles className="h-3.5 w-3.5" /> AI sales intelligence · Real estate
+            {/* Brand first, then the headline: logo > SmartSDR > headline in size. */}
+            <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
+              <NetsmartzLogo className="h-14 sm:h-20 lg:h-24" />
+              <SmartSDRWordmark className="mt-3 block text-[3.25rem] text-white sm:mt-4 sm:text-[4.25rem] lg:text-[5rem]" />
             </motion.div>
-
-            <h1 className="mk-display mt-6 text-[3rem] font-semibold leading-[1.03] text-white sm:text-[3.7rem] md:text-[4.6rem]">
-              <motion.span className="flex flex-wrap gap-x-4"
+            <h1 className="mk-display mt-6 text-[1.4rem] font-semibold leading-snug text-white sm:text-[1.6rem] lg:text-[1.8rem]">
+              <motion.span className="flex flex-wrap gap-x-[0.28em]"
                 initial="hidden" animate="show"
                 variants={{ show: { transition: { staggerChildren: 0.06, delayChildren: 0.15 } } }}>
                 {HEADLINE.map((w, i) => (
@@ -370,9 +472,8 @@ export default function LandingPage() {
 
             <motion.p initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.5 }}
               className="mt-7 max-w-xl text-[1.06rem] leading-relaxed text-white/65">
-              SmartSDR pairs an autonomous <strong className="font-semibold text-white">Voice Agent</strong> that calls and
-              qualifies your leads with <strong className="font-semibold text-white">Executive Analytics</strong> that scores
-              every conversation — so agents chase the right leads and managers see what's working.
+              SmartSDR's autonomous <strong className="font-semibold text-white">Voice Agent</strong> calls and
+              qualifies your leads — so your team chases the right leads and sees what's working.
             </motion.p>
 
             <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.65 }}
@@ -381,54 +482,31 @@ export default function LandingPage() {
                 className="group inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-[var(--pine)] to-[var(--brass)] px-7 py-3.5 text-[0.95rem] font-semibold text-white shadow-[0_10px_40px_-8px_rgba(248,114,23,0.6)] transition-all hover:-translate-y-0.5">
                 Get started <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
               </button>
-              <a href="#platform" className="inline-flex items-center gap-2 rounded-full border border-white/20 px-7 py-3.5 text-[0.95rem] font-semibold text-white transition-all hover:bg-white/10">
+              {/* Explicit per-theme colours. No "bg-white" in the class list: the light-mode
+                  .mk-band rules in index.css match it by substring and would grey the button
+                  and keep its text white. */}
+              <a href="#what" className="inline-flex items-center gap-2 rounded-full border border-[rgba(23,19,15,0.25)] px-7 py-3.5 text-[0.95rem] font-semibold text-[var(--ink)] transition-all hover:border-[var(--pine)] hover:text-[var(--pine)] dark:border-[rgba(255,255,255,0.2)] dark:text-[#FFFFFF] dark:hover:border-[rgba(255,255,255,0.2)] dark:hover:bg-[rgba(255,255,255,0.1)] dark:hover:text-[#FFFFFF]">
                 <PlayCircle className="h-4 w-4" /> See the platform
               </a>
             </motion.div>
-
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.6, delay: 0.85 }}
-              className="mt-10 flex flex-wrap gap-6 text-sm text-white/55">
-              <span className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-[var(--brass)]" /> Two agents, one login</span>
-              <span className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-[var(--brass)]" /> Built for real-estate teams</span>
-            </motion.div>
           </div>
 
-          {/* Single live product card — centered, no overlap */}
-          <motion.div style={{ y: visualY }} className="relative hidden justify-center md:flex">
+          {/* Workflow visual: AI calls → understands conversations → books meetings.
+              Beside the copy from lg; below it on smaller screens. */}
+          <motion.div style={heroScrollFx ? { y: visualY } : undefined} className="relative mx-auto w-full max-w-[34rem] lg:max-w-none">
             <motion.div initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, delay: 0.5 }}>
-              <div className="mk-float"><VoiceCard /></div>
+              <WorkflowVisual />
             </motion.div>
           </motion.div>
         </motion.div>
 
-        {/* Booked-meetings live strip */}
-        <div className="relative z-10 mx-auto mt-16 max-w-[1300px] px-6 md:mt-20 md:px-10">
-          <p className="mb-6 text-center text-xs font-semibold uppercase tracking-[0.24em] text-white/45">This agent booked meetings with</p>
-          <div className="relative overflow-hidden [mask-image:linear-gradient(90deg,transparent,black_10%,black_90%,transparent)]">
-            <div className="mk-marquee flex w-max items-center gap-4">
-              {[...MEETINGS, ...MEETINGS].map((m, i) => (
-                <div key={i} className="flex shrink-0 items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-3 backdrop-blur">
-                  <div className="flex -space-x-2">
-                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-[var(--pine)] to-[var(--brass)] text-[0.6rem] font-bold text-white ring-2 ring-[var(--deep)]">{m.a}</span>
-                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-slate-500 to-slate-700 text-[0.6rem] font-bold text-white ring-2 ring-[var(--deep)]">{m.b}</span>
-                  </div>
-                  <div className="leading-tight">
-                    <p className="text-[0.7rem] font-semibold text-white">Meeting in {m.days} day{m.days > 1 ? 's' : ''}</p>
-                    <p className="text-[0.6rem] uppercase tracking-wider text-emerald-400">Outgoing</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
         {/* Trusted-by marquee */}
-        <div className="relative z-10 mx-auto mt-10 max-w-[1300px] px-6 md:px-10">
+        <div className="relative z-10 mx-auto mt-16 max-w-[1300px] px-6 md:mt-20 md:px-10">
           <p className="mb-6 text-center text-sm font-semibold uppercase tracking-[0.24em] text-white/40">Plugs into the tools you already use</p>
           <div className="relative overflow-hidden [mask-image:linear-gradient(90deg,transparent,black_12%,black_88%,transparent)]">
             <div className="mk-marquee flex w-max items-center gap-16">
               {[...LOGOS, ...LOGOS].map((src, i) => (
-                <img key={i} src={src} alt="" className="h-12 w-auto object-contain opacity-55 grayscale transition hover:opacity-100 hover:grayscale-0" />
+                <img key={i} src={src} alt="" className="h-12 w-auto object-contain" />
               ))}
             </div>
           </div>
@@ -440,92 +518,6 @@ export default function LandingPage() {
         <Reveal className="mx-auto max-w-[1200px]"><CtaCard navigate={navigate} /></Reveal>
       </section>
 
-      {/* ── Live proof bento (call + real-time stats) ────────── */}
-      <section className="bg-[var(--paper)] px-6 pt-16 md:px-10 md:pt-20">
-        <div className="mx-auto grid max-w-[1200px] gap-6 lg:grid-cols-[1.3fr_1fr]">
-          {/* Left: call proof — interactive carousel */}
-          <Reveal>
-            <div className="h-full rounded-[1.75rem] border border-[var(--line)] bg-[var(--stone)]/40 p-6 md:p-8">
-              <p className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--mist)]">This call booked a site visit with</p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {CALLED_LEADS.map((lead, i) => (
-                  <button
-                    key={lead.name}
-                    onClick={() => setActiveLead(i)}
-                    className={cn('rounded-full px-4 py-2 text-sm font-semibold transition-colors',
-                      i === activeLead ? 'bg-[var(--deep)] text-white' : 'bg-white text-[var(--ink)]/70 hover:text-[var(--ink)] dark:bg-[var(--paper)]')}
-                  >
-                    {lead.name}
-                  </button>
-                ))}
-              </div>
-              <p className="mt-2 flex items-center gap-1.5 text-xs text-[var(--mist)]">
-                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Meeting in {CALLED_LEADS[activeLead].days} day{CALLED_LEADS[activeLead].days > 1 ? 's' : ''}
-              </p>
-
-              <div className="mt-6 overflow-hidden rounded-2xl border border-[var(--line)] shadow-xl">
-                <div className="flex items-center justify-between bg-[var(--deep)] px-4 py-2.5">
-                  <div className="flex gap-1.5">
-                    <span className="h-2.5 w-2.5 rounded-full bg-red-400/70" />
-                    <span className="h-2.5 w-2.5 rounded-full bg-yellow-400/70" />
-                    <span className="h-2.5 w-2.5 rounded-full bg-emerald-400/70" />
-                  </div>
-                  <span className="text-[0.65rem] font-semibold uppercase tracking-wider text-white/50">Type: Outgoing</span>
-                </div>
-                <div className="bg-white p-5 dark:bg-[var(--stone)]">
-                  <AnimatePresence mode="wait">
-                    <motion.p key={activeLead} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
-                      transition={{ duration: 0.22 }} className="text-sm leading-relaxed text-[var(--ink)]/85">
-                      {CALLED_LEADS[activeLead].transcript}
-                    </motion.p>
-                  </AnimatePresence>
-                  <div className="mt-4 flex items-center gap-2 rounded-full bg-[var(--stone)] px-3 py-1.5 text-xs font-semibold text-[var(--pine)] w-fit">
-                    <img src="/rocket.png" alt="" className="h-4 w-4 object-contain" onError={(e) => (e.currentTarget.style.display = 'none')} />
-                    Qualified by Voice Agent
-                  </div>
-                </div>
-              </div>
-            </div>
-          </Reveal>
-
-          {/* Right: real-time stats + testimonial */}
-          <div className="flex flex-col gap-6">
-            <Reveal delay={0.1}>
-              <div className="rounded-[1.75rem] border border-[var(--line)] bg-[var(--stone)]/40 p-6">
-                <div className="flex items-center justify-between">
-                  <p className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--mist)]">Real-time stats</p>
-                  <span className="text-[0.65rem] text-[var(--mist)]">Last 30 days</span>
-                </div>
-                <div className="mt-4 space-y-3">
-                  {LIVE_STATS.map((s) => (
-                    <div key={s.label} className="flex items-center gap-3 rounded-xl bg-white p-3 dark:bg-[var(--paper)]">
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--stone)] text-[var(--pine)]">
-                        <s.icon className="h-4 w-4" />
-                      </span>
-                      <div className="flex-1">
-                        <p className="text-xs text-[var(--mist)]">{s.label}</p>
-                        <p className="mk-display text-lg font-semibold text-[var(--ink)]">{s.value}</p>
-                      </div>
-                      <span className="text-xs font-semibold text-emerald-500">{s.trend}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </Reveal>
-            <Reveal delay={0.18}>
-              <div className="flex-1 rounded-[1.75rem] border border-[var(--line)] bg-[var(--deep)] p-6 text-white">
-                <Quote className="h-6 w-6 text-[var(--brass-2)]" />
-                <p className="mt-3 text-sm leading-relaxed text-white/85">{TESTIMONIALS[0].q}</p>
-                <div className="mt-5 border-t border-white/10 pt-4">
-                  <p className="text-sm font-semibold">{TESTIMONIALS[0].n}</p>
-                  <p className="text-xs text-white/50">{TESTIMONIALS[0].r}</p>
-                </div>
-              </div>
-            </Reveal>
-          </div>
-        </div>
-      </section>
-
       {/* ── Stats band ───────────────────────────────────────── */}
       <section className="bg-[var(--paper)] px-6 py-16 md:px-10 md:py-20">
         <div className="mx-auto grid max-w-[1200px] gap-8 rounded-3xl border border-[var(--line)] bg-[var(--stone)]/40 px-8 py-10 sm:grid-cols-2 lg:grid-cols-4">
@@ -535,52 +527,6 @@ export default function LandingPage() {
               <p className="mt-2 text-sm text-[var(--mist)]">{s.k}</p>
             </Reveal>
           ))}
-        </div>
-      </section>
-
-      {/* ── Platform bento ───────────────────────────────────── */}
-      <section id="platform" className="scroll-mt-24 bg-[var(--paper)] px-6 py-24 md:px-10 md:py-32">
-        <div className="mx-auto max-w-[1200px]">
-          <Reveal className="mb-16 max-w-2xl">
-            <p className="mk-eyebrow text-[var(--pine)]">The platform</p>
-            <h2 className="mk-display mt-4 text-[2.4rem] font-semibold leading-[1.05] text-[var(--ink)] md:text-[3.4rem]">
-              Two agents that do the heavy lifting
-            </h2>
-          </Reveal>
-
-          <div className="grid gap-6 lg:grid-cols-2">
-            {OFFERINGS.map((o, i) => (
-              <Reveal key={o.id} delay={i * 0.12}>
-                <div id={o.id} className="group relative flex h-full flex-col overflow-hidden rounded-[1.75rem] border border-[var(--line)] bg-white p-8 transition-all duration-500 hover:-translate-y-1.5 hover:border-[var(--pine)]/40 hover:shadow-[0_50px_90px_-50px_rgba(248,114,23,0.55)] dark:bg-[var(--stone)]">
-                  <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full opacity-0 blur-2xl transition-opacity duration-500 group-hover:opacity-100"
-                    style={{ background: 'radial-gradient(circle, rgba(248,114,23,0.25), transparent 65%)' }} />
-                  <div className="relative flex items-center gap-3">
-                    <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-[var(--pine)] to-[var(--brass)] text-white shadow-lg">
-                      <o.icon className="h-5 w-5" />
-                    </span>
-                    <div>
-                      <span className="mk-eyebrow text-[var(--pine)]">{o.tag}</span>
-                      <h3 className="mk-display text-[1.7rem] font-semibold leading-tight text-[var(--ink)]">{o.name}</h3>
-                    </div>
-                  </div>
-                  <p className="relative mt-5 text-[1rem] leading-relaxed text-[var(--mist)]">{o.blurb}</p>
-
-                  <div className="relative mt-7 flex flex-wrap gap-2">
-                    {o.features.map((f) => (
-                      <span key={f.label} className="inline-flex items-center gap-1.5 rounded-full bg-[var(--stone)] px-3 py-1.5 text-xs font-medium text-[var(--ink)]">
-                        <f.icon className="h-3.5 w-3.5 text-[var(--pine)]" /> {f.label}
-                      </span>
-                    ))}
-                  </div>
-
-                  <button onClick={() => navigate('/login')}
-                    className="relative mt-8 inline-flex w-fit items-center gap-2 font-semibold text-[var(--pine)] transition-colors hover:text-[var(--pine-2)]">
-                    Explore {o.name} <ArrowUpRight className="h-4 w-4" />
-                  </button>
-                </div>
-              </Reveal>
-            ))}
-          </div>
         </div>
       </section>
 
@@ -612,34 +558,92 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── Built for (centered) ─────────────────────────────── */}
-      <section className="bg-[var(--paper)] px-6 pb-24 md:px-10 md:pb-32">
-        <div className="mx-auto max-w-2xl">
-          <Reveal className="mb-10 text-center">
-            <p className="mk-eyebrow text-[var(--pine)]">Is it a fit?</p>
-            <h2 className="mk-display mt-4 text-[2.2rem] font-semibold leading-[1.05] text-[var(--ink)] md:text-[3rem]">
-              Made for teams who sell with judgment
+      {/* ── Features (nav: Platform → Features) ──────────────── */}
+      <section id="platform" className="scroll-mt-24 bg-[var(--paper)] px-6 pb-24 md:px-10 md:pb-32">
+        <div className="mx-auto max-w-[1200px]">
+          <Reveal className="mb-14 max-w-2xl">
+            <p className="mk-eyebrow text-[var(--pine)]">Features</p>
+            <h2 className="mk-display mt-4 text-[2.4rem] font-semibold leading-[1.05] text-[var(--ink)] md:text-[3.4rem]">
+              Everything you need to run voice outreach
             </h2>
           </Reveal>
-          <Reveal delay={0.1}>
-            <div className="rounded-[1.5rem] border-2 border-[var(--pine)]/25 bg-white p-8 dark:bg-[var(--stone)]">
-              <ul className="space-y-4">
-                {BUILT_FOR.map((f) => (
-                  <li key={f} className="flex items-start gap-3 text-[1rem] text-[var(--ink)]/85">
-                    <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--pine)] text-white">
-                      <CheckCircle2 className="h-4 w-4" />
-                    </span>
-                    {f}
-                  </li>
-                ))}
-              </ul>
-            </div>
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {FEATURES.map((f, i) => (
+              <Reveal key={f.t} delay={(i % 3) * 0.1}>
+                <div className="h-full rounded-2xl border border-[var(--line)] bg-white p-7 transition-all duration-300 hover:-translate-y-1 hover:border-[var(--pine)]/40 dark:bg-[var(--stone)]">
+                  <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--pine)] to-[var(--brass)] text-white shadow-md">
+                    <f.icon className="h-5 w-5" />
+                  </span>
+                  <h3 className="mk-display mt-5 text-[1.25rem] font-semibold leading-tight text-[var(--ink)]">{f.t}</h3>
+                  <p className="mt-2 text-[0.95rem] leading-relaxed text-[var(--mist)]">{f.d}</p>
+                </div>
+              </Reveal>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Voice Agent (nav: Platform → Voice Agent) ────────── */}
+      <section id="voice-agent" className="mk-band scroll-mt-24 relative overflow-hidden bg-[var(--deep)] px-6 py-24 text-white md:px-10 md:py-32">
+        <div className="pointer-events-none absolute -left-40 top-10 h-[28rem] w-[28rem] rounded-full opacity-40 mk-aurora"
+          style={{ background: 'radial-gradient(circle, rgba(248,114,23,0.45), transparent 60%)' }} />
+        <div className="relative mx-auto grid max-w-[1200px] items-center gap-14 md:grid-cols-2">
+          <Reveal>
+            <p className="mk-eyebrow text-[var(--brass-2)]">Voice Agent</p>
+            <h2 className="mk-display mt-4 text-[2.4rem] font-semibold leading-[1.05] md:text-[3.2rem]">
+              An SDR that never stops dialing
+            </h2>
+            <p className="mt-5 max-w-lg text-[1.02rem] leading-relaxed text-white/65">
+              The Voice Agent calls and qualifies your leads, so your reps spend their time on conversations that are ready to close.
+            </p>
+            <ul className="mt-7 space-y-3">
+              {VOICE_POINTS.map((p) => (
+                <li key={p} className="flex items-start gap-3 text-[0.98rem] text-white/85">
+                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--pine)]">
+                    <Check className="h-3 w-3 text-white" />
+                  </span>
+                  {p}
+                </li>
+              ))}
+            </ul>
+            <button onClick={() => navigate('/login')}
+              className="group mt-9 inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-[var(--pine)] to-[var(--brass)] px-7 py-3.5 text-[0.95rem] font-semibold text-white transition-all hover:-translate-y-0.5">
+              Try the Voice Agent <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+            </button>
+          </Reveal>
+          <Reveal delay={0.1} className="flex justify-center">
+            <GlassCalendar />
           </Reveal>
         </div>
       </section>
 
       {/* ── How it works ─────────────────────────────────────── */}
       <HowItWorks />
+
+      {/* ── Scheduling (nav: Platform → Scheduling) ──────────── */}
+      <section id="scheduling" className="scroll-mt-24 bg-[var(--paper)] px-6 py-24 md:px-10 md:py-32">
+        <div className="mx-auto max-w-[1200px]">
+          <Reveal className="mb-14 max-w-2xl">
+            <p className="mk-eyebrow text-[var(--pine)]">Scheduling</p>
+            <h2 className="mk-display mt-4 text-[2.4rem] font-semibold leading-[1.05] text-[var(--ink)] md:text-[3.4rem]">
+              Site visits and callbacks, booked for you
+            </h2>
+          </Reveal>
+          <div className="grid gap-6 md:grid-cols-3">
+            {SCHEDULING_POINTS.map((s, i) => (
+              <Reveal key={s.t} delay={i * 0.1}>
+                <div className="h-full rounded-2xl border border-[var(--line)] bg-white p-7 dark:bg-[var(--stone)]">
+                  <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--stone)] text-[var(--pine)]">
+                    <s.icon className="h-5 w-5" />
+                  </span>
+                  <h3 className="mk-display mt-5 text-[1.25rem] font-semibold leading-tight text-[var(--ink)]">{s.t}</h3>
+                  <p className="mt-2 text-[0.95rem] leading-relaxed text-[var(--mist)]">{s.d}</p>
+                </div>
+              </Reveal>
+            ))}
+          </div>
+        </div>
+      </section>
 
       {/* ── Testimonials (Wall of love) ──────────────────────── */}
       <section className="bg-[var(--paper)] px-6 py-24 md:px-10 md:py-32">
@@ -673,76 +677,21 @@ export default function LandingPage() {
           <Reveal className="mb-10 max-w-2xl">
             <p className="mk-eyebrow text-[var(--pine)]">Pricing</p>
             <h2 className="mk-display mt-4 text-[2.4rem] font-semibold leading-[1.05] text-[var(--ink)] md:text-[3.4rem]">
-              Simple plans, both agents included
+              Simple plans, Voice Agent included
             </h2>
             <p className="mt-4 max-w-xl text-[1.02rem] text-[var(--mist)]">
-              Every plan includes Voice Agent and Executive Analytics — pick a tier by volume, not by feature.
+              Every plan includes the Voice Agent — pick a tier by volume, not by feature.
             </p>
           </Reveal>
 
-          {/* Billing toggle */}
-          <div className="mb-12 inline-flex rounded-full border border-[var(--line)] bg-[var(--stone)] p-1">
-            {['quarterly', 'annually'].map((b) => (
-              <button key={b} onClick={() => setBilling(b)}
-                className={cn('rounded-full px-5 py-2 text-sm font-semibold capitalize transition-colors',
-                  billing === b ? 'bg-[var(--pine)] text-white shadow' : 'text-[var(--mist)] hover:text-[var(--ink)]')}>
-                {b}{b === 'annually' && MAX_ANNUAL_SAVING_PCT > 0 && (
-                  <span className="ml-1 text-xs opacity-90">· save up to {MAX_ANNUAL_SAVING_PCT}%</span>
-                )}
-              </button>
+          {/* One column (max 30rem) below lg; three subgrid-aligned columns from lg up. */}
+          <div className="mx-auto grid max-w-[30rem] gap-8 lg:max-w-[1120px] lg:grid-cols-3 lg:gap-x-6 lg:gap-y-0">
+            {PLANS.map((p, i) => (
+              <Reveal key={p.name} delay={i * 0.1} className="group/plan lg:row-span-7 lg:grid lg:grid-rows-subgrid lg:gap-y-0">
+                <PlanCard plan={p} selected={selectedPlan === p.name}
+                  onSelect={() => setSelectedPlan(p.name)} onChoose={() => navigate('/login')} />
+              </Reveal>
             ))}
-          </div>
-
-          <div className="grid gap-6 md:grid-cols-3 items-start">
-            {PLANS.map((p, i) => {
-              const price = billing === 'annually' ? p.priceA : p.priceQ;
-              const period = billing === 'annually' ? p.periodA : p.periodQ;
-              const billingNote = billing === 'annually' ? p.billingA : p.billingQ;
-              return (
-                <Reveal key={p.name} delay={i * 0.1}>
-                  <div className={cn('flex h-full flex-col rounded-[1.5rem] p-8 transition-transform duration-300 hover:-translate-y-1',
-                    p.highlight ? 'bg-[var(--deep)] text-white ring-2 ring-[var(--pine)] shadow-[0_40px_80px_-40px_rgba(248,114,23,0.5)]' : 'bg-white ring-1 ring-[var(--line)] dark:bg-[var(--stone)]')}>
-                    {p.highlight && (
-                      <span className="mb-4 inline-flex w-fit items-center gap-1.5 rounded-full bg-[var(--pine)] px-3 py-1 text-[0.65rem] font-bold uppercase tracking-wider text-white">
-                        <Zap className="h-3 w-3" /> Most popular
-                      </span>
-                    )}
-                    <h3 className={cn('mk-display text-[1.4rem] font-semibold', !p.highlight && 'text-[var(--ink)]')}>{p.name}</h3>
-                    <p className={cn('mt-1 text-sm font-medium', p.highlight ? 'text-[var(--brass-2)]' : 'text-[var(--pine)]')}>{p.tagline}</p>
-
-                    <div className="mt-5 flex items-baseline gap-1">
-                      <AnimatePresence mode="wait">
-                        <motion.span key={price} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
-                          transition={{ duration: 0.2 }} className="mk-display text-[2.4rem] font-semibold">{price}</motion.span>
-                      </AnimatePresence>
-                      <span className={cn('text-sm', p.highlight ? 'text-white/50' : 'text-[var(--mist)]')}>{period}</span>
-                    </div>
-                    <p className={cn('mt-1 text-xs', p.highlight ? 'text-white/45' : 'text-[var(--mist)]')}>{billingNote}</p>
-
-                    <p className={cn('mt-4 text-sm leading-relaxed', p.highlight ? 'text-white/70' : 'text-[var(--mist)]')}>{p.desc}</p>
-
-                    <div className="mt-6">
-                      <p className={cn('text-[0.65rem] font-bold uppercase tracking-wider', p.highlight ? 'text-white/40' : 'text-[var(--mist)]')}>Specs</p>
-                      <ul className="mt-3 space-y-2">
-                        {p.specs.map((s) => (
-                          <li key={s} className={cn('text-sm', p.highlight ? 'text-white/80' : 'text-[var(--ink)]/80')}>{s}</li>
-                        ))}
-                      </ul>
-                    </div>
-
-                    {p.footnote && (
-                      <p className={cn('mt-6 text-xs italic', p.highlight ? 'text-white/50' : 'text-[var(--mist)]')}>{p.footnote}</p>
-                    )}
-
-                    <button onClick={() => navigate('/login')}
-                      className={cn('mt-8 rounded-full px-6 py-3 text-sm font-semibold transition-all',
-                        p.highlight ? 'bg-white text-[var(--deep)] hover:bg-[var(--brass-2)]' : 'bg-[var(--stone)] text-[var(--pine)] hover:bg-[var(--pine)] hover:text-white')}>
-                      {p.cta}
-                    </button>
-                  </div>
-                </Reveal>
-              );
-            })}
           </div>
         </div>
       </section>
@@ -768,7 +717,6 @@ export default function LandingPage() {
       </section>
 
       <MarketingFooter />
-      <HelperCharacter />
     </div>
   );
 }

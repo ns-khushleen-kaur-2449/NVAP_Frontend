@@ -1,10 +1,10 @@
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
-  TrendingUp, PhoneCall, ArrowUpRight, BarChart2, Gauge, Mic, Layers, Calendar, BookOpen,
+  PhoneCall, ArrowUpRight, Layers, Calendar, BookOpen,
 } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
-import { VoiceCard, AnalyticsCard } from '@/components/marketing/ProductVisuals';
+import { VoiceCard } from '@/components/marketing/ProductVisuals';
 
 const PRODUCTS = [
   {
@@ -19,20 +19,6 @@ const PRODUCTS = [
       { icon: BookOpen, label: 'Knowledge base' },
     ],
     visual: <VoiceCard />,
-    panel: 'from-[var(--pine)] to-[var(--deep)]',
-  },
-  {
-    name: 'Executive Analytics',
-    category: 'Call intelligence for managers',
-    desc: 'AI-powered executive reporting with call-quality analysis and performance matching for real-estate operations.',
-    icon: TrendingUp,
-    path: '/call-quality',
-    chips: [
-      { icon: BarChart2, label: 'Call-quality scoring' },
-      { icon: Gauge, label: 'Team overview' },
-      { icon: Mic, label: 'Audio upload' },
-    ],
-    visual: <AnalyticsCard />,
     panel: 'from-[var(--pine)] to-[var(--deep)]',
   },
 ];
@@ -65,14 +51,14 @@ export default function DashboardPage() {
             {firstName ? `Welcome back, ${firstName}.` : 'Welcome back.'}
           </motion.h1>
           <motion.p {...fade(0.16)} className="mt-3 max-w-xl text-white/60">
-            Two agents, one login. Open a workspace to score your calls or launch a voice campaign.
+            Launch a voice campaign and let the Voice Agent call and qualify your leads.
           </motion.p>
         </div>
       </div>
 
       {/* Agent cards */}
       <div className="mx-auto w-full max-w-6xl px-4 pb-20 pt-10 md:px-0">
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="mx-auto grid max-w-3xl gap-6">
           {PRODUCTS.map((p, i) => (
             <motion.button key={p.name} {...fade(0.35 + i * 0.1)} onClick={() => navigate(p.path)}
               className="group flex flex-col overflow-hidden rounded-[1.75rem] border border-[var(--line)] bg-white text-left transition-all duration-300 hover:-translate-y-1.5 hover:border-[var(--pine)] hover:shadow-[0_50px_90px_-50px_rgba(248,114,23,0.55)] dark:bg-[var(--stone)]"

@@ -26,3 +26,13 @@ export function splitObjection(text) {
 
 // The review endpoint's 409 when someone else decided first.
 export const ALREADY_REVIEWED_NOTICE = 'Someone else reviewed this assessment first. The list now shows the latest status.';
+
+// Values the review endpoint accepts when a reviewer corrects an assessment (backend IntentType / SignalType).
+export const INTENT_TYPES = [
+  'interested', 'not_interested', 'information_request', 'pricing_inquiry', 'demo_request', 'call_later',
+  'management_approval', 'ready_to_purchase', 'competitor', 'existing_customer', 'wrong_contact', 'unclear',
+];
+export const SIGNAL_TYPES = [
+  'purchase_timeline', 'budget_confirmed', 'decision_authority', 'business_need', 'implementation_request',
+  'demo_requested', 'meeting_requested', 'pricing_requested', 'competitor_mentioned', 'follow_up_requested', 'opt_out',
+];

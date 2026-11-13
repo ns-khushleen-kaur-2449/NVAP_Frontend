@@ -62,6 +62,13 @@ export default function RulesSettings({ title, intro, load, save, loadHistory, e
         <h2 id={`rules-${title}`} className="text-sm font-semibold">{title}</h2>
         {intro && <p className="text-xs text-muted-foreground">{intro}</p>}
         {!editable && data && <p className="mt-1 text-xs text-muted-foreground">View only.</p>}
+        {/* GET /api/v1/contact-rules says enforced: false while the backend has CONTACT_RULES_ENABLED off. */}
+        {data?.enforced === false && (
+          <p role="status" className="mt-2 text-xs rounded-md border border-amber-500/25 bg-amber-500/10 text-amber-700 p-2">
+            Not applied right now: calls are not held back by the cross-campaign blocks or the daily cap. Only the
+            do-not-call list and the campaign retry delays apply. You can still save values for later.
+          </p>
+        )}
       </div>
       {error && <ErrorState message={error} onRetry={fetchAll} />}
       {!error && !data && <SkeletonRows rows={3} label={`Loading ${title}`} />}

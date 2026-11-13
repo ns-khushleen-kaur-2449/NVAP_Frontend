@@ -3,7 +3,7 @@
   publish = "build"
 
 [build.environment]
-  NODE_VERSION = "18"
+  NODE_VERSION = "22"
   # REACT_APP_BACKEND_URL is deliberately NOT set here.
   #
   # It used to hard-code an ngrok tunnel, which is ephemeral — the deployed

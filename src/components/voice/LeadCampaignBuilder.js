@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -9,42 +10,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { 
   PhoneCall, Users, Search, Play, CheckCircle2, Filter, ChevronDown, 
-  X, Calendar, MapPin, Building, Briefcase, IndianRupee, Clock,
-  ArrowUpDown, UserPlus, Sparkles
+  X, Calendar, IndianRupee, Clock,
+  ArrowUpDown, UserPlus, Sparkles, Upload
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatCurrency, timeAgo } from '../../lib/utils';
 import { StageBadge } from '../shared/StatusBadges';
 import CampaignLaunchDialog from './CampaignLaunchDialog';
 import AddLeadDialog from './AddLeadDialog';
+import ImportLeadsDialog from './ImportLeadsDialog';
 import AiFilterPickerDialog from './AiFilterPickerDialog';
-
-const LEAD_STATUS_OPTIONS = [
-  { value: 'new', label: 'New' },
-  { value: 'contacted', label: 'Contacted' },
-  { value: 'interested', label: 'Interested' },
-  { value: 'not_interested', label: 'Not Interested' },
-  { value: 'converted', label: 'Converted' },
-];
-
-const SOURCE_OPTIONS = [
-  { value: 'website', label: 'Website' },
-  { value: '99acres', label: '99acres' },
-  { value: 'magicbricks', label: 'MagicBricks' },
-  { value: 'referral', label: 'Referral' },
-  { value: 'walk_in', label: 'Walk-in' },
-  { value: 'Google Ads', label: 'Google Ads' },
-  { value: 'Facebook', label: 'Facebook' },
-  { value: 'Cold Call', label: 'Cold Call' },
-];
-
-const BUDGET_OPTIONS = [
-  { value: 'any', label: 'Any budget' },
-  { value: '0-50', label: '< 50L' },
-  { value: '50-100', label: '50L - 1Cr' },
-  { value: '100-200', label: '1Cr - 2Cr' },
-  { value: '200+', label: '> 2Cr' },
-];
+import TemperatureChip from '../leads/TemperatureChip';
+import { activeLabel, applyLeadFilters, buildLeadFilters, detailField, detailValue } from '../../lib/leadFilters';
 
 const CALL_ATTEMPT_OPTIONS = [
   { value: 'never', label: 'Never called' },
@@ -59,10 +36,45 @@ const DATE_ADDED_OPTIONS = [
   { value: 'month', label: 'Last 30 days' },
 ];
 
+// When a lead was added, in ms; null when the date is missing or unreadable.
+const addedAt = (lead) => {
+  const time = lead?.created_at ? new Date(lead.created_at).getTime() : NaN;
+  return Number.isFinite(time) ? time : null;
+};
+
+/** Sort by date added (`direction` -1 newest first, 1 oldest first); undated leads go last, ties by name. */
+export function compareAdded(a, b, direction) {
+  const left = addedAt(a);
+  const right = addedAt(b);
+  if (left !== right) {
+    if (left === null) return 1;
+    if (right === null) return -1;
+    return (left - right) * direction;
+  }
+  return (a.name || '').localeCompare(b.name || '');
+}
+
 // `canCreateCampaigns` mirrors the backend's campaign-creation roles; it only hides controls.
-export default function LeadCampaignBuilder({ onCampaignStarted, onLeadCreated, leads = [], assistants = [], loading = false, canCreateCampaigns = true }) {
+// `fromProspecting` ([{ id, name, phone, email, city, stage, created_at }]) are prospects ticked on
+// the Prospecting page. They are added to the table (many are not leads yet, so the leads list
+// lacks them) and ticked. `onFromProspectingDone(ids)` drops those ids (all of them without ids).
+export default function LeadCampaignBuilder({
+  onCampaignStarted, onLeadCreated, leads: leadList = [], assistants = [], loading = false, canCreateCampaigns = true,
+  fromProspecting = null, onFromProspectingDone,
+}) {
+  // The table: picked prospects first (those not already listed), then the leads.
+  const leads = useMemo(() => {
+    if (!fromProspecting?.length) return leadList;
+    const listed = new Set(leadList.map((lead) => lead.id));
+    const extra = fromProspecting.filter((p) => !listed.has(p.id)).map((p) => ({
+      id: p.id, name: p.name || '', phone: p.phone || '', email: p.email || '', city: p.city || '',
+      stage: (p.stage || '').toLowerCase(), status: 'prospect', created_at: p.created_at, from_prospecting: true,
+    }));
+    return [...extra, ...leadList];
+  }, [leadList, fromProspecting]);
   const [searchQuery, setSearchQuery] = useState('');
   const [addLeadOpen, setAddLeadOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [selectedLeads, setSelectedLeads] = useState(new Set());
   const [showFilters, setShowFilters] = useState(false);
   const [sortBy, setSortBy] = useState('newest');
@@ -73,74 +85,35 @@ export default function LeadCampaignBuilder({ onCampaignStarted, onLeadCreated, 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [importedIds, setImportedIds] = useState(null);
 
-  const [filters, setFilters] = useState({
-    stage: 'all',
-    project: 'all',
-    category: 'all',
-    subCategory: 'all',
-    source: 'all',
-    assignedTo: 'all',
-    budgetRange: 'any',
-    lastCall: 'all',
-    location: 'all',
-    dateAdded: 'all',
+  // Built from the leads: only filters the data can narrow by (see lib/leadFilters).
+  const leadFilters = useMemo(() => buildLeadFilters(leads), [leads]);
+  const [active, setActive] = useState({});
+  const [dateAdded, setDateAdded] = useState('all');
+  const [lastCall, setLastCall] = useState('all');
+  // Offered only when some lead has a recorded call attempt.
+  const hasCallAttempts = useMemo(() => leads.some((l) => l.last_retry_at), [leads]);
+  const detail = useMemo(() => detailField(leads), [leads]);
+
+  const setChoice = (key, value) => setActive((prev) => {
+    const next = { ...prev };
+    if (value === undefined || value === 'all') delete next[key];
+    else next[key] = value;
+    return next;
+  });
+  const setRange = (key, bound, value) => setActive((prev) => {
+    const range = { ...(prev[key] || {}), [bound]: value };
+    const next = { ...prev, [key]: range };
+    if ((range.min === '' || range.min == null) && (range.max === '' || range.max == null)) delete next[key];
+    return next;
   });
 
-  const activeFiltersCount = useMemo(() => {
-    return Object.entries(filters).filter(([key, value]) => {
-      if (key === 'budgetRange') return value !== 'any';
-      return value !== 'all';
-    }).length;
-  }, [filters]);
-
-  const projectList = useMemo(() => {
-    const fromLeads = leads.map(l => l.project).filter(Boolean);
-    const fromModelLeads = leads.map(l => l.initial_project).filter(Boolean);
-    const fromModelFinal = leads.map(l => l.final_project).filter(Boolean);
-    const fromModelStandard = leads.map(l => l.project_standardized).filter(Boolean);
-    
-    return Array.from(new Set([
-      ...fromLeads, 
-      ...fromModelLeads, 
-      ...fromModelFinal, 
-      ...fromModelStandard
-    ])).sort();
-  }, [leads]);
-
-  const categoryList = useMemo(() => {
-    const fromLeads = leads.map(l => l.category).filter(Boolean);
-    return Array.from(new Set(fromLeads.map(v => String(v)))).sort();
-  }, [leads]);
-
-  const subCategoryList = useMemo(() => {
-    const fromLeads = leads.map(l => l.sub_category).filter(Boolean);
-    return Array.from(new Set(fromLeads.map(v => String(v)))).sort();
-  }, [leads]);
-
-  const sourceList = useMemo(() => {
-    const fromLeads = leads.map(l => l.lead_source || l.source).filter(Boolean);
-    return Array.from(new Set(fromLeads.map(v => String(v)))).sort();
-  }, [leads]);
-
-  const ownerList = useMemo(() => {
-    const fromLeads = leads.map(l => l.lead_owner || l.assigned_to).filter(Boolean);
-    return Array.from(new Set(fromLeads.map(v => String(v)))).sort();
-  }, [leads]);
-
-  const budgetRangeList = useMemo(() => {
-    const fromLeads = leads.map(l => l.budget_range).filter(Boolean);
-    return Array.from(new Set(fromLeads.map(v => String(v)))).sort();
-  }, [leads]);
-
-  const stageList = useMemo(() => {
-    const fromLeads = leads.map(l => l.lead_stage || l.lead_status || l.stage).filter(Boolean);
-    return Array.from(new Set(fromLeads.map(v => String(v)))).sort();
-  }, [leads]);
+  const activeFiltersCount = Object.keys(active).length + (dateAdded !== 'all' ? 1 : 0) + (lastCall !== 'all' ? 1 : 0);
+  // The first choice filters also sit in the bar; every filter is in "All filters".
+  const quickFilters = leadFilters.filter((f) => f.kind === 'choice').slice(0, 3);
 
   const filteredLeads = useMemo(() => {
-    let result = leads;
+    let result = applyLeadFilters(leads, leadFilters, active);
 
-    // Search
     if (searchQuery) {
       const lowerQ = searchQuery.toLowerCase();
       result = result.filter(
@@ -151,92 +124,33 @@ export default function LeadCampaignBuilder({ onCampaignStarted, onLeadCreated, 
       );
     }
 
-    // Filter by Stage
-    if (filters.stage !== 'all') {
-      result = result.filter(l => 
-        String(l.stage).toLowerCase() === filters.stage.toLowerCase() || 
-        String(l.lead_stage).toLowerCase() === filters.stage.toLowerCase() || 
-        String(l.lead_status).toLowerCase() === filters.stage.toLowerCase()
-      );
-    }
-
-    // Filter by Source
-    if (filters.source !== 'all') {
-      result = result.filter(l => 
-        String(l.source).toLowerCase() === filters.source.toLowerCase() || 
-        String(l.lead_source).toLowerCase() === filters.source.toLowerCase()
-      );
-    }
-
-    // Filter by Assigned To
-    if (filters.assignedTo !== 'all') {
-      result = result.filter(l => 
-        String(l.assigned_to).toLowerCase() === filters.assignedTo.toLowerCase() || 
-        String(l.lead_owner).toLowerCase() === filters.assignedTo.toLowerCase()
-      );
-    }
-
-    // Filter by Project
-    if (filters.project !== 'all') {
-      result = result.filter(l => 
-        String(l.project).toLowerCase() === filters.project.toLowerCase() || 
-        String(l.initial_project).toLowerCase() === filters.project.toLowerCase() ||
-        String(l.final_project).toLowerCase() === filters.project.toLowerCase() ||
-        String(l.project_standardized).toLowerCase() === filters.project.toLowerCase()
-      );
-    }
-
-    // Filter by Category
-    if (filters.category !== 'all') {
-      result = result.filter(l => String(l.category).toLowerCase() === filters.category.toLowerCase());
-    }
-
-    // Filter by Sub Category
-    if (filters.subCategory !== 'all') {
-      result = result.filter(l => String(l.sub_category).toLowerCase() === filters.subCategory.toLowerCase());
-    }
-
-    // Filter by Location
-    if (filters.location !== 'all') {
-      result = result.filter(l => l.location_preference?.toLowerCase().includes(filters.location.toLowerCase()));
-    }
-
-
-    // Filter by Date Added
-    if (filters.dateAdded !== 'all') {
+    if (dateAdded !== 'all') {
       const now = new Date();
       result = result.filter(l => {
-        const added = new Date(l.created_at);
-        const diffDays = (now - added) / (1000 * 60 * 60 * 24);
-        if (filters.dateAdded === 'today') return diffDays <= 1;
-        if (filters.dateAdded === 'week') return diffDays <= 7;
-        if (filters.dateAdded === 'month') return diffDays <= 30;
+        const diffDays = (now - new Date(l.created_at)) / (1000 * 60 * 60 * 24);
+        if (dateAdded === 'today') return diffDays <= 1;
+        if (dateAdded === 'week') return diffDays <= 7;
+        if (dateAdded === 'month') return diffDays <= 30;
         return true;
       });
     }
 
-    // Filter by Last Call Attempt (simulation)
-    if (filters.lastCall !== 'all') {
+    if (lastCall !== 'all') {
       result = result.filter(l => {
-        if (filters.lastCall === 'never') return !l.last_retry_at;
+        if (lastCall === 'never') return !l.last_retry_at;
         if (!l.last_retry_at) return false;
-        const lastCall = new Date(l.last_retry_at);
-        const diffDays = (new Date() - lastCall) / (1000 * 60 * 60 * 24);
-        if (filters.lastCall === 'recent') return diffDays <= 30;
-        if (filters.lastCall === 'old') return diffDays > 30;
-        return true;
+        const diffDays = (new Date() - new Date(l.last_retry_at)) / (1000 * 60 * 60 * 24);
+        return lastCall === 'recent' ? diffDays <= 30 : diffDays > 30;
       });
     }
 
-    // Sorting
-    if (sortBy === 'newest') {
-      result = [...result].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-    } else if (sortBy === 'oldest') {
-      result = [...result].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    if (sortBy === 'newest' || sortBy === 'oldest') {
+      const direction = sortBy === 'newest' ? -1 : 1;
+      result = [...result].sort((a, b) => compareAdded(a, b, direction));
     }
 
     return result;
-  }, [leads, searchQuery, filters, sortBy]);
+  }, [leads, leadFilters, active, searchQuery, dateAdded, lastCall, sortBy]);
 
   const handleSelectAll = (checked) => {
     if (checked) {
@@ -266,8 +180,28 @@ export default function LeadCampaignBuilder({ onCampaignStarted, onLeadCreated, 
 
   const handleCreated = (campaign) => {
     if (importedIds) setImportedIds(null);
-    else setSelectedLeads(new Set());
+    else {
+      // Picked prospects that were launched are done; unticked ones stay for later.
+      const launched = Array.from(selectedLeads);
+      setSelectedLeads(new Set());
+      if (fromProspecting?.length) onFromProspectingDone?.(launched.filter((id) => pickedIds.includes(id)));
+    }
     onCampaignStarted?.(campaign);
+  };
+
+  const pickedIds = useMemo(() => (fromProspecting || []).map((p) => p.id), [fromProspecting]);
+  // A new hand-off ticks its prospects (keeping anything already ticked).
+  // Picked prospects are ticked when the page opens and when more arrive; unticking one sticks.
+  const seenPicks = React.useRef(null);
+  useEffect(() => {
+    const seen = seenPicks.current;
+    seenPicks.current = new Set(pickedIds);
+    const fresh = seen ? pickedIds.filter((id) => !seen.has(id)) : pickedIds;
+    if (fresh.length) setSelectedLeads((current) => new Set([...current, ...fresh]));
+  }, [pickedIds]);
+  const discardPicked = () => {
+    setSelectedLeads((current) => new Set([...current].filter((id) => !pickedIds.includes(id))));
+    onFromProspectingDone?.(pickedIds);
   };
 
   const launchImported = (ids) => {
@@ -283,27 +217,33 @@ export default function LeadCampaignBuilder({ onCampaignStarted, onLeadCreated, 
   };
 
   const resetFilters = () => {
-    setFilters({
-      stage: 'all',
-      project: 'all',
-      category: 'all',
-      subCategory: 'all',
-      source: 'all',
-      assignedTo: 'all',
-      budgetRange: 'any',
-      lastCall: 'all',
-      location: 'all',
-      dateAdded: 'all',
-    });
-  };
-
-  const removeFilter = (key) => {
-    setFilters(prev => ({ ...prev, [key]: key === 'budgetRange' ? 'any' : 'all' }));
+    setActive({});
+    setDateAdded('all');
+    setLastCall('all');
   };
 
   return (
     <Card className="border border-border shadow-sm flex flex-col h-full bg-card rounded-xl overflow-visible">
       <CardContent className="flex-1 flex flex-col min-h-0 p-0 overflow-visible">
+        {fromProspecting?.length > 0 && (
+          <div className="px-4 py-3 border-b border-border flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between bg-primary/5"
+            role="region" aria-label="Prospects from Prospecting">
+            <div className="min-w-0">
+              <p className="text-sm font-medium flex items-center gap-1.5">
+                <Users className="w-4 h-4 text-primary shrink-0" aria-hidden="true" />
+                {pickedIds.length.toLocaleString()} prospect{pickedIds.length === 1 ? '' : 's'} added from Prospecting
+              </p>
+              <p className="text-xs text-muted-foreground">They are in the list below, ticked and ready to launch (marked “From Prospecting”).</p>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <Button type="button" variant="outline" size="sm" asChild>
+                <Link to="/prospecting">Back to Prospecting</Link>
+              </Button>
+              <Button type="button" variant="ghost" size="sm" onClick={discardPicked}>Remove them</Button>
+            </div>
+          </div>
+        )}
+
         {/* Filters Top Bar */}
         <div className="px-4 py-3 border-b border-border flex items-center justify-between overflow-x-auto no-scrollbar bg-muted/30">
           <div className="flex items-center gap-3">
@@ -331,144 +271,57 @@ export default function LeadCampaignBuilder({ onCampaignStarted, onLeadCreated, 
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-y-3.5 gap-x-4">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Lead status</label>
-                      <Select value={filters.stage} onValueChange={(v) => setFilters(f => ({...f, stage: v}))}>
-                        <SelectTrigger className="h-8.5 bg-card border-border text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All Statuses</SelectItem>
-                          {stageList.map(v => (
-                            <SelectItem key={v} value={v}>{v}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Project</label>
-                      <Select value={filters.project} onValueChange={(v) => setFilters(f => ({...f, project: v}))}>
-                        <SelectTrigger className="h-8.5 bg-card border-border text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All Projects</SelectItem>
-                          {projectList.map(name => (
-                            <SelectItem key={name} value={name}>{name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Lead source</label>
-                      <Select value={filters.source} onValueChange={(v) => setFilters(f => ({...f, source: v}))}>
-                        <SelectTrigger className="h-8.5 bg-card border-border text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All Sources</SelectItem>
-                          {sourceList.map(v => (
-                            <SelectItem key={v} value={v}>{v}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Category</label>
-                      <Select value={filters.category} onValueChange={(v) => setFilters(f => ({...f, category: v}))}>
-                        <SelectTrigger className="h-8.5 bg-card border-border text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All Categories</SelectItem>
-                          {categoryList.map(v => (
-                            <SelectItem key={v} value={v}>{v}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Sub Category</label>
-                      <Select value={filters.subCategory} onValueChange={(v) => setFilters(f => ({...f, subCategory: v}))}>
-                        <SelectTrigger className="h-8.5 bg-card border-border text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All Sub Categories</SelectItem>
-                          {subCategoryList.map(v => (
-                            <SelectItem key={v} value={v}>{v}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Budget Range</label>
-                      <Select value={filters.budgetRange} onValueChange={(v) => setFilters(f => ({...f, budgetRange: v}))}>
-                        <SelectTrigger className="h-8.5 bg-card border-border text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="any">Any Budget</SelectItem>
-                          {budgetRangeList.map(v => (
-                            <SelectItem key={v} value={v}>{v}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Assigned to</label>
-                      <Select value={filters.assignedTo} onValueChange={(v) => setFilters(f => ({...f, assignedTo: v}))}>
-                        <SelectTrigger className="h-8.5 bg-card border-border text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All agents</SelectItem>
-                          {ownerList.map(v => (
-                            <SelectItem key={v} value={v}>{v}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Last call attempt</label>
-                      <Select value={filters.lastCall} onValueChange={(v) => setFilters(f => ({...f, lastCall: v}))}>
-                        <SelectTrigger className="h-8.5 bg-card border-border text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">Any time</SelectItem>
-                          {CALL_ATTEMPT_OPTIONS.map(opt => (
-                            <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Location / city</label>
-                      <div className="relative">
-                        <MapPin className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                        <Input 
-                          placeholder="All locations" 
-                          className="h-8.5 pl-8 bg-card border-border text-xs focus-visible:ring-0"
-                          value={filters.location === 'all' ? '' : filters.location}
-                          onChange={(e) => setFilters(f => ({...f, location: e.target.value || 'all'}))}
-                        />
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-y-3.5 gap-x-4 max-h-[60vh] overflow-y-auto pr-1">
+                    {leadFilters.map((filter) => (
+                      <div key={filter.key} className="space-y-1">
+                        <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{filter.label}</label>
+                        {filter.kind === 'choice' ? (
+                          <Select value={active[filter.key] ?? 'all'} onValueChange={(v) => setChoice(filter.key, v)}>
+                            <SelectTrigger className="h-8.5 bg-card border-border text-xs" aria-label={filter.label}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">Any</SelectItem>
+                              {filter.options.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>{option.label} ({option.count})</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <div className="flex items-center gap-1.5">
+                            <Input type="number" inputMode="numeric" aria-label={`${filter.label} from`} placeholder={String(filter.min)}
+                              className="h-8.5 bg-card border-border text-xs" value={active[filter.key]?.min ?? ''}
+                              onChange={(e) => setRange(filter.key, 'min', e.target.value)} />
+                            <span className="text-xs text-muted-foreground">–</span>
+                            <Input type="number" inputMode="numeric" aria-label={`${filter.label} to`} placeholder={String(filter.max)}
+                              className="h-8.5 bg-card border-border text-xs" value={active[filter.key]?.max ?? ''}
+                              onChange={(e) => setRange(filter.key, 'max', e.target.value)} />
+                          </div>
+                        )}
                       </div>
-                    </div>
+                    ))}
+
+                    {hasCallAttempts && (
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Last call attempt</label>
+                        <Select value={lastCall} onValueChange={setLastCall}>
+                          <SelectTrigger className="h-8.5 bg-card border-border text-xs" aria-label="Last call attempt">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">Any time</SelectItem>
+                            {CALL_ATTEMPT_OPTIONS.map(opt => (
+                              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
 
                     <div className="space-y-1">
                       <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Date added</label>
-                      <Select value={filters.dateAdded} onValueChange={(v) => setFilters(f => ({...f, dateAdded: v}))}>
-                        <SelectTrigger className="h-8.5 bg-card border-border text-xs">
+                      <Select value={dateAdded} onValueChange={setDateAdded}>
+                        <SelectTrigger className="h-8.5 bg-card border-border text-xs" aria-label="Date added">
                           <div className="flex items-center gap-1.5">
                              <Calendar className="w-3.5 h-3.5 text-orange-500" />
                              <SelectValue />
@@ -491,65 +344,20 @@ export default function LeadCampaignBuilder({ onCampaignStarted, onLeadCreated, 
               </PopoverContent>
             </Popover>
 
-            <Select value={filters.stage} onValueChange={(v) => setFilters(f => ({...f, stage: v}))}>
-              <SelectTrigger className="h-8 w-[110px] rounded-full bg-blue-50/50 border-blue-200 text-blue-700 text-xs font-medium focus:ring-0">
-                <div className="flex items-center gap-1.5">
-                  <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                  <SelectValue placeholder="Status" />
-                </div>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                {stageList.map(v => (
-                  <SelectItem key={v} value={v}>{v}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select value={filters.project} onValueChange={(v) => setFilters(f => ({...f, project: v}))}>
-              <SelectTrigger className="h-8 w-[120px] rounded-full border-border text-muted-foreground text-xs font-medium focus:ring-0">
-                <div className="flex items-center gap-1.5">
-                  <Building className="w-3 h-3" />
-                  <SelectValue placeholder="Project" />
-                </div>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Projects</SelectItem>
-                {projectList.map(name => (
-                  <SelectItem key={name} value={name}>{name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select value={filters.category} onValueChange={(v) => setFilters(f => ({...f, category: v}))}>
-              <SelectTrigger className="h-8 w-[120px] rounded-full border-border text-muted-foreground text-xs font-medium focus:ring-0">
-                <div className="flex items-center gap-1.5">
-                  <ArrowUpDown className="w-3 h-3" />
-                  <SelectValue placeholder="Category" />
-                </div>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Categories</SelectItem>
-                {categoryList.map(v => (
-                  <SelectItem key={v} value={v}>{v}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select value={filters.source} onValueChange={(v) => setFilters(f => ({...f, source: v}))}>
-              <SelectTrigger className="h-8 w-[120px] rounded-full border-border text-muted-foreground text-xs font-medium focus:ring-0">
-                <div className="flex items-center gap-1.5">
-                  <Briefcase className="w-3 h-3" />
-                  <SelectValue placeholder="Source" />
-                </div>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Sources</SelectItem>
-                {sourceList.map(v => (
-                  <SelectItem key={v} value={v}>{v}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {quickFilters.map((filter) => (
+              <Select key={filter.key} value={active[filter.key] ?? 'all'} onValueChange={(v) => setChoice(filter.key, v)}>
+                <SelectTrigger aria-label={`Quick filter: ${filter.label}`}
+                  className={`h-8 w-auto min-w-[110px] max-w-[180px] rounded-full text-xs font-medium focus:ring-0 ${active[filter.key] ? 'bg-blue-50/50 border-blue-200 text-blue-700' : 'border-border text-muted-foreground'}`}>
+                  <SelectValue placeholder={filter.label} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All {filter.label.toLowerCase()}</SelectItem>
+                  {filter.options.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>{option.label} ({option.count})</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ))}
           </div>
 
           <Badge variant="secondary" className="px-3 py-1 font-medium bg-[#F87217]/8 text-[#F87217] border border-[#F87217]/20 shrink-0">
@@ -560,23 +368,24 @@ export default function LeadCampaignBuilder({ onCampaignStarted, onLeadCreated, 
         {/* Active Filter Tags */}
         {activeFiltersCount > 0 && (
           <div className="px-4 py-2 border-b border-border flex items-center gap-2 flex-wrap bg-muted/50">
-            {Object.entries(filters).map(([key, value]) => {
-              if (value === 'all' || value === 'any') return null;
-              let label = value;
-              if (key === 'stage') label = `Status: ${LEAD_STATUS_OPTIONS.find(o => o.value === value)?.label || value}`;
-              if (key === 'source') label = `Source: ${SOURCE_OPTIONS.find(o => o.value === value)?.label || value}`;
-              if (key === 'dateAdded') label = DATE_ADDED_OPTIONS.find(o => o.value === value)?.label || value;
-              if (key === 'project') label = `Project: ${value}`;
-              if (key === 'category') label = `Category: ${value}`;
-              if (key === 'subCategory') label = `Sub Category: ${value}`;
-              
-              return (
-                <Badge key={key} variant="secondary" className="gap-1 bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-100 font-medium px-2 py-0.5 text-[11px]">
-                  {label}
-                  <button onClick={() => removeFilter(key)}><X className="w-3 h-3" /></button>
-                </Badge>
-              );
-            })}
+            {leadFilters.filter((filter) => active[filter.key] !== undefined).map((filter) => (
+              <Badge key={filter.key} variant="secondary" className="gap-1 bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-100 font-medium px-2 py-0.5 text-[11px]">
+                {activeLabel(filter, active[filter.key])}
+                <button type="button" aria-label={`Remove filter ${filter.label}`} onClick={() => setChoice(filter.key)}><X className="w-3 h-3" /></button>
+              </Badge>
+            ))}
+            {dateAdded !== 'all' && (
+              <Badge variant="secondary" className="gap-1 bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-100 font-medium px-2 py-0.5 text-[11px]">
+                {DATE_ADDED_OPTIONS.find((o) => o.value === dateAdded)?.label}
+                <button type="button" aria-label="Remove filter Date added" onClick={() => setDateAdded('all')}><X className="w-3 h-3" /></button>
+              </Badge>
+            )}
+            {lastCall !== 'all' && (
+              <Badge variant="secondary" className="gap-1 bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-100 font-medium px-2 py-0.5 text-[11px]">
+                {CALL_ATTEMPT_OPTIONS.find((o) => o.value === lastCall)?.label}
+                <button type="button" aria-label="Remove filter Last call attempt" onClick={() => setLastCall('all')}><X className="w-3 h-3" /></button>
+              </Badge>
+            )}
             <button className="text-[11px] text-muted-foreground hover:text-foreground/80 font-medium ml-1" onClick={resetFilters}>Clear all</button>
           </div>
         )}
@@ -613,6 +422,10 @@ export default function LeadCampaignBuilder({ onCampaignStarted, onLeadCreated, 
                <Sparkles className="w-3.5 h-3.5" />
                Import from AI Filtering
              </Button>
+             <Button size="sm" variant="outline" onClick={() => setImportOpen(true)} className="h-9 gap-1.5">
+               <Upload className="w-3.5 h-3.5" />
+               Import leads
+             </Button>
              <Button
                size="sm"
                onClick={() => setAddLeadOpen(true)}
@@ -634,8 +447,9 @@ export default function LeadCampaignBuilder({ onCampaignStarted, onLeadCreated, 
             />
             <div className="grid grid-cols-12 w-full text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
               <div className="col-span-4 pl-1">Lead Name</div>
-              <div className="col-span-3">Contact</div>
-              <div className="col-span-3">Project</div>
+              <div className="col-span-2">Contact</div>
+              <div className="col-span-2">{detail ? detail.label : 'City'}</div>
+              <div className="col-span-2 text-center">Temperature</div>
               <div className="col-span-2 text-right">Status</div>
             </div>
           </div>
@@ -663,16 +477,32 @@ export default function LeadCampaignBuilder({ onCampaignStarted, onLeadCreated, 
                     />
                     <div className="grid grid-cols-12 w-full items-center text-sm">
                       <div className="col-span-4 pl-1">
-                        <div className="font-semibold text-foreground truncate">{lead.name || 'Unnamed'}</div>
-                        <div className="text-[10px] text-muted-foreground mt-0.5">Added {timeAgo(lead.created_at)}</div>
+                        {/* Opens the lead (details, edit, timeline); Back on /leads returns here. */}
+                        <Link to={`/leads?prospect=${encodeURIComponent(lead.id)}`} title="Open this lead"
+                          className="block font-semibold text-foreground truncate hover:text-primary hover:underline">
+                          {lead.name || 'Unnamed'}
+                        </Link>
+                        <div className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-1.5">
+                          {lead.created_at && <span>Added {timeAgo(lead.created_at)}</span>}
+                          {lead.from_prospecting && <Badge variant="outline" className="h-4 px-1 text-[9px]">From Prospecting</Badge>}
+                        </div>
                       </div>
-                      <div className="col-span-3 text-muted-foreground truncate">
+                      <div className="col-span-2 text-muted-foreground truncate">
                         <div className="text-xs font-medium">{lead.phone || '-'}</div>
                       </div>
-                      <div className="col-span-3">
-                         <Badge variant="outline" className="font-medium bg-purple-50 text-purple-700 border-purple-100 text-[10px] px-2 py-0">
-                           {lead.project || 'Signature'}
-                         </Badge>
+                      <div className="col-span-2">
+                         {detailValue(lead, detail) ? (
+                           <Badge variant="outline" className="font-medium bg-purple-50 text-purple-700 border-purple-100 text-[10px] px-2 py-0 max-w-full truncate">
+                             {detailValue(lead, detail)}
+                           </Badge>
+                         ) : <span className="text-xs text-muted-foreground">—</span>}
+                      </div>
+                      {/* HOT / WARM / COLD from the backend once the lead has an accepted assessment;
+                          PROVISIONAL before that; nothing for an unscored or out-of-date score. */}
+                      <div className="col-span-2 text-center" data-testid={`temperature-${lead.id}`}>
+                        {lead.lead_score_summary?.temperature_display?.label
+                          ? <TemperatureChip display={lead.lead_score_summary.temperature_display} className="text-[10px]" />
+                          : <span className="text-xs text-muted-foreground">—</span>}
                       </div>
                       <div className="col-span-2 text-right">
                         <StageBadge stage={lead.stage} className="text-[10px] uppercase tracking-tighter" />
@@ -712,6 +542,17 @@ export default function LeadCampaignBuilder({ onCampaignStarted, onLeadCreated, 
         open={pickerOpen}
         onOpenChange={setPickerOpen}
         onConfirm={launchImported}
+      />
+
+      <ImportLeadsDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        onImported={async (result) => {
+          // The new leads appear in the list (refreshed) and are ticked, ready to launch.
+          await onLeadCreated?.();
+          const ids = result?.prospect_ids || [];
+          if (ids.length) setSelectedLeads((current) => new Set([...current, ...ids]));
+        }}
       />
 
       <AddLeadDialog

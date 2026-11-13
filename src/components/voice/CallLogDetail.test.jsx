@@ -1,4 +1,4 @@
-import { fireEvent, screen } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { renderWithAuth, USERS } from '@/test/renderWithAuth';
 import CallLogDetail from './CallLogDetail';
 import { useCallLogDetail } from '@/hooks/useCallLogs';
@@ -32,7 +32,34 @@ beforeEach(() => {
 
 const renderAs = (user) => renderWithAuth(<CallLogDetail callId="call-abc" onBack={jest.fn()} />, { user, path: '/voice_agent?tab=logs' });
 
+describe('Lead status', () => {
+  it('shows no lead status, and never WARM, when the call log has none', async () => {
+    api.getCallIntentAssessment.mockResolvedValue({ data: { assessment: null, review: null } });
+    renderAs(USERS.manager);
+    await waitFor(() => expect(api.getCallIntentAssessment).toHaveBeenCalled());
+    expect(screen.queryByText(/Warm Lead/)).not.toBeInTheDocument();
+    expect(screen.queryByText('Lead Status')).not.toBeInTheDocument();
+    expect(screen.queryByText('WARM')).not.toBeInTheDocument();
+  });
+
+  it('shows a lead status the call log does carry', async () => {
+    useCallLogDetail.mockReturnValue({ detail: { ...log, lead_status: 'hot' }, loading: false, error: null });
+    api.getCallIntentAssessment.mockResolvedValue({ data: { assessment: null, review: null } });
+    renderAs(USERS.manager);
+    expect(await screen.findByText('🔥 Hot Lead')).toBeInTheDocument();
+    expect(screen.getByText('Lead Status')).toBeInTheDocument();
+  });
+});
+
 describe('Call log intent assessment', () => {
+  it('does not invent a lead status when the backend did not provide one', async () => {
+    api.getCallIntentAssessment.mockResolvedValue({ data: { assessment: null, review: null } });
+    renderAs(USERS.manager);
+    await screen.findByText(/This call has no intent assessment/);
+    expect(screen.queryByText('WARM')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Warm Lead/i)).not.toBeInTheDocument();
+  });
+
   it("shows the call's assessment and sends a manager to review it", async () => {
     api.getCallIntentAssessment.mockResolvedValue({ data: { assessment, review } });
     renderAs(USERS.manager);

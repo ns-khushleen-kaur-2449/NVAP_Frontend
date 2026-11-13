@@ -3,23 +3,19 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useTheme } from 'next-themes';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  Menu, X, Sun, Moon, ChevronDown, PhoneCall, TrendingUp, LayoutGrid,
-  Search, BookOpen, Calendar, Table2, Sparkles,
+  Menu, X, Sun, Moon, ChevronDown, PhoneCall, LayoutGrid, Calendar, Sparkles,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import BrandLockup from '@/components/shared/BrandLockup';
 
 const PLATFORM = [
   { icon: LayoutGrid, label: 'What is SmartSDR?', desc: 'The complete platform overview', to: '/#what' },
   { icon: Sparkles, label: 'Features', desc: 'Every tool for AI real-estate sales', to: '/#platform' },
   { icon: PhoneCall, label: 'Voice Agent', desc: 'Autonomous AI that calls & qualifies leads', to: '/#voice-agent' },
-  { icon: TrendingUp, label: 'Executive Analytics', desc: 'Call-quality scoring & executive reporting', to: '/#executive-report' },
-  { icon: Search, label: 'Prospecting', desc: 'Find and engage the right buyers', to: '/#platform' },
-  { icon: BookOpen, label: 'Knowledge base', desc: 'Ground every call in your listings', to: '/#platform' },
-  { icon: Calendar, label: 'Scheduling', desc: 'Auto-book site visits & callbacks', to: '/#how' },
-  { icon: Table2, label: 'Sheets sync', desc: 'Push results straight to Google Sheets', to: '/#platform' },
+  { icon: Calendar, label: 'Scheduling', desc: 'Auto-book site visits & callbacks', to: '/#scheduling' },
 ];
 
-export default function MarketingNav({ overHero = false }) {
+export default function MarketingNav({ overHero = false, showBrand = true }) {
   const [open, setOpen] = useState(false);
   const [menu, setMenu] = useState(null); // 'platform' | 'why' | null
   const [scrolled, setScrolled] = useState(!overHero);
@@ -36,7 +32,8 @@ export default function MarketingNav({ overHero = false }) {
   }, [overHero]);
 
   const solid = scrolled || open || !!menu;
-  const textLight = overHero && !solid;
+  // The hero band is only dark in dark mode; in light mode the nav text stays dark.
+  const textLight = overHero && !solid && isDark;
 
   return (
     <header
@@ -51,16 +48,17 @@ export default function MarketingNav({ overHero = false }) {
         <div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-[var(--deep)]/70 via-[var(--deep)]/25 to-transparent" />
       )}
       <div className="relative mx-auto flex max-w-[1400px] items-center justify-between px-6 py-4 md:px-10">
-        <Link to="/" className="flex flex-col leading-none">
-          <span className={cn('mk-display text-[1.55rem] font-semibold tracking-tight transition-colors duration-500',
-            textLight ? 'text-white' : 'text-[var(--ink)]')}>
-            Smart<span className="text-[var(--pine)]">SDR</span>
-          </span>
-          <span className={cn('mk-eyebrow mt-1 text-[0.58rem] transition-colors duration-500',
-            textLight ? 'text-white/60' : 'text-[var(--mist)]')}>
-            by Netsmartz
-          </span>
-        </Link>
+        {/* The brand block and the actions block share the leftover width, keeping the links
+            centred. The landing page hides the brand (its hero carries the big lockup). */}
+        <div className="flex-1">
+          {showBrand && (
+            <Link to="/" aria-label="SmartSDR by Netsmartz — home"
+              className={cn('inline-flex items-center transition-colors duration-500', textLight ? 'text-white' : 'text-[var(--ink)]')}>
+              <BrandLockup size="md" tone={textLight ? 'onDark' : 'auto'} className="hidden sm:inline-flex" />
+              <BrandLockup size="sm" tone={textLight ? 'onDark' : 'auto'} className="sm:hidden" />
+            </Link>
+          )}
+        </div>
 
         <nav className={cn('hidden items-center gap-8 text-[0.9rem] font-medium md:flex',
           textLight ? 'text-white/85' : 'text-[var(--ink)]/75')}>
@@ -84,7 +82,7 @@ export default function MarketingNav({ overHero = false }) {
           </Link>
         </nav>
 
-        <div className="hidden items-center gap-3 md:flex">
+        <div className="hidden flex-1 items-center justify-end gap-3 md:flex">
           <button onClick={() => setTheme(isDark ? 'light' : 'dark')} aria-label="Toggle theme"
             className={cn('flex h-9 w-9 items-center justify-center rounded-full border transition-colors duration-300',
               textLight ? 'border-white/30 text-white hover:bg-white/10' : 'border-[var(--line)] text-[var(--ink)]/70 hover:text-[var(--pine)]')}>

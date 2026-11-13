@@ -10,7 +10,7 @@ import { Sparkles } from 'lucide-react';
  */
 const TIPS = [
   "Hi, I'm Rocket 🚀 Your guide around SmartSDR, built by Netsmartz.",
-  'Two agents live here: Voice Agent calls & qualifies leads, Executive Analytics scores every call.',
+  'The Voice Agent calls and qualifies your leads, and every lead gets a score.',
   'Full conversational chat is on its way — for now, explore and I’ll point things out.',
 ];
 

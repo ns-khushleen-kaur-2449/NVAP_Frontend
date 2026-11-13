@@ -80,6 +80,25 @@ describe('Intent review', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
+  it('approves with edits, sending only the changed fields', async () => {
+    api.reviewIntentAssessment.mockResolvedValue({ data: { ...item, review_status: 'approved' } });
+    renderWithAuth(<IntentReviewPage />, { user: USERS.manager, path: PATH });
+    await openRow();
+    api.getIntentReviewQueue.mockResolvedValue(queue([]));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit & approve' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('Intent'), { target: { value: 'interested' } });
+    fireEvent.change(within(dialog).getByLabelText('Confidence (0-100)'), { target: { value: '85' } });
+    fireEvent.change(within(dialog).getAllByRole('textbox').pop(), { target: { value: 'Fixed after listening' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Approve with edits' }));
+
+    await waitFor(() => expect(api.reviewIntentAssessment).toHaveBeenCalledWith(
+      'a1', 'approved', 'Fixed after listening', undefined, { primary_intent: 'interested', confidence: 85 },
+    ));
+    expect(await screen.findByText('Nothing waiting for review.')).toBeInTheDocument();
+  });
+
   it('explains a 409 when someone else reviewed it first', async () => {
     api.reviewIntentAssessment.mockRejectedValue({ response: { status: 409, data: { detail: 'Assessment has already been reviewed' } } });
     renderWithAuth(<IntentReviewPage />, { user: USERS.manager, path: PATH });
@@ -105,11 +124,10 @@ describe('Intent review', () => {
     await waitFor(() => expect(api.getIntentReviewQueue).toHaveBeenLastCalledWith({ status: 'rejected', page: 1, page_size: 25 }));
   });
 
-  it('lets a Super Admin pick a tenant and view without deciding', async () => {
+  it('offers a Super Admin no tenant picker and no decisions', async () => {
     renderWithAuth(<IntentReviewPage />, { user: USERS.super_admin, path: PATH });
-    await waitFor(() => expect(api.getIntentReviewQueue).toHaveBeenCalledWith({ status: 'pending', page: 1, page_size: 25, tenant_id: 't-9' }));
-    await openRow();
-    expect(api.getIntentAssessment).toHaveBeenCalledWith('a1', { tenant_id: 't-9' });
+    await waitFor(() => expect(api.getIntentReviewQueue).toHaveBeenCalled());
+    expect(screen.queryByLabelText('Tenant')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument();
   });
 

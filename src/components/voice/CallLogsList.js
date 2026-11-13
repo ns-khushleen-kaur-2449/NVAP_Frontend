@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -29,6 +30,8 @@ function StatusBadge({ status, label }) {
   );
 }
 
+// A call's lead status, only when the call log carries a known one: the call log API does not
+// send it today, so nothing is shown (never a "Warm" default).
 function LeadStatusBadge({ status }) {
   const map = {
     hot: 'bg-rose-500/15 text-rose-500 border-rose-500/25',
@@ -40,8 +43,9 @@ function LeadStatusBadge({ status }) {
     cold: '❄️ Cold Lead',
     warm: '🌤️ Warm Lead',
   };
-  const s = map[status] || map.warm;
-  const label = labelMap[status] || '🌤️ Warm Lead';
+  const s = map[status];
+  const label = labelMap[status];
+  if (!s) return null;
   return (
     <Badge variant="outline" className={`${s} gap-1 text-[10px] font-semibold uppercase tracking-wider shrink-0`}>
       {label}
@@ -87,7 +91,17 @@ export default function CallLogsList({ assistantId = '', assistantName = '', onC
   const [searchInput, setSearchInput] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [sourceFilter, setSourceFilter] = useState('');
-  const [selectedCallId, setSelectedCallId] = useState(null);
+  // ?call=<id> (database or Vapi id) opens that call, e.g. from the Inbox.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [selectedCallId, setSelectedCallId] = useState(() => searchParams.get('call'));
+  const closeCall = () => {
+    setSelectedCallId(null);
+    if (searchParams.has('call')) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('call');
+      setSearchParams(next, { replace: true });
+    }
+  };
 
   const { logs, total, totalPages, loading, error, refresh } = useCallLogs({
     page,
@@ -111,7 +125,7 @@ export default function CallLogsList({ assistantId = '', assistantName = '', onC
 
   // If a call is selected, show detail view
   if (selectedCallId) {
-    return <CallLogDetail callId={selectedCallId} onBack={() => setSelectedCallId(null)} />;
+    return <CallLogDetail callId={selectedCallId} onBack={closeCall} />;
   }
 
   return (

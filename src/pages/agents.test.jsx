@@ -6,6 +6,7 @@ import AgentsPage from '@/pages/Agents';
 import RequirePermission from '@/components/auth/RequirePermission';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { PERMISSIONS } from '@/lib/rbac';
+import { PLATFORM_NAV, visibleNavItems } from '@/lib/adminNav';
 import { agentRoute, accessSummary, healthState, problemLabel } from '@/lib/agents';
 import * as api from '@/lib/api';
 import { USERS, renderWithAuth } from '@/test/renderWithAuth';
@@ -65,13 +66,12 @@ describe('agent permissions', () => {
     expect(screen.getByText('Allowed')).toBeInTheDocument();
   });
 
-  test('only the Super Admin sees the catalog admin link; everyone sees Agents', () => {
-    const { unmount } = renderWithAuth(<Sidebar />, { user: USERS.super_admin, path: '/dashboard' });
-    expect(screen.getByTestId('nav-agent catalog')).toBeInTheDocument();
-    expect(screen.getByText('Agents')).toBeInTheDocument();
-    unmount();
+  test('only the Super Admin gets the catalog admin link (platform area); tenant users see Agents', () => {
+    // Since the sdr-merge the Super Admin works only in /admin, so the catalog link is in PLATFORM_NAV.
+    const catalog = (user) => visibleNavItems(user, PLATFORM_NAV).some((item) => item.path === '/admin/agent-catalog');
+    expect(catalog(USERS.super_admin)).toBe(true);
+    ['tenant_admin', 'manager', 'rep'].forEach((role) => expect(catalog(USERS[role])).toBe(false));
     renderWithAuth(<Sidebar />, { user: USERS.rep, path: '/dashboard' });
-    expect(screen.queryByTestId('nav-agent catalog')).not.toBeInTheDocument();
     expect(screen.getByText('Agents')).toBeInTheDocument();
   });
 });

@@ -12,7 +12,7 @@ import OpsButton from './OpsButton';
  */
 export default function ReasonDialog({
   open, onOpenChange, title, description, changes = [], confirmLabel = 'Confirm', danger = false,
-  onConfirm, children, canConfirm = true, requireReason = true, reasonLabel = 'Reason',
+  onConfirm, children, canConfirm = true, wide = false, requireReason = true, reasonLabel = 'Reason',
   reasonPlaceholder = 'Why are you doing this? It is kept in the history.',
 }) {
   const [reason, setReason] = useState('');
@@ -36,8 +36,9 @@ export default function ReasonDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!busy) onOpenChange(next); }}>
-      <DialogContent className="ops max-w-md rounded-[14px]">
-        <form onSubmit={submit} className="space-y-4">
+      <DialogContent className={`ops ${wide ? 'max-w-2xl' : 'max-w-md'} rounded-[14px]`}>
+        <form onSubmit={submit} className="flex max-h-[85vh] flex-col gap-4">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-1 -mx-1">
           <DialogHeader>
             <DialogTitle>{title}</DialogTitle>
             {description && <DialogDescription>{description}</DialogDescription>}
@@ -59,6 +60,7 @@ export default function ReasonDialog({
               required={requireReason} aria-required={requireReason} placeholder={reasonPlaceholder} maxLength={1000}
               className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus-visible:outline focus-visible:outline-2" />
             {missing && <p className="text-xs text-muted-foreground">A reason is required.</p>}
+          </div>
           </div>
           <DialogFooter className="gap-2 sm:gap-2">
             <OpsButton variant="quiet" onClick={() => onOpenChange(false)} disabled={busy}>Cancel</OpsButton>

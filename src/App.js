@@ -10,7 +10,7 @@ import SidebarTopBar from "@/components/layout/SidebarTopBar";
 import DashboardPage from "@/pages/Dashboard";
 import LeadsPage from "@/pages/Leads";
 import ResearchPage from "@/pages/Research";
-import ReportsPage from "@/pages/Reports";
+import LegacyReportsPage from "@/pages/Reports";
 // import CallsPage from "@/pages/Calls";
 import PropertiesPage from "@/pages/Properties";
 import SettingsPage from "@/pages/Settings";
@@ -34,28 +34,33 @@ import KnowledgeBasePage from "@/pages/KnowledgeBase";
 // import ChatWidget from "@/components/shared/ChatWidget";
 import ProspectingPage from "@/pages/Prospecting";
 import ConversionWorkspace from "@/pages/ConversionWorkspace";
+import BillingPage from "@/pages/Billing";
 import StrategistPage from "@/pages/Strategist";
 import ForbiddenPage from "@/pages/Forbidden";
-import RoleDashboard from "@/pages/RoleDashboard";
 import UsersAdminPage from "@/pages/admin/Users";
 import TeamsAdminPage from "@/pages/admin/Teams";
-import TenantsAdminPage from "@/pages/admin/Tenants";
-import AgentsAdminPage from "@/pages/admin/AgentsAdmin";
 import AgentsPage from "@/pages/Agents";
 import { HiringRoute } from "@/pages/hiring/HiringAgent";
 import RequirePermission from "@/components/auth/RequirePermission";
-import { PERMISSIONS } from "@/lib/rbac";
+import { CAMPAIGN_FEATURES, PERMISSIONS, homePath } from "@/lib/rbac";
+import FeatureRoute from "@/components/auth/FeatureRoute";
 import AuthGate from "@/components/auth/AuthGate";
+import StepUpDialog from "@/components/auth/StepUpDialog";
 import InboxPage from "@/pages/Inbox";
+import CatalogPage from "@/pages/Catalog";
+import RoleDashboard from "@/pages/RoleDashboard";
+import { ReportsPage } from "@/pages/RoleAnalytics";
 import MeetingsPage from "@/pages/Meetings";
 import { operationsRoutes } from "@/pages/Operations";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
+import { SuperAdminBoundary, SuperAdminGoesTo } from "@/components/auth/SuperAdminRoute";
+import { adminRoutes } from "@/pages/admin/adminRoutes";
 
 // The backend's roles (lib/rbac.js).  Older routes said "admin", a role that never existed.
 const ADMINS = ['super_admin', 'tenant_admin'];
 const ADMINS_AND_MANAGERS = ['super_admin', 'tenant_admin', 'manager'];
 
-/** Shows LandingPage for guests; redirects logged-in users to /dashboard */
+/** Shows LandingPage for guests; redirects logged-in users home (/admin/overview for a Super Admin, else /dashboard) */
 function SmartRoot() {
   const { user, token, loading } = useAuth();
   if (loading) {
@@ -65,14 +70,14 @@ function SmartRoot() {
       </div>
     );
   }
-  if (user || token) return <Navigate to="/dashboard" replace />;
+  if (user || token) return <Navigate to={homePath(user)} replace />;
   return <LandingPage />;
 }
 
 // Pages that get the persistent left Sidebar instead of the TopBar. Everything
 // else in AppShell keeps the TopBar exactly as before.
-const SIDEBAR_SECTION_PATHS = ['/dashboard', '/prospecting', '/conversion', '/strategist', '/inbox', '/meetings', '/settings',
-  '/operations', '/leads', '/agents'];
+const SIDEBAR_SECTION_PATHS = ['/dashboard', '/prospecting', '/conversion', '/strategist', '/inbox', '/catalog', '/meetings', '/settings',
+  '/operations', '/leads', '/billing', '/reports', '/agents'];
 
 function AppShell() {
   const { user, token, loading } = useAuth();
@@ -102,8 +107,10 @@ function AppShell() {
       <Route path="/research" element={
         <ProtectedRoute roles={ADMINS_AND_MANAGERS}><ResearchPage /></ProtectedRoute>
       } />
-      <Route path="/reports" element={
-        <ProtectedRoute roles={ADMINS_AND_MANAGERS}><ReportsPage /></ProtectedRoute>
+      {/* Reports & Analytics for every role; the backend scopes the data. The previous Reports page is kept at /reports/legacy. */}
+      <Route path="/reports" element={<ReportsPage />} />
+      <Route path="/reports/legacy" element={
+        <ProtectedRoute roles={ADMINS_AND_MANAGERS}><LegacyReportsPage /></ProtectedRoute>
       } />
       <Route path="/properties" element={<PropertiesPage />} />
       <Route path="/agent-runs" element={
@@ -111,18 +118,24 @@ function AppShell() {
       } />
       <Route path="/prospecting" element={<ProspectingPage />} />
       <Route path="/conversion" element={<ConversionWorkspace />} />
+      <Route path="/billing" element={<ProtectedRoute roles={['tenant_admin']}><BillingPage /></ProtectedRoute>} />
       <Route path="/strategist" element={<StrategistPage />} />
       {/* The SDR Campaigns pages are hidden for now; Voice Campaigns is the campaign page. */}
       <Route path="/campaigns/*" element={<Navigate to="/voice-campaigns" replace />} />
       <Route path="/inbox" element={<InboxPage />} />
+      <Route path="/catalog" element={<FeatureRoute features={["product_catalog"]} name="Catalog"><CatalogPage /></FeatureRoute>} />
       <Route path="/meetings" element={<MeetingsPage />} />
       {/* Appointments, callbacks, do-not-call and intent review (old /appointments, /callbacks and /do-not-call redirect). */}
       {operationsRoutes()}
       <Route path="/403" element={<ForbiddenPage />} />
-      <Route path="/settings/users" element={<RequirePermission perm={PERMISSIONS.USERS_VIEW}><UsersAdminPage /></RequirePermission>} />
+      {/* A Super Admin manages tenants and their users in the platform area (/admin/tenants, /admin/tenant-users). */}
+      <Route path="/settings/users" element={
+        <SuperAdminGoesTo to="/admin/tenant-users"><RequirePermission perm={PERMISSIONS.USERS_VIEW}><UsersAdminPage /></RequirePermission></SuperAdminGoesTo>
+      } />
       <Route path="/settings/teams" element={<RequirePermission perm={PERMISSIONS.TEAMS_MANAGE}><TeamsAdminPage /></RequirePermission>} />
-      <Route path="/settings/tenants" element={<RequirePermission perm={PERMISSIONS.TENANTS_MANAGE}><TenantsAdminPage /></RequirePermission>} />
-      <Route path="/settings/agents" element={<RequirePermission perm={PERMISSIONS.AGENTS_MANAGE}><AgentsAdminPage /></RequirePermission>} />
+      <Route path="/settings/tenants" element={<Navigate to="/admin/tenants" replace />} />
+      {/* The agent catalog moved into the platform area with the rest of the Super Admin's pages. */}
+      <Route path="/settings/agents" element={<Navigate to="/admin/agent-catalog" replace />} />
       <Route path="/agents" element={<RequirePermission perm={PERMISSIONS.AGENTS_VIEW}><AgentsPage /></RequirePermission>} />
       <Route path="/settings" element={<SettingsPage />} />
       <Route path="/settings/calendar" element={<SettingsPage />} />
@@ -220,6 +233,7 @@ function App() {
     <BrowserRouter>
       <AuthProvider>
         <AuthGate>
+        <SuperAdminBoundary>
         <Routes>
           <Route path="/" element={<SmartRoot />} />
           <Route path="/login" element={<LoginPage />} />
@@ -227,14 +241,8 @@ function App() {
           <Route path="/marketplace" element={<Navigate to="/" replace />} />
           <Route path="/marketplace/listings" element={<MarketplaceListingsPage />} />
           <Route path="/marketplace/listings/:id" element={<MarketplaceDetailsPage />} />
-          {/* Admin dashboard — hidden for now; /admin falls through to the
-              catch-all below and redirects to /dashboard.
-          <Route path="/admin" element={
-            <ProtectedRoute roles={ADMINS_AND_MANAGERS}>
-              <AdminDashboardPage />
-            </ProtectedRoute>
-          } />
-          */}
+          {/* The platform control area (Super Admin only), with its own layout. The old AdminDashboard page stays unmounted. */}
+          {adminRoutes()}
           <Route path="/projects" element={<ExecAppShell><ProjectsPage /></ExecAppShell>} />
           <Route path="/audio-upload" element={<SidebarShell><AudioUploadPage /></SidebarShell>} />
           <Route path="/call-quality" element={<SidebarShell><CallQualityDashboard /></SidebarShell>} />
@@ -247,15 +255,17 @@ function App() {
           <Route path="/voice_agent" element={<SidebarShell><VoiceAgentPage /></SidebarShell>} />
           {/* The Hiring agent (AGENT_ROUTES.hiring): tenant users with hiring.view; the page checks the agent is available. */}
           <Route path="/hiring_agent/*" element={<SidebarShell><HiringRoute /></SidebarShell>} />
-          <Route path="/voice-campaigns" element={<SidebarShell><VoiceCampaigns /></SidebarShell>} />
-          <Route path="/voice-campaigns/:campaignId" element={<SidebarShell><VoiceCampaignDetail /></SidebarShell>} />
+          <Route path="/voice-campaigns" element={<SidebarShell><FeatureRoute features={CAMPAIGN_FEATURES} name="Voice campaigns"><VoiceCampaigns /></FeatureRoute></SidebarShell>} />
+          <Route path="/voice-campaigns/:campaignId" element={<SidebarShell><FeatureRoute features={CAMPAIGN_FEATURES} name="Voice campaigns"><VoiceCampaignDetail /></FeatureRoute></SidebarShell>} />
           {/* <Route path="/calls" element={<SidebarShell><CallsPage /></SidebarShell>} /> */}
           <Route path="/*" element={<AppShell />} />
         </Routes>
+        </SuperAdminBoundary>
         </AuthGate>
         {/* <AuthedChatWidget /> */}
       </AuthProvider>
 
+      <StepUpDialog />
       <Toaster position="bottom-right" />
     </BrowserRouter>
     </ThemeProvider>

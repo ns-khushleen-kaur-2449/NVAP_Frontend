@@ -11,12 +11,18 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
-import { Plus, Pencil, Search, Sparkles, X, ChevronRight, ChevronLeft, Users, Download, UserCog, ArrowRight } from 'lucide-react';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Plus, Pencil, Search, Sparkles, X, ChevronRight, ChevronLeft, Users, Download, UserCog, ArrowRight, Archive, ArchiveRestore, Trash2 } from 'lucide-react';
 import {
   getProspect, getProspects, createProspect,
+  archiveProspect, restoreProspect, deleteProspect,
   bulkQualifyLeads, bulkAssignLeads, bulkUpdateStage,
   exportLeadsCSV, downloadBlob
 } from '@/lib/api';
+import { useAuth } from '@/lib/AuthContext';
 import { formatCurrency, STAGE_OPTIONS } from '@/lib/utils';
 import { DEPARTMENTS, LIST_INCLUDE, toLeadRow } from '@/lib/prospects';
 import { StageBadge, PriorityBadge, StatusBadge } from '@/components/shared/StatusBadges';
@@ -40,6 +46,25 @@ const isDue = (lead) => lead.lead_score_summary?.freshness_indicator === 'recalc
 const scoreVersion = (lead) => {
   const summary = lead.lead_score_summary || {};
   return `${summary.calculated_at || ''}:${summary.status || ''}:${summary.freshness_indicator || ''}`;
+};
+
+// Archive, restore and delete (Arpita, Nov 2026).  The backend enforces who may do what; these only hide
+// buttons a person cannot use.  An archived lead is hidden from the list, not scored and never called.
+const LEAD_ACTIONS = {
+  archive: {
+    run: archiveProspect, done: 'Lead archived', button: 'Archive',
+    title: 'Archive this lead?',
+    text: 'It leaves the Leads list and is not scored, put in campaigns or called until it is restored. You can find it under Archived.',
+  },
+  restore: {
+    run: restoreProspect, done: 'Lead restored', button: 'Restore',
+    title: 'Restore this lead?', text: 'It comes back to the Leads list and can be scored and called again.',
+  },
+  delete: {
+    run: deleteProspect, done: 'Lead deleted', button: 'Delete',
+    title: 'Delete this lead?',
+    text: 'It disappears from every list. Its history is kept for the audit trail but it cannot be brought back here.',
+  },
 };
 
 // The Score column: the number and its assessment, from the backend's summaries (no cut-offs here).
@@ -69,6 +94,13 @@ function ScoreCell({ lead }) {
 }
 
 export default function LeadsPage() {
+  const { hasRole } = useAuth();
+  const canArchive = hasRole('tenant_admin', 'manager');
+  const canDelete = hasRole('tenant_admin');
+  // 'active': the Leads list; 'archived': archived leads only, to restore or delete.
+  const [view, setView] = useState('active');
+  const archivedView = view === 'archived';
+  const [confirm, setConfirm] = useState(null); // { action, lead }
   const [leads, setLeads] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -90,6 +122,7 @@ export default function LeadsPage() {
     try {
       // Leads are prospects with a lead mapping or at QUALIFIED/CONVERTED.
       const params = { leads_only: true, limit: 500, include: LIST_INCLUDE };
+      if (archivedView) params.archived = true;
       if (search) params.search = search;
       if (stageFilter && stageFilter !== 'all') params.stage = stageFilter;
       const r = await getProspects(params);
@@ -103,7 +136,29 @@ export default function LeadsPage() {
       });
     } catch (e) { console.error(e); }
     setLoading(false);
-  }, [search, stageFilter]);
+  }, [search, stageFilter, archivedView]);
+
+  const changeView = (next) => {
+    setView(next);
+    setSelectedLead(null);
+    setSelectedIds(new Set());
+  };
+
+  const runLeadAction = async () => {
+    if (!confirm) return;
+    const { action, lead } = confirm;
+    setConfirm(null);
+    try {
+      await LEAD_ACTIONS[action].run(lead.id);
+      toast.success(LEAD_ACTIONS[action].done);
+      setSelectedLead((open) => (open?.id === lead.id ? null : open));
+      setLeads((rows) => rows.filter((r) => r.id !== lead.id));
+      setTotal((n) => Math.max(0, n - 1));
+    } catch (e) {
+      toast.error(`${LEAD_ACTIONS[action].button} failed: ${e.response?.data?.detail || e.message}`);
+      fetchLeads();
+    }
+  };
 
   useEffect(() => { fetchLeads(); }, [fetchLeads]);
 
@@ -126,7 +181,8 @@ export default function LeadsPage() {
     getProspect(linkedProspect).then((r) => setSelectedLead(toLeadRow(r.data))).catch(() => toast.error('That lead is not available to you.'));
   }, [linkedProspect]);
 
-  const selectLead = (lead) => setSelectedLead(lead);
+  // An archived lead has no detail panel (its score and history are not served until it is restored).
+  const selectLead = (lead) => { if (!archivedView) setSelectedLead(lead); };
   // After an edit: the panel and the list row show the saved prospect.
   const leadSaved = (prospect) => {
     const row = toLeadRow(prospect);
@@ -239,8 +295,17 @@ export default function LeadsPage() {
               ))}
             </SelectContent>
           </Select>
+          <Select value={view} onValueChange={changeView}>
+            <SelectTrigger className="w-[140px] bg-[hsl(var(--surface-2))] border-border" aria-label="Which leads" data-testid="leads-view-select">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="active">Active leads</SelectItem>
+              <SelectItem value="archived">Archived</SelectItem>
+            </SelectContent>
+          </Select>
 
-          {selectedIds.size > 0 && (
+          {!archivedView && selectedIds.size > 0 && (
             <Button size="sm" variant="secondary" onClick={() => {
               setBulkAction('');
               setShowBulkDialog(true);
@@ -315,15 +380,18 @@ export default function LeadsPage() {
             <Table data-testid="leads-table" className="[&_th]:px-2 [&_td]:px-2">
               <TableHeader className="sticky top-0 z-10">
                 <TableRow className="bg-[hsl(var(--surface-3))] hover:bg-[hsl(var(--surface-3))]">
-                  <TableHead className="w-10">
-                    <Checkbox checked={selectedIds.size === leads.length && leads.length > 0} onCheckedChange={toggleSelectAll} data-testid="select-all-leads" />
-                  </TableHead>
+                  {!archivedView && (
+                    <TableHead className="w-10">
+                      <Checkbox checked={selectedIds.size === leads.length && leads.length > 0} onCheckedChange={toggleSelectAll} data-testid="select-all-leads" />
+                    </TableHead>
+                  )}
                   <TableHead className="text-xs font-semibold">Name</TableHead>
                   <TableHead className="text-xs font-semibold">Stage</TableHead>
                   <TableHead className="text-xs font-semibold">Status</TableHead>
                   <TableHead className="text-xs font-semibold text-right">Score</TableHead>
                   <TableHead className="text-xs font-semibold">Budget</TableHead>
                   <TableHead className="text-xs font-semibold">Assigned</TableHead>
+                  {archivedView && (canArchive || canDelete) && <TableHead className="text-xs font-semibold text-right">Actions</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -333,9 +401,11 @@ export default function LeadsPage() {
                     className={`table-row-hover ${selectedLead?.id === lead.id ? 'bg-[hsl(var(--surface-2))]' : ''}`}
                     data-testid={`lead-row-${lead.id}`}
                   >
-                    <TableCell onClick={(e) => e.stopPropagation()}>
-                      <Checkbox checked={selectedIds.has(lead.id)} onCheckedChange={() => toggleSelect(lead.id)} />
-                    </TableCell>
+                    {!archivedView && (
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        <Checkbox checked={selectedIds.has(lead.id)} onCheckedChange={() => toggleSelect(lead.id)} />
+                      </TableCell>
+                    )}
                     <TableCell onClick={() => selectLead(lead)}>
                       <div className="max-w-[12rem]">
                         <p className="text-sm font-medium truncate">{lead.name}</p>
@@ -360,6 +430,22 @@ export default function LeadsPage() {
                       {lead.budget_max ? formatCurrency(lead.budget_max) : '--'}
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground" onClick={() => selectLead(lead)}>{lead.assigned_to || '--'}</TableCell>
+                    {archivedView && (canArchive || canDelete) && (
+                      <TableCell className="text-right whitespace-nowrap">
+                        {canArchive && (
+                          <Button variant="outline" size="sm" className="border-border mr-1"
+                            onClick={() => setConfirm({ action: 'restore', lead })} aria-label={`Restore ${lead.name}`}>
+                            <ArchiveRestore className="w-3.5 h-3.5 mr-1" /> Restore
+                          </Button>
+                        )}
+                        {canDelete && (
+                          <Button variant="outline" size="sm" className="border-border text-red-600"
+                            onClick={() => setConfirm({ action: 'delete', lead })} aria-label={`Delete ${lead.name}`}>
+                            <Trash2 className="w-3.5 h-3.5 mr-1" /> Delete
+                          </Button>
+                        )}
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
                 {leads.length === 0 && (
@@ -369,8 +455,8 @@ export default function LeadsPage() {
                         <div className="w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center mb-3">
                           <Users className="w-6 h-6 text-slate-400" />
                         </div>
-                        <p className="text-sm font-medium text-muted-foreground">{loading ? 'Loading leads...' : 'No leads found'}</p>
-                        <p className="text-xs text-muted-foreground mt-1">{loading ? 'Fetching your data' : 'Try adjusting your filters or add a new lead.'}</p>
+                        <p className="text-sm font-medium text-muted-foreground">{loading ? 'Loading leads...' : archivedView ? 'No archived leads' : 'No leads found'}</p>
+                        <p className="text-xs text-muted-foreground mt-1">{loading ? 'Fetching your data' : archivedView ? 'Archived leads appear here until they are restored.' : 'Try adjusting your filters or add a new lead.'}</p>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -379,7 +465,7 @@ export default function LeadsPage() {
             </Table>
           </ScrollArea>
         </Card>
-        <p className="text-xs text-muted-foreground mt-2">{total} leads total</p>
+        <p className="text-xs text-muted-foreground mt-2">{total} {archivedView ? 'archived leads' : 'leads total'}</p>
       </div>
 
       {/* Right: Lead Detail */}
@@ -407,6 +493,16 @@ export default function LeadsPage() {
                     <Button variant="outline" size="sm" onClick={() => setEditing(true)} className="border-border">
                       <Pencil className="w-3.5 h-3.5 mr-1" /> Edit
                     </Button>
+                    {canArchive && (
+                      <Button variant="outline" size="sm" onClick={() => setConfirm({ action: 'archive', lead: selectedLead })} className="border-border">
+                        <Archive className="w-3.5 h-3.5 mr-1" /> Archive
+                      </Button>
+                    )}
+                    {canDelete && (
+                      <Button variant="outline" size="sm" onClick={() => setConfirm({ action: 'delete', lead: selectedLead })} className="border-border text-red-600">
+                        <Trash2 className="w-3.5 h-3.5 mr-1" /> Delete
+                      </Button>
+                    )}
                     <Button variant="ghost" size="icon" aria-label="Close the lead" onClick={() => setSelectedLead(null)}>
                       <X className="w-4 h-4" />
                     </Button>
@@ -499,6 +595,24 @@ export default function LeadsPage() {
       </div>
 
       {selectedLead && <EditLeadDialog open={editing} onOpenChange={setEditing} lead={selectedLead} onSaved={leadSaved} />}
+
+      <AlertDialog open={!!confirm} onOpenChange={(open) => !open && setConfirm(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{confirm && LEAD_ACTIONS[confirm.action].title}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirm && <><strong>{confirm.lead.name}</strong>: {LEAD_ACTIONS[confirm.action].text}</>}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={runLeadAction}
+              className={confirm?.action === 'delete' ? 'bg-red-600 text-white hover:bg-red-700' : undefined}>
+              {confirm && LEAD_ACTIONS[confirm.action].button}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Bulk Action Dialog */}
       <Dialog open={showBulkDialog} onOpenChange={setShowBulkDialog}>

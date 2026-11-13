@@ -1,4 +1,5 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { Link, Route } from 'react-router-dom';
 import { renderWithAuth, USERS } from '@/test/renderWithAuth';
 import LeadsPage from './Leads';
@@ -14,6 +15,7 @@ beforeEach(() => {
   api.getProspects.mockResolvedValue({ data: { prospects: [prospect], total: 1 } });
   api.getProspect.mockResolvedValue({ data: prospect });
   api.getProspectTimeline.mockResolvedValue({ data: { items: [], counts: {} } });
+  api.getConversionHistory.mockResolvedValue({ data: { items: [] } });
 });
 
 const routes = [
@@ -124,6 +126,75 @@ describe('Editing a lead', () => {
     fireEvent.change(screen.getByLabelText('Budget max'), { target: { value: '1200000' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Prospect not found');
+  });
+});
+
+describe('Archiving and deleting a lead (Managers archive, Tenant Admins also delete)', () => {
+  const openLead = (user) => renderWithAuth(<LeadsPage />, { user, path: '/leads?prospect=p1' });
+
+  it.each([['rep', false, false], ['manager', true, false], ['tenant_admin', true, true]])(
+    'a %s sees Archive: %s, Delete: %s on an open lead', async (role, archive, remove) => {
+      openLead(USERS[role]);
+      await screen.findByRole('button', { name: 'Close the lead' });
+      expect(Boolean(screen.queryByRole('button', { name: /^Archive$/ }))).toBe(archive);
+      expect(Boolean(screen.queryByRole('button', { name: /^Delete$/ }))).toBe(remove);
+    });
+
+  it('archives the open lead only after confirming, then takes it off the list', async () => {
+    api.archiveProspect.mockResolvedValue({ data: {} });
+    const user = userEvent.setup();
+    openLead(USERS.manager);
+    await screen.findByTestId('lead-row-p1');
+    await user.click(await screen.findByRole('button', { name: /^Archive$/ }));
+    const dialog = within(screen.getByRole('alertdialog'));
+    expect(dialog.getByText('Archive this lead?')).toBeInTheDocument();
+    expect(api.archiveProspect).not.toHaveBeenCalled();
+    await user.click(dialog.getByRole('button', { name: 'Archive' }));
+    expect(api.archiveProspect).toHaveBeenCalledWith('p1');
+    await waitFor(() => expect(screen.queryByTestId('lead-row-p1')).not.toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'Close the lead' })).not.toBeInTheDocument();
+  });
+
+  it('cancelling changes nothing', async () => {
+    const user = userEvent.setup();
+    openLead(USERS.tenant_admin);
+    await user.click(await screen.findByRole('button', { name: /^Delete$/ }));
+    await user.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Cancel' }));
+    expect(api.deleteProspect).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Close the lead' })).toBeInTheDocument();
+  });
+
+  const openArchived = async (role) => {
+    const user = userEvent.setup();
+    renderWithAuth(<LeadsPage />, { user: USERS[role], path: '/leads' });
+    await screen.findByTestId('lead-row-p1');
+    await user.click(screen.getByTestId('leads-view-select'));
+    await user.click(await screen.findByRole('option', { name: 'Archived' }));
+    await waitFor(() => expect(api.getProspects).toHaveBeenLastCalledWith(expect.objectContaining({ archived: true })));
+    return user;
+  };
+
+  it('the Archived view offers Restore, and Delete to a Tenant Admin', async () => {
+    api.restoreProspect.mockResolvedValue({ data: {} });
+    const user = await openArchived('tenant_admin');
+    expect(await screen.findByRole('button', { name: 'Delete Aditi Attri' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Restore Aditi Attri' }));
+    await user.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Restore' }));
+    expect(api.restoreProspect).toHaveBeenCalledWith('p1');
+    await waitFor(() => expect(screen.queryByTestId('lead-row-p1')).not.toBeInTheDocument());
+  });
+
+  it('a Manager restores but cannot delete, and a Sales Rep only looks', async () => {
+    await openArchived('manager');
+    expect(await screen.findByRole('button', { name: 'Restore Aditi Attri' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Delete Aditi Attri' })).not.toBeInTheDocument();
+  });
+
+  it('a Sales Rep sees archived leads without actions or a detail panel', async () => {
+    const user = await openArchived('rep');
+    expect(screen.queryByRole('button', { name: /Restore|Delete/ })).not.toBeInTheDocument();
+    await user.click(screen.getByText('Aditi Attri'));
+    expect(screen.queryByRole('button', { name: 'Close the lead' })).not.toBeInTheDocument();
   });
 });
 

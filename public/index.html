@@ -100,14 +100,56 @@
                     }),
                     (e.__SV = 1));
             })(document, window.posthog || []);
+            // Product analytics only (Arpita, Nov 2026): no personal or customer data leaves the browser.
+            // - Recordings show no text and no typed values; cross-origin frames (payment, calendar) are not recorded.
+            // - Click tracking keeps no element text or attributes.
+            // - Page addresses are sent without their query string or #fragment (tokens, codes, emails).
+            // - Pages that cannot be masked safely (sign-in, settings, billing, inbox, call audio) are never recorded.
+            var NOT_RECORDED = /^\/(login|register|settings|billing|inbox|calls|audio-upload|call-quality)(\/|$)/;
+            function withoutQuery(url) {
+                return typeof url === "string" ? url.split(/[?#]/)[0] : url;
+            }
             posthog.init("phc_xAvL2Iq4tFmANRE7kzbKwaSqp1HJjN7x48s3vr0CMjs", {
                 api_host: "https://us.i.posthog.com",
                 person_profiles: "identified_only", // or 'always' to create profiles for anonymous users as well,
+                mask_all_text: true,
+                mask_all_element_attributes: true,
+                disable_session_recording: true, // started below, page by page
                 session_recording: {
-                    recordCrossOriginIframes: true,
+                    maskAllInputs: true,
+                    maskTextSelector: "*",
+                    recordCrossOriginIframes: false,
                     capturePerformance: false,
                 },
+                before_send: function (event) {
+                    var props = event && event.properties;
+                    if (props) {
+                        ["$current_url", "$referrer", "$initial_referrer", "$prev_pageview_pathname"].forEach(function (key) {
+                            if (props[key]) props[key] = withoutQuery(props[key]);
+                        });
+                    }
+                    return event;
+                },
             });
+            (function () {
+                function syncRecording() {
+                    if (NOT_RECORDED.test(window.location.pathname)) {
+                        posthog.stopSessionRecording();
+                    } else {
+                        posthog.startSessionRecording();
+                    }
+                }
+                ["pushState", "replaceState"].forEach(function (name) {
+                    var original = history[name];
+                    history[name] = function () {
+                        var result = original.apply(this, arguments);
+                        syncRecording();
+                        return result;
+                    };
+                });
+                window.addEventListener("popstate", syncRecording);
+                syncRecording();
+            })();
         </script>
     </body>
 </html>
